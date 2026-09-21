@@ -1,5 +1,5 @@
 {
-  "description": "在已启用的本地项目中恢复 XiaoTao 入口，不自动写入 checkpoint。",
+  "description": "恢复 XiaoTao 入口，并为单个会话绑定 Worker 注入有界 Packet；不自动写入 checkpoint。",
   "hooks": {
     "SessionStart": [
       {
@@ -10,6 +10,19 @@
             "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','session-start.mjs')).href).then(m=>m.run())\"",
             "timeout": 5,
             "additionalContextLimit": 4000
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','subagent-start.mjs')).href).then(m=>m.run())\"",
+            "timeout": 5,
+            "additionalContextLimit": 8000
           }
         ]
       }

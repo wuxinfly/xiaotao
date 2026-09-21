@@ -7,7 +7,15 @@ import { fileURLToPath } from 'node:url';
 const SOURCE = fileURLToPath(new URL('./xiaotao-codex/', import.meta.url));
 const NAME = 'xiaotao-codex';
 const OWNER = 'xiaotao-ai-workflow/codex-adapter';
-const FILES = ['.codex-plugin/plugin.json', 'hooks/hooks.json', 'scripts/session-start.mjs'];
+const FILES = [
+  '.codex-plugin/plugin.json',
+  'hooks/hooks.json',
+  'scripts/session-start.mjs',
+  'scripts/handoff-contract.mjs',
+  'scripts/subagent-start.mjs',
+  'scripts/delegation-contract.mjs',
+  'scripts/worker-snapshot-contract.mjs',
+];
 const ENTRY_PATH = `./.codex/plugins/${NAME}`;
 const MARKER = '.xiaotao-source.json';
 

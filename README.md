@@ -114,8 +114,9 @@ npm run codex:install:local
 marketplace 条目指向 `./.codex/plugins/xiaotao-codex`。
 
 随后在桌面端 personal marketplace 安装/启用插件，检查并信任其 Hook，再在目标项目新建对话。
-仅准备源码不会激活插件。第一版只提供只读恢复指导，不会在压缩前自动保存。Windows 命令、更新
-和验收见 [Codex Adapter 指南](adapters/codex/README.md)。
+仅准备源码不会激活插件。当前版本提供只读恢复指导和单个持久 Worker 的有界 Packet 注入，不会在
+压缩前自动保存，也不宣称工具/权限已被强制隔离。Windows 命令、更新和验收见
+[Codex Adapter 指南](adapters/codex/README.md)。
 
 ## 从本地仓库安装到 DSH
 
@@ -176,8 +177,9 @@ Session 生命周期，不能给自己授权，也绝不会自动变为可复用
 
 Worker 不依赖父 Agent 的隐式继承。每个 Worker 声明 required 与 optional 指令引用；每次运行
 实体化最小 Delegation Packet，包含已解析指令摘要、上下文引用、有效工具与权限，以及宿主支持
-状态。缺少 required 指令或不能强制执行边界时停止委派。语义校验会对照单独提供的 Worker 快照，
-并从可信 Core 或项目根目录重新计算指令摘要。
+状态。缺少 required 指令或不能强制执行边界时停止委派。Codex Adapter 会只读解析不可变 Worker
+快照，交叉校验工具、权限、上下文、输出和指令边界，并从可信 Core 或项目根目录重新计算指令摘要；
+宿主 Hook 仍不能强制工具白名单，因此会如实保留 `tool-isolation` 降级声明。
 
 只有请求需要持久化时，XiaoTao 才在项目的 `.xiaotao/` 下创建状态。把探索讨论变成正式 Task
 之前，会请求确认。

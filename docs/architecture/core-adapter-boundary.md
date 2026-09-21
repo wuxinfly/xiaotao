@@ -40,9 +40,9 @@ XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 | 状态边界、锁与 CAS | 依赖宿主文件工具，确定性保证为 `degraded` | `ctx.fs` 上的 `.xiaotao/` containment、锁、租约、tombstone release 与 CAS 已 `activated` | 插件只读状态入口，不接管写入；写入保证为 `degraded` |
 | 有界模型 checkpoint | 由当前 Agent 按 Core 协议显式保存 | `fs + tools + schema` 就绪且 checkpoint 未禁用时，`xiaotao_checkpoint` 已进入 ToolRuntime；真实模型/后端链仍 `unverified` | `unsupported`；`SessionStart` 只能恢复已落盘入口 |
 | 自动 checkpoint | `unsupported` | 上下文压力触发为 opt-in `activated`；使用 awaited `turn-stopping` fallback，不是 pre-compaction / Session End；真实宿主验收 `unverified` | `PreCompact` 能力 `available`，但缺少稳定的有界事实与目标生成链，功能未激活 |
-| Session 恢复入口 / Runtime Context | 由新 Session 显式发现已保存状态 | `agents` 就绪时 SessionStart 有界 Runtime Context 已 `activated` | `SessionStart` 的 startup / resume / clear / compact reminder 已实现；只有安装、启用、信任并真实运行后才算激活 |
+| Session 恢复入口 / Runtime Context | 由新 Session 显式发现已保存状态 | `agents` 就绪时 SessionStart 有界 Runtime Context 已 `activated` | `SessionStart` 的 startup / resume / clear / compact reminder 已实现；以只读 Node.js 扫描权威元数据，不执行项目 Core、不刷新 Catalog；只有安装、启用、信任并真实运行后才算激活 |
 | 多文件 transaction / commit | Core 定义协议，执行依赖宿主 | create/replace 事务 service 已 `available`；model-facing 业务路径未激活，checkpoint 仍保守拒绝 overlay；delete/rename lifecycle move `unsupported` | `unsupported` |
-| 原生隔离 Worker / Delegation Packet | 取决于宿主能力；不能假设继承 | DSH preview 未提供可验证的原生隔离 subagent 运行时，使用 in-session fallback | reminder 可选择当前原生 subagent，但完整 Packet 注入、工具/权限隔离尚未接线 |
+| 原生隔离 Worker / Delegation Packet | 取决于宿主能力；不能假设继承 | DSH preview 未提供可验证的原生隔离 subagent 运行时，使用 in-session fallback | 单持久 Worker 的 Session 绑定 Packet 注入已 `activated`；required instruction digest 与不可变 Worker 快照边界会复核，但宿主级工具/权限隔离仍为 `degraded`，并行与 ephemeral Packet 未接线 |
 | 完整分层验收 | 需要在具体宿主记录 | 自动化机制覆盖较多；真实模型、持久后端、重启恢复和故障路径仍 `unverified` | 有人工清单；真实桌面 Hook 与降级场景证据仍需记录 |
 
 代码与证据入口：
