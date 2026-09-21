@@ -1,0 +1,71 @@
+{
+  "status": "completed",
+  "merged_entries": [
+    {
+      "entry_id": "lt-perf-trace",
+      "title": "Unified performance diagnostic protocol",
+      "memory_kind": "experience",
+      "action_taken": "merged",
+      "content": "Prioritize runtime trace collection to establish evidence, combining CPU profiling and coverage analysis when investigating regressions.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/source.md",
+        "xiaotao/references/scenarios/validator-fixtures/files/result.md"
+      ]
+    },
+    {
+      "entry_id": "lt-novel-ours",
+      "title": "Independent feature caching",
+      "memory_kind": "decision",
+      "action_taken": "novel_ours",
+      "content": "Cache verified query responses locally when offline mode is requested.",
+      "decision_context": {
+        "reason": "Verified local caching preserves the requested offline behavior.",
+        "rejected_alternatives": [
+          {
+            "alternative": "Require a network response in offline mode",
+            "reason": "It cannot satisfy the offline requirement."
+          }
+        ]
+      },
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+      ]
+    }
+  ],
+  "resolved": [
+    "Merged complementary trace and profiling experience from both branches into lt-perf-trace"
+  ],
+  "unresolved_conflicts": [
+    {
+      "conflict_id": "cnf-init-sync-vs-async",
+      "topic": "Module A Initialization Strategy",
+      "status": "pending-confirmation",
+      "reason": "Ours branch claims lazy initialization is safe while theirs branch demonstrates synchronous initialization is required for login.",
+      "ours": {
+        "author": "developer-a",
+        "branch": "feature/perf-opt",
+        "commit": "7a8b9c0",
+        "task_id": "task-perf-a",
+        "memory_path": ".xiaotao/memory/long-term/current.md",
+        "claim": "Module A can be lazily initialized after startup",
+        "source_refs": [
+          "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+        ],
+        "created_at": "2026-08-28T10:00:00Z"
+      },
+      "theirs": {
+        "author": "developer-b",
+        "branch": "fix/login-race",
+        "commit": "3d4e5f6",
+        "task_id": "task-login-fix",
+        "memory_path": ".xiaotao/memory/long-term/current.md",
+        "claim": "Module A must initialize synchronously to avoid login auth race",
+        "source_refs": [
+          "xiaotao/references/scenarios/validator-fixtures/files/result.md"
+        ],
+        "created_at": "2026-08-28T11:30:00Z"
+      }
+    }
+  ],
+  "requires_human_review": true
+}

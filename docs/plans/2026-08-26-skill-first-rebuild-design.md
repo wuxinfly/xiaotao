@@ -1,14 +1,14 @@
-# Maestro Skill-first Rebuild Design
+# XiaoTao Skill-first Rebuild Design
 
 ## Decision
 
-Maestro is delivered as one installable Codex Skill. The installed Skill is the product entrypoint;
-project state lives in `.maestro/` inside the user's project. Users invoke Maestro through natural
+XiaoTao is delivered as one installable Codex Skill. The installed Skill is the product entrypoint;
+project state lives in `.xiaotao/` inside the user's project. Users invoke XiaoTao through natural
 language and never need npm, a Node.js CLI, or manually prepared model-response JSON.
 
 ## Package
 
-The repository contains an installable `maestro/` directory. Its `SKILL.md` routes Codex to focused
+The repository contains an installable `xiaotao/` directory. Its `SKILL.md` routes Codex to focused
 references for coordination, memory, storage, handoffs, Playbooks, and individual roles. JSON
 schemas document the internal Memory Worker and Handoff contracts. No executable helper is included
 in v1 because Codex already has filesystem and sub-agent tools; deterministic scripts can be added
@@ -24,9 +24,9 @@ all business sequencing decisions; Playbooks remain optional guidance.
 
 ## Installation and use
 
-Users copy `maestro/` into their Codex skills directory or upload the directory/ZIP as a Skill.
-They then ask Codex to use Maestro, speak to Old Zhou, or invoke a named role. On first use in a
-project, Maestro creates only the `.maestro/` directories required by the current request.
+Users copy `xiaotao/` into their Codex skills directory or upload the directory/ZIP as a Skill.
+They then ask Codex to use XiaoTao, speak to Old Zhou, or invoke a named role. On first use in a
+project, XiaoTao creates only the `.xiaotao/` directories required by the current request.
 
 ## Validation
 

@@ -2,7 +2,7 @@
 
 ## Context
 
-Maestro already preserves Temporary, Task, and reviewed Long-term Memory, but a new Session has no
+XiaoTao already preserves Temporary, Task, and reviewed Long-term Memory, but a new Session has no
 small overview of what exists. Reading every Memory file or all historical References wastes
 context and makes unrelated experience influence the current task.
 
@@ -14,15 +14,15 @@ vector database, new approval path, or second source of truth.
 Formal Memory remains authoritative. A deterministic `memory_catalog.py` helper derives two local
 cache files:
 
-- `.maestro/memory/manifest.md`: a short human- and Agent-readable map loaded at Session start;
-- `.maestro/memory/index.json`: validated records used for bounded retrieval.
+- `.xiaotao/memory/manifest.md`: a short human- and Agent-readable map loaded at Session start;
+- `.xiaotao/memory/index.json`: validated records used for bounded retrieval.
 
 The builder covers structured Long-term entries, active Temporary routing context, active Task
 objectives, and current role or Worker state. It intentionally excludes historical Reference
 trees. A SHA-256 digest over the contributing source paths and bytes detects stale catalogs.
 
 Long-term entries remain in `long-term/current.md`, but each current claim uses a fenced
-`maestro-memory-entry` JSON block. This gives every entry a deterministic boundary and stable ID.
+`xiaotao-memory-entry` JSON block. This gives every entry a deterministic boundary and stable ID.
 The helper's `show` command extracts only one selected block, so the Agent does not need to place
 the whole Long-term file in model context.
 

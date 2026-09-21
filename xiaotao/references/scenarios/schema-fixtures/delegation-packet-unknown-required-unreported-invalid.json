@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "worker_id": "unknown-instruction-investigator",
+  "worker_snapshot_path": ".xiaotao/tasks/example/workers/unknown-instruction-investigator/spec.yaml",
+  "objective": "Incorrectly record an unknown required instruction without its blocker.",
+  "completion_condition": "This packet must fail semantic validation.",
+  "instructions": {
+    "required_refs": ["contract:unknown-required"],
+    "optional_refs": [],
+    "resolved": []
+  },
+  "context_refs": [{ "kind": "current-task", "path": ".xiaotao/tasks/example/context.md" }],
+  "tools": [],
+  "permissions": { "autonomous": [], "conditional": [] },
+  "host_adapter": {
+    "id": "incorrect-host",
+    "status": "unsupported",
+    "unsupported_requirements": ["host:instruction-injection"]
+  },
+  "result_path": ".xiaotao/tasks/example/workers/unknown-instruction-investigator/runs/run-2/result.md",
+  "handoff_path": ".xiaotao/tasks/example/handoffs/unknown-instruction-investigator-run-2.json"
+}

@@ -9,7 +9,7 @@ import esbuild from 'esbuild'
 const adapterRoot = path.dirname(fileURLToPath(import.meta.url))
 const repositoryRoot = path.resolve(adapterRoot, '..', '..')
 const outputRoot = path.join(adapterRoot, 'lib')
-const coreSource = path.join(repositoryRoot, 'maestro')
+const coreSource = path.join(repositoryRoot, 'xiaotao')
 const typescriptCli = path.join(adapterRoot, 'node_modules', 'typescript', 'bin', 'tsc')
 
 await rm(outputRoot, { recursive: true, force: true })
@@ -41,4 +41,4 @@ await cp(coreSource, path.join(outputRoot, 'core'), {
   recursive: true,
   filter: (source) => path.basename(source) !== '__pycache__' && !source.endsWith('.pyc'),
 })
-process.stdout.write('Built lib/index.js, declarations, and packaged Maestro Core.\n')
+process.stdout.write('Built lib/index.js, declarations, and packaged XiaoTao Core.\n')

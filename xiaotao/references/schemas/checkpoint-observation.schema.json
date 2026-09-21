@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/checkpoint-observation.schema.json",
+  "title": "XiaoTao Checkpoint Commit Observation",
+  "description": "Immutable evidence that a checkpoint proposal became canonical. Legacy observations remain valid but do not carry an Activity timestamp.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request_id", "record_hash", "proposal_hash", "revision"],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "record_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "proposal_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "completion": {
+      "enum": ["save", "recovery"]
+    },
+    "committed_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(?:[Zz]|[+-][0-9]{2}:[0-9]{2})$"
+    }
+  },
+  "oneOf": [
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["completion"] },
+          { "required": ["committed_at"] }
+        ]
+      }
+    },
+    {
+      "required": ["completion", "committed_at"]
+    }
+  ]
+}

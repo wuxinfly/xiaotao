@@ -1,18 +1,18 @@
-# Maestro Core / Adapter 架构边界与能力矩阵
+# XiaoTao Core / Adapter 架构边界与能力矩阵
 
 Status: **架构边界稳定；宿主增强按能力独立激活，真实宿主验收仍需单独记录**。
-Scope: [Issue #14](https://github.com/IHongTaoI/maestro-workflow/issues/14)。Updated 2026-09-12。
+Scope: [Issue #14](https://github.com/IHongTaoI/xiaotao/issues/14)。Updated 2026-09-12。
 
 ## 1. 固定边界
 
-Maestro 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
+XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 
 - **Core 决定语义**：是否创建或恢复 Temporary / Task，选择哪个 Worker，保存哪些事实，是否需要
   Handoff、Memory 或 Playbook，以及何时请求校验或持久化。
 - **Adapter 负责机械执行**：把 Core 注册到宿主，探测能力，映射宿主工具与事件，并在宿主允许时
   提供路径边界、schema 校验、锁、CAS、可靠写入和确定性触发。
 - **依赖保持单向**：Core 不导入 Codex、DSH 或其他宿主 API；Adapter 可以依赖宿主 API，但不能复制
-  Core 的业务判断。新宿主优先新增 Adapter，不 fork Maestro Core。
+  Core 的业务判断。新宿主优先新增 Adapter，不 fork XiaoTao Core。
 - **没有 Adapter 仍可运行**：Bare Core 可以依赖当前宿主已有的文件与 Agent 能力按文字协议工作；
   缺少确定性增强时必须报告降级，不能虚构锁、原子性、生命周期 Hook 或隔离能力。
 
@@ -37,8 +37,8 @@ Maestro 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 | --- | --- | --- | --- |
 | Core Skill 加载 | 宿主支持 Agent Skills 时可用；否则需要薄 Adapter | `ctx.skills` 注册已 `activated` | Core 由用户级或项目级 Skill 发现；插件不捆绑第二份 Core |
 | Core schema / 协议校验 | `validate.py` 可按需运行 | validator Cordis service 已 `activated`；只在有界 checkpoint 路径实际使用，不是任意写入工具 | 没有专用 validator 接线；按 Core / 宿主工具执行 |
-| 状态边界、锁与 CAS | 依赖宿主文件工具，确定性保证为 `degraded` | `ctx.fs` 上的 `.maestro/` containment、锁、租约、tombstone release 与 CAS 已 `activated` | 插件只读状态入口，不接管写入；写入保证为 `degraded` |
-| 有界模型 checkpoint | 由当前 Agent 按 Core 协议显式保存 | `fs + tools + schema` 就绪且 checkpoint 未禁用时，`maestro_checkpoint` 已进入 ToolRuntime；真实模型/后端链仍 `unverified` | `unsupported`；`SessionStart` 只能恢复已落盘入口 |
+| 状态边界、锁与 CAS | 依赖宿主文件工具，确定性保证为 `degraded` | `ctx.fs` 上的 `.xiaotao/` containment、锁、租约、tombstone release 与 CAS 已 `activated` | 插件只读状态入口，不接管写入；写入保证为 `degraded` |
+| 有界模型 checkpoint | 由当前 Agent 按 Core 协议显式保存 | `fs + tools + schema` 就绪且 checkpoint 未禁用时，`xiaotao_checkpoint` 已进入 ToolRuntime；真实模型/后端链仍 `unverified` | `unsupported`；`SessionStart` 只能恢复已落盘入口 |
 | 自动 checkpoint | `unsupported` | 上下文压力触发为 opt-in `activated`；使用 awaited `turn-stopping` fallback，不是 pre-compaction / Session End；真实宿主验收 `unverified` | `PreCompact` 能力 `available`，但缺少稳定的有界事实与目标生成链，功能未激活 |
 | Session 恢复入口 / Runtime Context | 由新 Session 显式发现已保存状态 | `agents` 就绪时 SessionStart 有界 Runtime Context 已 `activated` | `SessionStart` 的 startup / resume / clear / compact reminder 已实现；只有安装、启用、信任并真实运行后才算激活 |
 | 多文件 transaction / commit | Core 定义协议，执行依赖宿主 | create/replace 事务 service 已 `available`；model-facing 业务路径未激活，checkpoint 仍保守拒绝 overlay；delete/rename lifecycle move `unsupported` | `unsupported` |
@@ -57,7 +57,7 @@ Maestro 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 ## 4. Model-facing 工具的边界
 
 Adapter 不应仅为了“让模型能访问 service”而暴露无限制 raw storage 或 validator 工具。优先提供
-围绕一个明确 Core 流程的有界操作，例如现有 `maestro_checkpoint inspect/save/status/retry`：
+围绕一个明确 Core 流程的有界操作，例如现有 `xiaotao_checkpoint inspect/save/status/retry`：
 
 1. Core 选择目标并提供事实；
 2. 工具参数不允许模型扩大项目根、恢复根或权限；
@@ -77,14 +77,14 @@ Adapter 不应仅为了“让模型能访问 service”而暴露无限制 raw st
 
 ## 6. 剩余独立工作包
 
-### [DSH 多文件事务](https://github.com/IHongTaoI/maestro-workflow/issues/68)
+### [DSH 多文件事务](https://github.com/IHongTaoI/xiaotao/issues/68)
 
 首版实现 Core `storage.md` 的 create/replace commit 可见性机械层，包括不可变 bundle、按路径有序加锁、
 提交前统一校验、CAS 冲突、部分 materialization、commit marker 和重启恢复。具体 model-facing
 业务路径尚未激活；当前宿主缺少 delete/rename，生命周期 move 保持 unsupported。多个独立原子写
 不能宣称为整体事务。
 
-### [真实宿主分层验收](https://github.com/IHongTaoI/maestro-workflow/issues/69)
+### [真实宿主分层验收](https://github.com/IHongTaoI/xiaotao/issues/69)
 
 在真实 DSH 模型与持久文件系统中验证 checkpoint、进程退出、新 Session 恢复和 recovery 失败路径；
 同时验证移除 Adapter 后 Bare Core 可用，以及缺少 `fs/tools/agents` 时的诚实降级。Codex 按其桌面

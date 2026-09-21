@@ -1,5 +1,5 @@
 - insert:
-    - id: maestro-adapter
-      name: '@maestro-ai/dsh-adapter'
+    - id: xiaotao-adapter
+      name: '@xiaotao-ai/dsh-adapter'
       inject:
         - skills

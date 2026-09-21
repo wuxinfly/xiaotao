@@ -1,8 +1,8 @@
 /**
- * Skill adapter (thin layer): register the portable Maestro Core Skill as a
+ * Skill adapter (thin layer): register the portable XiaoTao Core Skill as a
  * dsh skill.
  *
- * Maestro Core is a directory containing `SKILL.md` (with `name` /
+ * XiaoTao Core is a directory containing `SKILL.md` (with `name` /
  * `description` frontmatter) plus `references/` and `schemas/`. dsh's skill
  * model is the same shape, so the adapter only has to read that one file and
  * hand the parsed body to `ctx.skills.register()`. The `resourceBase` marks the
@@ -11,10 +11,10 @@
  * flattened.
  *
  * The frontmatter parser below mirrors `skill-filesystem`'s behaviour for the
- * two fields Maestro actually uses, so the adapter does not depend on the dsh
+ * two fields XiaoTao actually uses, so the adapter does not depend on the dsh
  * provider plugin.
  *
- * @module @maestro-ai/dsh-adapter/skill
+ * @module @xiaotao-ai/dsh-adapter/skill
  */
 
 import { readFile } from 'node:fs/promises'
@@ -26,12 +26,12 @@ import type { SkillRegistration } from '@deepseek-ai/dsh-skill'
 import { DEFAULT_CORE_DIRS, type AdapterConfig, type SkillFrontmatter } from './types'
 
 const SKILL_FILE = 'SKILL.md'
-const PROVIDER = 'maestro-adapter'
+const PROVIDER = 'xiaotao-adapter'
 const SOURCE = 'custom' as const
 const PACKAGED_CORE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'core')
 
 /**
- * Resolve the Maestro Core directory from config, probing default roots when
+ * Resolve the XiaoTao Core directory from config, probing default roots when
  * `coreDir` is omitted. The first candidate that contains a `SKILL.md` wins.
  *
  * @param config - adapter config.
@@ -58,7 +58,7 @@ export async function resolveCoreDir(config: AdapterConfig, cwd: string): Promis
     }
   }
   throw new Error(
-    `@maestro-ai/dsh-adapter: no Maestro Core found (looked for ${SKILL_FILE} in ${candidates.join(', ')}). ` +
+    `@xiaotao-ai/dsh-adapter: no XiaoTao Core found (looked for ${SKILL_FILE} in ${candidates.join(', ')}). ` +
       'Set `coreDir` to the directory that contains SKILL.md.',
   )
 }
@@ -107,16 +107,16 @@ export function readSkillFrontmatter(data: Record<string, unknown>): SkillFrontm
   const name = data.name
   const description = data.description
   if (typeof name !== 'string' || name.length === 0) {
-    throw new Error('Maestro SKILL.md frontmatter is missing a non-empty `name`.')
+    throw new Error('XiaoTao SKILL.md frontmatter is missing a non-empty `name`.')
   }
   if (typeof description !== 'string' || description.length === 0) {
-    throw new Error('Maestro SKILL.md frontmatter is missing a non-empty `description`.')
+    throw new Error('XiaoTao SKILL.md frontmatter is missing a non-empty `description`.')
   }
   return { name, description }
 }
 
 /**
- * Load the Maestro Core Skill from disk into a dsh {@link SkillRegistration}.
+ * Load the XiaoTao Core Skill from disk into a dsh {@link SkillRegistration}.
  *
  * @param coreDir - resolved Core directory (see {@link resolveCoreDir}).
  * @returns a registration ready for `ctx.skills.register()`.
@@ -125,7 +125,7 @@ export async function loadCoreSkill(coreDir: string): Promise<SkillRegistration>
   const raw = await readFile(path.join(coreDir, SKILL_FILE), 'utf8')
   const parsed = parseFrontmatter(raw)
   if (parsed === undefined) {
-    throw new Error(`Maestro ${SKILL_FILE} at ${coreDir} has no valid YAML frontmatter.`)
+    throw new Error(`XiaoTao ${SKILL_FILE} at ${coreDir} has no valid YAML frontmatter.`)
   }
   const { name, description } = readSkillFrontmatter(parsed.data)
   return {

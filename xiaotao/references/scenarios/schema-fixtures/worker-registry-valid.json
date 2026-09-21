@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "project-workers",
+  "source": "project",
+  "revision": 3,
+  "updated_at": "2026-08-27T14:25:00Z",
+  "updated_by": "old-zhou/example",
+  "aliases": {
+    "database-migration": "schema-migration"
+  },
+  "workers": [
+    {
+      "schema_version": 2,
+      "id": "runtime-investigator",
+      "name": "小林（运行时排查）",
+      "source": "project",
+      "status": "active",
+      "capabilities": ["codebase-investigation", "evidence-collection", "runtime-analysis"],
+      "scope": ["selected-project", "read-only-investigation"],
+      "responsibility": "Investigate current code and runtime behavior and return reproducible evidence.",
+      "inputs": ["bounded investigation question", "relevant project context"],
+      "outputs": ["verified findings", "evidence paths", "Handoff"],
+      "preferred_model": null,
+      "instructions": { "required": ["practice:investigation", "contract:handoff", "policy:safety-boundary"], "optional": [] },
+      "tools": [],
+      "context": { "read_paths": ["."], "write_paths": [".xiaotao/"] },
+      "permissions": {
+        "autonomous": ["inspect-project", "run-nondestructive-checks", "write-xiaotao-state", "write-work-artifacts"],
+        "conditional": []
+      },
+      "lifecycle": { "scope": "reusable", "expires_at": "never" }
+    },
+    {
+      "schema_version": 2,
+      "id": "system-boundary-reviewer",
+      "name": "小周（系统边界评审）",
+      "source": "project",
+      "status": "active",
+      "capabilities": ["architecture-design", "interface-design", "risk-analysis"],
+      "scope": ["selected-project", "read-only-review"],
+      "responsibility": "Review system boundaries, interfaces, trade-offs, and material risks.",
+      "inputs": ["bounded design objective", "current evidence", "constraints"],
+      "outputs": ["design review", "risk analysis", "Handoff"],
+      "preferred_model": null,
+      "instructions": { "required": ["practice:design", "contract:handoff", "policy:safety-boundary"], "optional": [] },
+      "tools": [],
+      "context": { "read_paths": ["."], "write_paths": [".xiaotao/"] },
+      "permissions": {
+        "autonomous": ["inspect-project", "write-xiaotao-state", "write-work-artifacts"],
+        "conditional": []
+      },
+      "lifecycle": { "scope": "reusable", "expires_at": "never" }
+    },
+    {
+      "schema_version": 2,
+      "id": "database-migration-reviewer",
+      "name": "小韩（数据库迁移评审）",
+      "source": "project",
+      "status": "active",
+      "capabilities": ["backward-compatibility", "data-safety", "rollback-strategy", "schema-migration"],
+      "scope": ["database-migrations", "read-only-review"],
+      "responsibility": "Review database migration compatibility, rollback, and data-safety risks.",
+      "inputs": ["migration plan", "current schema", "deployment constraints"],
+      "outputs": ["migration risk review", "rollback gaps", "Handoff"],
+      "preferred_model": null,
+      "instructions": { "required": ["practice:design", "contract:handoff", "policy:safety-boundary"], "optional": [] },
+      "tools": [],
+      "context": { "read_paths": ["db/"], "write_paths": [".xiaotao/"] },
+      "permissions": {
+        "autonomous": ["inspect-project", "write-xiaotao-state", "write-work-artifacts"],
+        "conditional": []
+      },
+      "lifecycle": { "scope": "reusable", "expires_at": "never" }
+    }
+  ]
+}

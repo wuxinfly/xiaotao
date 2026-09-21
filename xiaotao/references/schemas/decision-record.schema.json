@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/decision-record.schema.json",
+  "title": "XiaoTao Immutable Decision Record",
+  "description": "记录一次已经完成的批准、拒绝或取代决定；发布后不可修改。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "decision_id",
+    "title",
+    "outcome",
+    "importance",
+    "decided_at",
+    "decided_by",
+    "reason",
+    "target_ids",
+    "source_refs"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "record_type": { "const": "decision" },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "outcome": { "enum": ["approved", "superseded", "rejected"] },
+    "importance": { "enum": ["milestone", "routine"] },
+    "decided_at": { "type": "string", "format": "date-time" },
+    "decided_by": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string", "minLength": 1 },
+    "target_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "superseded_by": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "rejected" } }, "required": ["outcome"] },
+      "else": { "properties": { "target_ids": { "type": "array", "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "superseded" } }, "required": ["outcome"] },
+      "then": { "required": ["superseded_by"] },
+      "else": { "properties": { "superseded_by": false } }
+    }
+  ]
+}

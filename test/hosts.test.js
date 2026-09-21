@@ -5,9 +5,9 @@ import { HOSTS, detectHosts, parseToolList } from '../cli/hosts.js';
 
 test('declares the three MVP hosts and canonical skill destinations', () => {
   assert.deepEqual(Object.keys(HOSTS), ['codex', 'claude', 'opencode']);
-  assert.equal(HOSTS.codex.skillDir, '.agents/skills/maestro');
-  assert.equal(HOSTS.claude.skillDir, '.claude/skills/maestro');
-  assert.equal(HOSTS.opencode.skillDir, '.opencode/skills/maestro');
+  assert.equal(HOSTS.codex.skillDir, '.agents/skills/xiaotao');
+  assert.equal(HOSTS.claude.skillDir, '.claude/skills/xiaotao');
+  assert.equal(HOSTS.opencode.skillDir, '.opencode/skills/xiaotao');
 });
 
 test('parses comma-separated tools without duplicates', () => {

@@ -13,7 +13,7 @@
 ### Task 1: Define the routing decision contract
 
 **Files:**
-- Modify: `maestro/references/coordination.md`
+- Modify: `xiaotao/references/coordination.md`
 
 1. Document the precedence of explicit reference, Session binding, unique semantic match,
    confirmation, and new-topic handling.
@@ -24,8 +24,8 @@
 ### Task 2: Define context and storage boundaries
 
 **Files:**
-- Modify: `maestro/references/memory.md`
-- Modify: `maestro/references/storage.md`
+- Modify: `xiaotao/references/memory.md`
+- Modify: `xiaotao/references/storage.md`
 
 1. Limit candidate discovery to routing metadata and current state.
 2. Define Session binding creation, replacement, and invalidation.
@@ -35,7 +35,7 @@
 ### Task 3: Add routing behavior scenarios
 
 **Files:**
-- Create: `maestro/references/scenarios/temporary-routing.md`
+- Create: `xiaotao/references/scenarios/temporary-routing.md`
 
 1. Add fixtures for all acceptance paths and forbidden behaviors.
 2. Review every scenario against the normative references.

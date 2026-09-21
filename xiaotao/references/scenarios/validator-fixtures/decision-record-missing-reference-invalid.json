@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "record_type": "decision",
+  "decision_id": "decision-missing-reference",
+  "title": "引用不存在证据的决定",
+  "outcome": "approved",
+  "importance": "milestone",
+  "decided_at": "2026-09-11T07:00:00Z",
+  "decided_by": "old-zhou/test",
+  "reason": "验证发布阶段仍严格检查证据。",
+  "target_ids": ["issue-54"],
+  "source_refs": ["xiaotao/references/scenarios/validator-fixtures/files/missing.md"]
+}

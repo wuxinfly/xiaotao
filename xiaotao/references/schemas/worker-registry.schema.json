@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/worker-registry.schema.json",
+  "title": "XiaoTao Worker Registry",
+  "type": "object",
+  "required": ["schema_version", "id", "source", "workers", "aliases"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+    "source": { "enum": ["builtin", "project"] },
+    "revision": { "type": "integer", "minimum": 0 },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "updated_by": { "type": "string", "minLength": 1 },
+    "workers": {
+      "type": "array",
+      "items": { "$ref": "worker.schema.json" }
+    },
+    "aliases": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+      "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "const": "project" } }, "required": ["source"] },
+      "then": {
+        "required": ["revision", "updated_at", "updated_by"],
+        "properties": {
+          "workers": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                { "$ref": "worker.schema.json" },
+                {
+                  "type": "object",
+                  "properties": { "source": { "enum": ["project", "learned"] } }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "revision": false,
+          "updated_at": false,
+          "updated_by": false,
+          "workers": { "type": "array", "maxItems": 0 }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

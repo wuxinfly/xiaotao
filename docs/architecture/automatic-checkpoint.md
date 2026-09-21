@@ -1,7 +1,7 @@
 # Automatic checkpoint M2
 
 Status: **DSH context-pressure trigger implemented behind opt-in configuration; real-host acceptance open**.
-Scope: [#56](https://github.com/IHongTaoI/maestro-workflow/issues/56). Updated 2026-09-10.
+Scope: [#56](https://github.com/IHongTaoI/xiaotao/issues/56). Updated 2026-09-10.
 
 ## Capability matrix
 
@@ -26,7 +26,7 @@ The Adapter reads DSH's typed projection or typed Session facts. It does not est
 4. Compare the append-only Session log with the latest committed checkpoint and latest automatic reminder.
 5. Require new user input or a non-checkpoint tool result, then apply turn cooldown and cancellation checks.
 6. Steer one bounded plugin instruction into the current turn. The current Agent decides whether a relevant active
-   Temporary/Task exists and reuses `maestro_checkpoint inspect/save/status/retry`.
+   Temporary/Task exists and reuses `xiaotao_checkpoint inspect/save/status/retry`.
 7. Observe a committed/already-committed tool result from the durable Session log for future deduplication.
 
 The default `0.72` threshold is only an experimental starting point. Operators can configure `0.5–0.95`, cooldown
@@ -46,7 +46,7 @@ turns and hook timeout. The Adapter does not claim one universal safe percentage
 ## Why Codex is not wired yet
 
 Codex now has a real `PreCompact` event and waits for synchronous command hooks. However, its documented event input
-provides the Session/transcript location and trigger—not a stable structured Maestro target plus current bounded facts.
+provides the Session/transcript location and trigger—not a stable structured XiaoTao target plus current bounded facts.
 `PreCompact` can stop compaction, but it cannot by itself ask the current model to prepare and commit the M1 snapshot.
 The transcript format is explicitly not a stable hook interface. Therefore the current Codex plugin records the
 capability as available but leaves automatic checkpoint inactive instead of guessing or silently copying a transcript.

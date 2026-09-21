@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Let Maestro extract evidence-backed reusable procedures as review-only Playbook Candidate proposals for Issue #15.
+**Goal:** Let XiaoTao extract evidence-backed reusable procedures as review-only Playbook Candidate proposals for Issue #15.
 
 **Architecture:** Extend the existing Memory Worker request with a current Playbook index and its response with `playbook_candidates`. JSON Schema and the Python protocol validator enforce identical proposal rules; documentation preserves explicit user approval and guidance-only Playbooks.
 
@@ -13,11 +13,11 @@
 ### Task 1: Add failing Playbook Candidate fixtures
 
 **Files:**
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-request-valid.json`
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-response-valid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-playbook-action-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-playbook-status-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-playbook-duplicate-id-invalid.json`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-request-valid.json`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-response-valid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-playbook-action-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-playbook-status-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-playbook-duplicate-id-invalid.json`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Steps:**
@@ -30,8 +30,8 @@
 ### Task 2: Implement request and response schemas
 
 **Files:**
-- Modify: `maestro/references/schemas/memory-worker-request.schema.json`
-- Modify: `maestro/references/schemas/memory-worker-response.schema.json`
+- Modify: `xiaotao/references/schemas/memory-worker-request.schema.json`
+- Modify: `xiaotao/references/schemas/memory-worker-response.schema.json`
 
 **Steps:**
 1. Require `current_playbooks` and define indexed Playbook fields.
@@ -42,7 +42,7 @@
 ### Task 3: Mirror validation in the protocol guard
 
 **Files:**
-- Modify: `maestro/scripts/validate.py`
+- Modify: `xiaotao/scripts/validate.py`
 
 **Steps:**
 1. Validate current Playbook shape, stable IDs, and reachable references.
@@ -54,9 +54,9 @@
 ### Task 4: Document workflow evolution
 
 **Files:**
-- Modify: `maestro/references/memory.md`
-- Modify: `maestro/references/playbooks.md`
-- Modify: `maestro/SKILL.md`
+- Modify: `xiaotao/references/memory.md`
+- Modify: `xiaotao/references/playbooks.md`
+- Modify: `xiaotao/SKILL.md`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Steps:**
@@ -82,12 +82,12 @@
 ### Task 6: Close review contract gaps
 
 **Files:**
-- Modify: `maestro/references/schemas/memory-worker-response.schema.json`
-- Modify: `maestro/scripts/validate.py`
-- Modify: `maestro/references/playbooks.md`
-- Modify: `maestro/references/storage.md`
-- Modify: `maestro/references/memory.md`
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-response-*.json`
+- Modify: `xiaotao/references/schemas/memory-worker-response.schema.json`
+- Modify: `xiaotao/scripts/validate.py`
+- Modify: `xiaotao/references/playbooks.md`
+- Modify: `xiaotao/references/storage.md`
+- Modify: `xiaotao/references/memory.md`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-response-*.json`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Steps:**
@@ -104,13 +104,13 @@
 ### Task 7: Bind response validation to trusted request context
 
 **Files:**
-- Modify: `maestro/scripts/validate.py`
-- Modify: `maestro/references/schemas/memory-worker-request.schema.json`
-- Modify: `maestro/references/memory.md`
-- Modify: `maestro/references/playbooks.md`
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-request-*.json`
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-response-*.json`
-- Create: `maestro/references/scenarios/validator-fixtures/.maestro/playbooks/*`
+- Modify: `xiaotao/scripts/validate.py`
+- Modify: `xiaotao/references/schemas/memory-worker-request.schema.json`
+- Modify: `xiaotao/references/memory.md`
+- Modify: `xiaotao/references/playbooks.md`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-request-*.json`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-response-*.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/.xiaotao/playbooks/*`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Steps:**
@@ -119,7 +119,7 @@
 2. Require `--request <request.json>` for `memory-response`, load targets only from that externally
    supplied artifact, and reject a response whose `request_file` resolves to a different file.
 3. Replace generic indexed-Playbook file references with canonical path checks under
-   `.maestro/playbooks/`, excluding `candidates/` and `decisions/`.
+   `.xiaotao/playbooks/`, excluding `candidates/` and `decisions/`.
 4. Read canonical Markdown front matter or YAML top-level metadata and require `playbook_id`,
    `file_path`, `revision`, and `status` to match the `current_playbooks` entry.
 5. Move validation fixtures to a self-contained fixture project root, add non-canonical and metadata

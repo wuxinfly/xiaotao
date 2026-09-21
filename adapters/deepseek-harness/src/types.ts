@@ -1,17 +1,17 @@
 /**
- * Shared types for the Maestro DeepSeek Harness adapter.
+ * Shared types for the XiaoTao DeepSeek Harness adapter.
  *
  * This module deliberately imports nothing from `@deepseek-ai/*`: the config
  * and capability shapes are host-independent so the adapter's own logic stays
  * testable without a live dsh runtime.
  *
- * @module @maestro-ai/dsh-adapter/types
+ * @module @xiaotao-ai/dsh-adapter/types
  */
 
 /** Adapter configuration supplied by the Cordis profile / bundle. */
 export interface AdapterConfig {
   /**
-   * Absolute or cwd-relative path to the Maestro Core directory (the folder
+   * Absolute or cwd-relative path to the XiaoTao Core directory (the folder
    * that contains `SKILL.md`, `references/`, and `schemas/`). When omitted,
    * the adapter probes the default roots below.
    */
@@ -39,8 +39,8 @@ export interface AutoCheckpointConfig {
   timeoutMs?: number
 }
 
-/** Default probe order for the Maestro Core directory, relative to cwd. */
-export const DEFAULT_CORE_DIRS = ['.dsh/skills/maestro', 'maestro'] as const
+/** Default probe order for the XiaoTao Core directory, relative to cwd. */
+export const DEFAULT_CORE_DIRS = ['.dsh/skills/xiaotao', 'xiaotao'] as const
 
 /**
  * The dsh capability seams the adapter can build on. `skills` is mandatory
@@ -70,7 +70,7 @@ export interface Activation {
   degraded: boolean
 }
 
-/** Minimal parsed frontmatter from a Maestro `SKILL.md`. */
+/** Minimal parsed frontmatter from a XiaoTao `SKILL.md`. */
 export interface SkillFrontmatter {
   name: string
   description: string

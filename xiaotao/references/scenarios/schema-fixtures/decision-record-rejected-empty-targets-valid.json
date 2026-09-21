@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "record_type": "decision",
+  "decision_id": "decision-20260911-activity-source",
+  "title": "Activity 从权威记录派生",
+  "outcome": "rejected",
+  "importance": "milestone",
+  "decided_at": "2026-09-11T06:30:00Z",
+  "decided_by": "old-zhou/example-session",
+  "reason": "避免建立第二套事实源。",
+  "target_ids": [],
+  "source_refs": [
+    "xiaotao/references/activity.md"
+  ]
+}

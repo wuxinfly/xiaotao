@@ -7,7 +7,7 @@ import type { FsTarget, FsInfo, FsVersion, FsWriteOutcome } from '@deepseek-ai/d
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { CheckpointWriter, hash, type CheckpointFs, type CheckpointInput } from './checkpoint'
 import { checkpointTool } from './checkpoint-tool'
-import { MaestroSchemaValidator } from './validate'
+import { XiaoTaoSchemaValidator } from './validate'
 import { Context } from '@deepseek-ai/cordis'
 import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt'
 import { ToolRuntime } from '@deepseek-ai/dsh-tools'
@@ -16,11 +16,11 @@ import { apply } from './index'
 const project = path.resolve('checkpoint-fixture')
 const backup = path.resolve('checkpoint-recovery')
 const stamp = '2026-09-08T00:00:00Z'
-const statePath = '.maestro/memory/temporary/active/test/current.md'
-const metaPath = '.maestro/memory/temporary/active/test/meta.yaml'
+const statePath = '.xiaotao/memory/temporary/active/test/current.md'
+const metaPath = '.xiaotao/memory/temporary/active/test/meta.yaml'
 const initial = `---\nrevision: 0\nupdated_at: ${stamp}\nupdated_by: user\n---\n# User notes\nKeep this text.\n`
-const validator = new MaestroSchemaValidator()
-const ready = validator.loadAll(fileURLToPath(new URL('../../../maestro/references/schemas/', import.meta.url)))
+const validator = new XiaoTaoSchemaValidator()
+const ready = validator.loadAll(fileURLToPath(new URL('../../../xiaotao/references/schemas/', import.meta.url)))
 const error = (code: string) => Object.assign(new Error(code), { code })
 
 function fixture() {
@@ -80,7 +80,7 @@ test('save preserves user text and atomically adds revision/receipt; retry after
   const committed = f.files.get(f.key(statePath))!
   assert.match(committed.content, /Keep this text\./)
   assert.match(committed.content, /revision: 1/)
-  const observationPath = f.key('.maestro/memory/temporary/active/test/references/checkpoints/save_1.committed.json')
+  const observationPath = f.key('.xiaotao/memory/temporary/active/test/references/checkpoints/save_1.committed.json')
   const observation = JSON.parse(f.files.get(observationPath)!.content)
   assert.equal(observation.completion, 'save')
   assert.ok(Number.isFinite(Date.parse(observation.committed_at)))
@@ -109,7 +109,7 @@ test('new checkpoint repairs prior observation before replacing its receipt', as
   await (await f.writer()).save({ ...f.input, request_id: 'save_2', base_revision: 1, base_hash: hash(current) })
   assert.ok([...f.files.keys()].some((p) => p.endsWith('save_1.committed.json')))
   assert.match(f.files.get(f.key(statePath))!.content, /revision: 2/)
-  assert.equal((f.files.get(f.key(statePath))!.content.match(/maestro-checkpoint:start/g) ?? []).length, 1)
+  assert.equal((f.files.get(f.key(statePath))!.content.match(/xiaotao-checkpoint:start/g) ?? []).length, 1)
 })
 
 test('lost write acknowledgement is reconciled from exact proposal bytes', async () => {
@@ -121,7 +121,7 @@ test('lost write acknowledgement is reconciled from exact proposal bytes', async
   await (await f.writer()).retry('temporary', 'test', 'save_1')
   assert.deepEqual(f.files.get(f.key(statePath)), old)
   const observation = JSON.parse(f.files.get(f.key(
-    '.maestro/memory/temporary/active/test/references/checkpoints/save_1.committed.json',
+    '.xiaotao/memory/temporary/active/test/references/checkpoints/save_1.committed.json',
   ))!.content)
   assert.equal(observation.completion, 'recovery')
   assert.ok(Number.isFinite(Date.parse(observation.committed_at)))
@@ -130,8 +130,8 @@ test('lost write acknowledgement is reconciled from exact proposal bytes', async
 test('legacy observations remain readable while malformed versioned observations fail closed', async () => {
   const f = fixture(), w = await f.writer()
   await w.save(f.input)
-  const requestPath = f.key('.maestro/memory/temporary/active/test/references/checkpoints/save_1.json')
-  const observationPath = f.key('.maestro/memory/temporary/active/test/references/checkpoints/save_1.committed.json')
+  const requestPath = f.key('.xiaotao/memory/temporary/active/test/references/checkpoints/save_1.json')
+  const observationPath = f.key('.xiaotao/memory/temporary/active/test/references/checkpoints/save_1.committed.json')
   const record = f.files.get(requestPath)!.content
   const proposal = JSON.parse(record).proposal_hash
   const legacy = JSON.stringify({ request_id: 'save_1', record_hash: hash(record), proposal_hash: proposal, revision: 1 })
@@ -219,7 +219,7 @@ test('malformed snapshots, oversized facts and invalid frontmatter do not write 
 test('traversal, cross-target symlinks and configured recovery overlap fail closed', async () => {
   const f = fixture(), w = await f.writer()
   await assert.rejects(w.inspect('temporary', '../test'), /invalid_target/)
-  f.setAlias((p) => p === f.key(statePath) ? f.key('.maestro/tasks/other/progress.md') : p)
+  f.setAlias((p) => p === f.key(statePath) ? f.key('.xiaotao/tasks/other/progress.md') : p)
   await assert.rejects(w.inspect('temporary', 'test'), /target_path_escape/)
   const bad = new CheckpointWriter(f.fs, validator, { projectRoot: project, recoveryRoot: project }, 's', new AbortController().signal)
   await assert.rejects(bad.initialize(project), /recovery_root_overlaps_project/)
@@ -237,7 +237,7 @@ test('corrupt immutable recovery record is not trusted', async () => {
 
 test('transaction bundles are not silently bypassed', async () => {
   const f = fixture(), w = await f.writer()
-  f.files.set(f.key('.maestro/transactions/t/intent.yaml'), { content: 'pending', version: 1 })
+  f.files.set(f.key('.xiaotao/transactions/t/intent.yaml'), { content: 'pending', version: 1 })
   await assert.rejects(w.save(f.input), /transaction_overlay_unsupported/)
   assert.equal(f.files.get(f.key(statePath))!.content, initial)
 })
@@ -273,17 +273,17 @@ test('real DSH ToolRuntime registers the definition and enforces pre-execute den
   const dispose = runtime.register(checkpointTool(f.fs, validator, { projectRoot: project }))
   try {
     const removeGate = ctx.on('tools/pre-execute', async () => ({ kind: 'deny', reason: 'test policy' }))
-    const denied = await runtime.execute({ callId: 'c1' as never, name: 'maestro_checkpoint',
+    const denied = await runtime.execute({ callId: 'c1' as never, name: 'xiaotao_checkpoint',
       arguments: { operation: 'save', ...f.input }, signal: new AbortController().signal })
     assert.equal(denied.isError, true)
     assert.equal(f.files.size, 2)
     removeGate()
-    const callerless = await runtime.execute({ callId: 'c2' as never, name: 'maestro_checkpoint',
+    const callerless = await runtime.execute({ callId: 'c2' as never, name: 'xiaotao_checkpoint',
       arguments: { operation: 'inspect', kind: 'temporary', target_id: 'test' }, signal: new AbortController().signal })
     assert.equal(callerless.isError, false)
     if (!callerless.isError) assert.equal((callerless.value as { code: string }).code, 'caller_session_required')
     const agent = { id: 's-real', ctx, session: { header: { cwd: project } } } as unknown as ToolRunContext['agent']
-    const saved = await runtime.execute({ callId: 'c3' as never, name: 'maestro_checkpoint', agent,
+    const saved = await runtime.execute({ callId: 'c3' as never, name: 'xiaotao_checkpoint', agent,
       arguments: { operation: 'save', ...f.input }, signal: new AbortController().signal })
     assert.equal(saved.isError, false)
     if (!saved.isError) assert.equal((saved.value as { status: string }).status, 'committed')
@@ -292,12 +292,12 @@ test('real DSH ToolRuntime registers the definition and enforces pre-execute den
 
 test('Task progress target uses existing progress.md without creating current.md', async () => {
   const f = fixture(), w = await f.writer()
-  const taskPath = '.maestro/tasks/task-one/progress.md'
+  const taskPath = '.xiaotao/tasks/task-one/progress.md'
   f.files.set(f.key(taskPath), { content: initial, version: 1 })
-  f.files.set(f.key('.maestro/tasks/task-one/task.yaml'), { content: `id: task-one\nobjective: Work\nstatus: active\ncreated_at: ${stamp}\nupdated_at: ${stamp}\nupdated_by: user\nrevision: 0\n`, version: 1 })
+  f.files.set(f.key('.xiaotao/tasks/task-one/task.yaml'), { content: `id: task-one\nobjective: Work\nstatus: active\ncreated_at: ${stamp}\nupdated_at: ${stamp}\nupdated_by: user\nrevision: 0\n`, version: 1 })
   await w.save({ ...f.input, kind: 'task', target_id: 'task-one' })
   assert.match(f.files.get(f.key(taskPath))!.content, /revision: 1/)
-  assert.equal(f.files.has(f.key('.maestro/tasks/task-one/current.md')), false)
+  assert.equal(f.files.has(f.key('.xiaotao/tasks/task-one/current.md')), false)
 })
 
 test('adapter defaults to automatic project binding, supports opt-out and plain Skill fallback', async () => {
@@ -316,7 +316,7 @@ test('adapter defaults to automatic project binding, supports opt-out and plain 
       },
       effect: (factory: () => () => void) => { cleanups.push(factory()) }, logger: { info() {}, warn() {} } }
     const pending: Promise<unknown>[] = []
-    await apply(ctx as never, { coreDir: fileURLToPath(new URL('../../../maestro/', import.meta.url)),
+    await apply(ctx as never, { coreDir: fileURLToPath(new URL('../../../xiaotao/', import.meta.url)),
       checkpoint })
     for (const task of pending) await task
     assert.equal(skillCount, 1)
@@ -349,7 +349,7 @@ test('adapter activates the lifecycle trigger only when auto config and agent se
     effect: (factory: () => () => void) => { factory() },
     logger: { info() {}, warn() {} },
   }
-  await apply(ctx as never, { coreDir: fileURLToPath(new URL('../../../maestro/', import.meta.url)),
+  await apply(ctx as never, { coreDir: fileURLToPath(new URL('../../../xiaotao/', import.meta.url)),
     checkpoint: { auto: { pressureThreshold: 0.8, cooldownTurns: 3, timeoutMs: 250 } } })
   for (let index = 0; index < pending.length; index++) await pending[index]
   assert.deepEqual(listeners, [
@@ -362,21 +362,21 @@ test('real Cordis activates checkpoint when fs and tools arrive after the adapte
   const f = fixture()
   const ctx = new Context()
   ctx.provide('skills', { register: () => () => {} } as never)
-  const adapter = await ctx.plugin(apply, { coreDir: fileURLToPath(new URL('../../../maestro/', import.meta.url)) })
-  assert.equal(ctx.get('maestro.stateStore'), undefined)
-  assert.equal(ctx.get('maestro.transactionStore'), undefined)
+  const adapter = await ctx.plugin(apply, { coreDir: fileURLToPath(new URL('../../../xiaotao/', import.meta.url)) })
+  assert.equal(ctx.get('xiaotao.stateStore'), undefined)
+  assert.equal(ctx.get('xiaotao.transactionStore'), undefined)
   new SystemPrompt(ctx, {})
   const runtime = new ToolRuntime(ctx)
-  assert.equal(runtime.get('maestro_checkpoint'), undefined)
+  assert.equal(runtime.get('xiaotao_checkpoint'), undefined)
   const releaseFs = ctx.provide('fs', f.fs as never)
   try {
     const deadline = Date.now() + 2000
-    while (!runtime.get('maestro_checkpoint') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10))
-    assert.ok(runtime.get('maestro_checkpoint'))
-    assert.ok(ctx.get('maestro.transactionStore'))
+    while (!runtime.get('xiaotao_checkpoint') && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.ok(runtime.get('xiaotao_checkpoint'))
+    assert.ok(ctx.get('xiaotao.transactionStore'))
     await adapter.dispose()
-    assert.equal(runtime.get('maestro_checkpoint'), undefined)
-    assert.equal(ctx.get('maestro.transactionStore'), undefined)
+    assert.equal(runtime.get('xiaotao_checkpoint'), undefined)
+    assert.equal(ctx.get('xiaotao.transactionStore'), undefined)
   } finally { releaseFs(); await ctx.fiber.dispose() }
 })
 
@@ -455,7 +455,7 @@ test('automatic recovery uses canonical project identity across path aliases', a
 
 test('a stale held lock survives retry until its owner is explicitly recovered', async () => {
   const f = fixture(), w = await f.writer()
-  const lock = f.key('.maestro/locks/memory-temporary-active-test-current.md.lock')
+  const lock = f.key('.xiaotao/locks/memory-temporary-active-test-current.md.lock')
   f.files.set(lock, { content: JSON.stringify({ owner: 'dead-or-unknown', state: 'held', acquiredAt: stamp,
     expiresAt: '2000-01-01T00:00:00Z' }), version: 1 })
   try { await w.save(f.input); assert.fail('must refuse contention') }

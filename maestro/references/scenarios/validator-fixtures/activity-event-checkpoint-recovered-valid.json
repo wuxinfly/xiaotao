@@ -1,9 +1,0 @@
-{
-  "event_id": "activity-20260912-abcdef123456",
-  "occurred_at": "2026-09-12T11:28:04Z",
-  "event_type": "checkpoint_recovered",
-  "title": "恢复 checkpoint：验证恢复",
-  "summary": "恢复 Temporary test 到 revision 8",
-  "source_refs": ["maestro/references/scenarios/validator-fixtures/activity-event-checkpoint-recovered-valid.json"],
-  "status": "completed"
-}

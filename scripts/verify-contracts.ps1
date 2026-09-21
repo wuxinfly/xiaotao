@@ -55,7 +55,7 @@ try {
             $caseProjectRoot = $validatorFixtureRoot
         }
         $validatorArguments = @(
-            "maestro/scripts/validate.py",
+            "xiaotao/scripts/validate.py",
             $Kind,
             $Data,
             "--project-root",
@@ -89,7 +89,7 @@ try {
             $caseProjectRoot = $validatorFixtureRoot
         }
         $validatorArguments = @(
-            "maestro/scripts/validate.py",
+            "xiaotao/scripts/validate.py",
             $Kind,
             $Data,
             "--project-root",
@@ -131,23 +131,23 @@ try {
         Invoke-ProtocolValidatorCase $Kind $Data $ExpectedExit $Request
     }
 
-    Get-ChildItem "maestro/references/schemas" -Filter "*.json" | ForEach-Object {
+    Get-ChildItem "xiaotao/references/schemas" -Filter "*.json" | ForEach-Object {
         Get-Content -Raw $_.FullName | ConvertFrom-Json | Out-Null
     }
-    Get-ChildItem "maestro/references/scenarios/schema-fixtures" -Filter "*.json" | ForEach-Object {
+    Get-ChildItem "xiaotao/references/scenarios/schema-fixtures" -Filter "*.json" | ForEach-Object {
         Get-Content -Raw $_.FullName | ConvertFrom-Json | Out-Null
     }
 
-    $validatorFixtureRoot = "maestro/references/scenarios/validator-fixtures"
-    $handoffSchema = "maestro/references/schemas/handoff.schema.json"
-    $memoryIndexSchema = "maestro/references/schemas/memory-index.schema.json"
-    $memoryRequestSchema = "maestro/references/schemas/memory-worker-request.schema.json"
-    $memoryResponseSchema = "maestro/references/schemas/memory-worker-response.schema.json"
-    $memorySourceSchema = "maestro/references/schemas/memory-source.schema.json"
-    $memoryMergeRequestSchema = "maestro/references/schemas/memory-merge-request.schema.json"
-    $memoryMergeResponseSchema = "maestro/references/schemas/memory-merge-response.schema.json"
+    $validatorFixtureRoot = "xiaotao/references/scenarios/validator-fixtures"
+    $handoffSchema = "xiaotao/references/schemas/handoff.schema.json"
+    $memoryIndexSchema = "xiaotao/references/schemas/memory-index.schema.json"
+    $memoryRequestSchema = "xiaotao/references/schemas/memory-worker-request.schema.json"
+    $memoryResponseSchema = "xiaotao/references/schemas/memory-worker-response.schema.json"
+    $memorySourceSchema = "xiaotao/references/schemas/memory-source.schema.json"
+    $memoryMergeRequestSchema = "xiaotao/references/schemas/memory-merge-request.schema.json"
+    $memoryMergeResponseSchema = "xiaotao/references/schemas/memory-merge-response.schema.json"
 
-    & python "maestro/scripts/validate.py" memory-response `
+    & python "xiaotao/scripts/validate.py" memory-response `
         "$validatorFixtureRoot/memory-response-valid.json" `
         --project-root $validatorFixtureRoot 2>$null
     if ($LASTEXITCODE -ne 2) {
@@ -200,11 +200,11 @@ try {
     Invoke-ProtocolSchemaParityCase $memoryRequestSchema "memory-request" `
         "$validatorFixtureRoot/memory-request-bounded-invalid.json" 1
     Invoke-ProtocolSchemaParityCase $memorySourceSchema "memory-source" `
-        "$validatorFixtureRoot/.maestro/memory/sources/src-8f10f07960b6b8d5.json" 0
+        "$validatorFixtureRoot/.xiaotao/memory/sources/src-8f10f07960b6b8d5.json" 0
     Invoke-AjvCase $memorySourceSchema `
-        "$validatorFixtureRoot/.maestro/memory/sources/src-1111111111111111.json" 0
+        "$validatorFixtureRoot/.xiaotao/memory/sources/src-1111111111111111.json" 0
     Invoke-ProtocolDiagnosticCase "memory-source" `
-        "$validatorFixtureRoot/.maestro/memory/sources/src-1111111111111111.json" `
+        "$validatorFixtureRoot/.xiaotao/memory/sources/src-1111111111111111.json" `
         '$.content_sha256' "must match"
     Invoke-ProtocolSchemaParityCase $memoryRequestSchema "memory-request" `
         "$validatorFixtureRoot/memory-request-explicit-chat-valid.json" 0
@@ -312,7 +312,7 @@ try {
         "$validatorFixtureRoot/memory-response-request-missing-invalid.json" 1
     Invoke-ProtocolValidatorCase "decision-record" `
         "$validatorFixtureRoot/decision-record-missing-reference-invalid.json" 1
-    $activityEventSchema = "maestro/references/schemas/activity-event.schema.json"
+    $activityEventSchema = "xiaotao/references/schemas/activity-event.schema.json"
     Invoke-ProtocolSchemaParityCase $activityEventSchema "activity-event" `
         "$validatorFixtureRoot/activity-event-temporary-promoted-valid.json" 0
     Invoke-ProtocolSchemaParityCase $activityEventSchema "activity-event" `
@@ -321,16 +321,16 @@ try {
         "$validatorFixtureRoot/activity-event-checkpoint-recovered-valid.json" 0
     Invoke-ProtocolSchemaParityCase $activityEventSchema "activity-event" `
         "$validatorFixtureRoot/activity-event-worker-approved-valid.json" 0
-    $workerApprovalSchema = "maestro/references/schemas/worker-approval.schema.json"
+    $workerApprovalSchema = "xiaotao/references/schemas/worker-approval.schema.json"
     Invoke-ProtocolSchemaParityCase $workerApprovalSchema "worker-approval" `
-        "maestro/references/scenarios/schema-fixtures/worker-approval-valid.json" 0
+        "xiaotao/references/scenarios/schema-fixtures/worker-approval-valid.json" 0
     Invoke-ProtocolSchemaParityCase $workerApprovalSchema "worker-approval" `
-        "maestro/references/scenarios/schema-fixtures/worker-approval-invalid.json" 1
+        "xiaotao/references/scenarios/schema-fixtures/worker-approval-invalid.json" 1
     Invoke-ProtocolSchemaParityCase $workerApprovalSchema "worker-approval" `
-        "maestro/references/scenarios/schema-fixtures/worker-approval-timezone-invalid.json" 1
+        "xiaotao/references/scenarios/schema-fixtures/worker-approval-timezone-invalid.json" 1
     Invoke-ProtocolSchemaParityCase $workerApprovalSchema "worker-approval" `
-        "maestro/references/scenarios/schema-fixtures/worker-approval-whitespace-invalid.json" 1
-    $checkpointObservationSchema = "maestro/references/schemas/checkpoint-observation.schema.json"
+        "xiaotao/references/scenarios/schema-fixtures/worker-approval-whitespace-invalid.json" 1
+    $checkpointObservationSchema = "xiaotao/references/schemas/checkpoint-observation.schema.json"
     Invoke-ProtocolSchemaParityCase $checkpointObservationSchema "checkpoint-observation" `
         "$validatorFixtureRoot/checkpoint-observation-recovery-valid.json" 0
     Invoke-ProtocolSchemaParityCase $checkpointObservationSchema "checkpoint-observation" `
@@ -347,18 +347,18 @@ try {
     Invoke-ProtocolDiagnosticCase "memory-response" `
         "$validatorFixtureRoot/memory-response-negative-infinity-invalid.json" '$' "-Infinity"
 
-    $fixtureRoot = "maestro/references/scenarios/schema-fixtures"
+    $fixtureRoot = "xiaotao/references/scenarios/schema-fixtures"
     Invoke-AjvCase $handoffSchema "$fixtureRoot/handoff-blocked-valid.json" 0
     Invoke-AjvCase $handoffSchema "$fixtureRoot/handoff-completed-valid.json" 0
     Invoke-AjvCase $handoffSchema "$fixtureRoot/handoff-blocked-invalid.json" 1
     Invoke-AjvCase $handoffSchema "$fixtureRoot/handoff-completed-invalid.json" 1
     Invoke-AjvCase $handoffSchema "$fixtureRoot/handoff-completed-with-input-invalid.json" 1
-    Invoke-AjvCase "maestro/references/schemas/temporary-meta.schema.json" `
+    Invoke-AjvCase "xiaotao/references/schemas/temporary-meta.schema.json" `
         "$fixtureRoot/temporary-meta-valid.json" 0
-    Invoke-AjvCase "maestro/references/schemas/task.schema.json" "$fixtureRoot/task-valid.json" 0
-    Invoke-AjvCase "maestro/references/schemas/task.schema.json" `
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" "$fixtureRoot/task-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
         "$fixtureRoot/task-completed-valid.json" 0
-    $decisionRecordSchema = "maestro/references/schemas/decision-record.schema.json"
+    $decisionRecordSchema = "xiaotao/references/schemas/decision-record.schema.json"
     Invoke-ProtocolSchemaParityCase $decisionRecordSchema "decision-record" `
         "$fixtureRoot/decision-record-approved-valid.json" 0
     Invoke-ProtocolSchemaParityCase $decisionRecordSchema "decision-record" `
@@ -373,16 +373,16 @@ try {
         "$fixtureRoot/decision-record-approved-empty-targets-invalid.json" 1
     Invoke-ProtocolSchemaParityCase $decisionRecordSchema "decision-record" `
         "$fixtureRoot/decision-record-superseded-empty-targets-invalid.json" 1
-    $activityEventSchema = "maestro/references/schemas/activity-event.schema.json"
+    $activityEventSchema = "xiaotao/references/schemas/activity-event.schema.json"
     Invoke-ProtocolSchemaParityCase $activityEventSchema "activity-event" `
         "$validatorFixtureRoot/activity-event-playbook-approved-valid.json" 0
     Invoke-ProtocolSchemaParityCase $activityEventSchema "activity-event" `
         "$validatorFixtureRoot/activity-event-playbook-superseded-valid.json" 0
-    Invoke-AjvCase "maestro/references/schemas/task.schema.json" `
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
         "$fixtureRoot/task-promoted-invalid.json" 1
-    Invoke-AjvCase "maestro/references/schemas/task.schema.json" `
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
         "$fixtureRoot/task-promoted-at-missing-source-invalid.json" 1
-    $memoryFollowupSchema = "maestro/references/schemas/memory-followup.schema.json"
+    $memoryFollowupSchema = "xiaotao/references/schemas/memory-followup.schema.json"
     Invoke-AjvCase $memoryFollowupSchema "$fixtureRoot/memory-followup-pending-valid.json" 0
     Invoke-AjvCase $memoryFollowupSchema "$fixtureRoot/memory-followup-resolved-valid.json" 0
     Invoke-AjvCase $memoryFollowupSchema `
@@ -398,12 +398,12 @@ try {
     Invoke-AjvCase $memoryFollowupSchema `
         "$fixtureRoot/memory-followup-duplicate-resolution-refs-invalid.json" 1
 
-    $workerSchema = "maestro/references/schemas/worker.schema.json"
-    $requirementsSchema = "maestro/references/schemas/capability-requirements.schema.json"
-    $registrySchema = "maestro/references/schemas/worker-registry.schema.json"
-    $selectionSchema = "maestro/references/schemas/worker-selection.schema.json"
-    $instructionRegistrySchema = "maestro/references/schemas/instruction-registry.schema.json"
-    $delegationPacketSchema = "maestro/references/schemas/delegation-packet.schema.json"
+    $workerSchema = "xiaotao/references/schemas/worker.schema.json"
+    $requirementsSchema = "xiaotao/references/schemas/capability-requirements.schema.json"
+    $registrySchema = "xiaotao/references/schemas/worker-registry.schema.json"
+    $selectionSchema = "xiaotao/references/schemas/worker-selection.schema.json"
+    $instructionRegistrySchema = "xiaotao/references/schemas/instruction-registry.schema.json"
+    $delegationPacketSchema = "xiaotao/references/schemas/delegation-packet.schema.json"
     Invoke-AjvCase $requirementsSchema "$fixtureRoot/capability-requirements-valid.json" 0
     Invoke-WorkerSemanticCase "requirements" "$fixtureRoot/capability-requirements-valid.json" 0
     Invoke-WorkerSemanticCase "requirements" `
@@ -422,14 +422,14 @@ try {
     Invoke-WorkerSemanticCase "worker" `
         "$fixtureRoot/worker-instruction-overlap-invalid.json" 1
     Invoke-AjvCase $instructionRegistrySchema `
-        "maestro/references/instructions/builtin-registry.json" 0
+        "xiaotao/references/instructions/builtin-registry.json" 0
     Invoke-WorkerSemanticCase "instruction-registry" `
-        "maestro/references/instructions/builtin-registry.json" 0
+        "xiaotao/references/instructions/builtin-registry.json" 0
     Invoke-AjvCase $instructionRegistrySchema `
         "$fixtureRoot/instruction-registry-project-valid.json" 0
     Invoke-WorkerSemanticCase "instruction-registry" `
         "$fixtureRoot/instruction-registry-project-valid.json" 0 `
-        @("--builtin", "maestro/references/instructions/builtin-registry.json")
+        @("--builtin", "xiaotao/references/instructions/builtin-registry.json")
     Invoke-AjvCase $instructionRegistrySchema `
         "$fixtureRoot/instruction-registry-duplicate-invalid.json" 0
     Invoke-WorkerSemanticCase "instruction-registry" `
@@ -438,13 +438,13 @@ try {
         "$fixtureRoot/instruction-registry-override-invalid.json" 0
     Invoke-WorkerSemanticCase "instruction-registry" `
         "$fixtureRoot/instruction-registry-override-invalid.json" 1 `
-        @("--builtin", "maestro/references/instructions/builtin-registry.json")
+        @("--builtin", "xiaotao/references/instructions/builtin-registry.json")
     Invoke-AjvCase $workerSchema `
         "$fixtureRoot/worker-delegation-snapshot-valid.json" 0
     $delegationArguments = @(
         "--worker", "$fixtureRoot/worker-delegation-snapshot-valid.json",
-        "--builtin", "maestro/references/instructions/builtin-registry.json",
-        "--core-root", "maestro",
+        "--builtin", "xiaotao/references/instructions/builtin-registry.json",
+        "--core-root", "xiaotao",
         "--project-root", "."
     )
     Invoke-AjvCase $delegationPacketSchema `
@@ -459,8 +459,8 @@ try {
         "$fixtureRoot/worker-delegation-unknown-required-snapshot-valid.json" 0
     $unknownInstructionDelegationArguments = @(
         "--worker", "$fixtureRoot/worker-delegation-unknown-required-snapshot-valid.json",
-        "--builtin", "maestro/references/instructions/builtin-registry.json",
-        "--core-root", "maestro",
+        "--builtin", "xiaotao/references/instructions/builtin-registry.json",
+        "--core-root", "xiaotao",
         "--project-root", "."
     )
     Invoke-AjvCase $delegationPacketSchema `
@@ -514,9 +514,9 @@ try {
     Invoke-WorkerSemanticCase "delegation" `
         "$fixtureRoot/delegation-packet-source-mismatch-invalid.json" 1 `
         $delegationArguments
-    Invoke-AjvCase $registrySchema "maestro/references/workers/builtin-registry.json" 0 `
+    Invoke-AjvCase $registrySchema "xiaotao/references/workers/builtin-registry.json" 0 `
         @($workerSchema)
-    Invoke-WorkerSemanticCase "registry" "maestro/references/workers/builtin-registry.json" 0
+    Invoke-WorkerSemanticCase "registry" "xiaotao/references/workers/builtin-registry.json" 0
     Invoke-AjvCase $registrySchema "$fixtureRoot/worker-registry-valid.json" 0 @($workerSchema)
     Invoke-WorkerSemanticCase "registry" "$fixtureRoot/worker-registry-valid.json" 0
     Invoke-WorkerSemanticCase "registry" "$fixtureRoot/worker-registry-duplicate-invalid.json" 1
@@ -535,10 +535,10 @@ try {
     Invoke-AjvCase $handoffSchema "$fixtureRoot/worker-handoff-valid.json" 0
     Invoke-AjvCase $handoffSchema "$fixtureRoot/worker-handoff-both-paths-invalid.json" 1
 
-    $builtinRegistry = Get-Content -Raw "maestro/references/workers/builtin-registry.json" |
+    $builtinRegistry = Get-Content -Raw "xiaotao/references/workers/builtin-registry.json" |
         ConvertFrom-Json
     $instructionRegistry = Get-Content -Raw `
-        "maestro/references/instructions/builtin-registry.json" | ConvertFrom-Json
+        "xiaotao/references/instructions/builtin-registry.json" | ConvertFrom-Json
     $knownInstructionRefs = @{}
     foreach ($instruction in $instructionRegistry.instructions) {
         if ($knownInstructionRefs.ContainsKey($instruction.ref)) {
@@ -546,7 +546,7 @@ try {
         }
         $knownInstructionRefs[$instruction.ref] = $true
         foreach ($sourcePath in $instruction.source_paths) {
-            $instructionSource = Join-Path "maestro" $sourcePath
+            $instructionSource = Join-Path "xiaotao" $sourcePath
             if (-not (Test-Path -LiteralPath $instructionSource -PathType Leaf)) {
                 throw "Instruction '$($instruction.ref)' references missing source '$sourcePath'"
             }
@@ -568,7 +568,7 @@ try {
     if ($legacyRoleRefs.Count -ne 0) {
         throw "Built-in instruction registry must not expose legacy role refs"
     }
-    if (Test-Path -LiteralPath "maestro/references/roles") {
+    if (Test-Path -LiteralPath "xiaotao/references/roles") {
         throw "Legacy role reference directory must not be shipped"
     }
 
@@ -749,93 +749,93 @@ try {
     }
 
     $requiredContracts = @(
-        @{ Path = "maestro/references/storage.md"; Text = "committed.yaml" },
-        @{ Path = "maestro/references/storage.md"; Text = "before/<state-key>" },
-        @{ Path = "maestro/references/storage.md"; Text = "staged/<state-key>" },
-        @{ Path = "maestro/references/storage.md"; Text = "applied/<sequence>.yaml" },
-        @{ Path = "maestro/references/storage.md"; Text = "SHA-256" },
-        @{ Path = "maestro/references/storage.md"; Text = "checkpoint-observation.schema.json" },
-        @{ Path = "maestro/references/activity.md"; Text = "checkpoint_recovered" },
-        @{ Path = "maestro/references/activity.md"; Text = "worker_approved" },
-        @{ Path = "maestro/references/workers.md"; Text = "worker-approval.schema.json" },
-        @{ Path = "maestro/references/storage.md"; Text = "!.maestro/workers/approvals/" },
-        @{ Path = "maestro/references/coordination.md"; Text = "Task 已是唯一逻辑活动目标" },
-        @{ Path = "maestro/references/handoffs.md"; Text = '`needs_user_input: true` 要求 `status: blocked`' },
-        @{ Path = "maestro/references/memory.md"; Text = "当前代码或运行时证据" },
-        @{ Path = "maestro/references/workers.md"; Text = "Worker permissions 是请求的动作类别，不是授权" },
-        @{ Path = "maestro/references/workers.md"; Text = "**能做什么**是当前委派中" },
-        @{ Path = "maestro/references/workers.md"; Text = "直接修改 Long-term Memory" },
-        @{ Path = "maestro/references/contract.md"; Text = '始终只有 `user_request` 是必需的' },
-        @{ Path = "maestro/references/contract.md"; Text = "提案不能批准自身" },
-        @{ Path = "maestro/references/memory.md"; Text = '`decision_context` 用在其他 memory kind 上无效' },
-        @{ Path = "maestro/references/workers.md"; Text = "Task 或 Temporary 恢复时使用快照" },
-        @{ Path = "maestro/references/workers.md"; Text = "Worker 不会隐式继承父 Agent 的完整 Skill" },
-        @{ Path = "maestro/references/workers.md"; Text = "delegation-packet.schema.json" },
-        @{ Path = "maestro/references/coordination.md"; Text = "不要假设 Worker 会继承" },
-        @{ Path = "maestro/references/coordination.md"; Text = "Worker 解析不得把探索工作提升为 Task" },
-        @{ Path = "maestro/references/coordination.md"; Text = "不得仅因协调器重新活跃就启动重复运行" },
-        @{ Path = "maestro/SKILL.md"; Text = "通过宿主原生机制等待" },
-        @{ Path = "maestro/references/workers.md"; Text = "scope: session" },
-        @{ Path = "maestro/references/workers.md"; Text = "模型偏好绝不能自动提升它" },
-        @{ Path = "maestro/references/coordination.md"; Text = "选择前，将有界委派转换为能力需求" },
-        @{ Path = "maestro/references/coordination.md"; Text = "与 Task 或 Temporary 匹配" },
-        @{ Path = "maestro/references/storage.md"; Text = "复制到匹配的 Task 或 Temporary" },
-        @{ Path = "maestro/references/handoffs.md"; Text = ".maestro/memory/temporary/active/<temporary-id>/handoffs/" },
-        @{ Path = "maestro/references/workers.md"; Text = '在所有宿主上使用 `/` 分隔符' },
-        @{ Path = "maestro/references/handoffs.md"; Text = "由工件触发的协议守卫" },
-        @{ Path = "maestro/references/memory.md"; Text = "此校验不得创建或转换 Task" },
-        @{ Path = "maestro/references/memory.md"; Text = "UPDATE $([char]0x2192) MERGE $([char]0x2192) CREATE" },
-        @{ Path = "maestro/references/memory.md"; Text = "这些动作是提案，不是写入" },
-        @{ Path = "maestro/references/memory.md"; Text = '不能替代 `source_refs`' },
-        @{ Path = "maestro/references/memory.md"; Text = "绝不要把 Temporary 或 Task 内容直接" },
-        @{ Path = "maestro/references/memory.md"; Text = '`current_playbooks`' },
-        @{ Path = "maestro/references/memory.md"; Text = '`request_file`' },
-        @{ Path = "maestro/references/memory.md"; Text = '`--request`' },
-        @{ Path = "maestro/references/memory.md"; Text = "match.playbook_ids $([char]0x2286) current_playbooks.playbook_id" },
-        @{ Path = "maestro/references/memory.md"; Text = '`evidence_refs: []`' },
-        @{ Path = "maestro/references/playbooks.md"; Text = "UPDATE $([char]0x2192) MERGE $([char]0x2192) CREATE $([char]0x2192) SKIP" },
-        @{ Path = "maestro/references/playbooks.md"; Text = "用户明确批准" },
-        @{ Path = "maestro/references/playbooks.md"; Text = "候选不是生效的指导" },
-        @{ Path = "maestro/references/playbooks.md"; Text = "提供一次迁移" },
-        @{ Path = "maestro/references/playbooks.md"; Text = '`revision: 0`' },
-        @{ Path = "maestro/references/playbooks.md"; Text = "任意项目文件不能" },
-        @{ Path = "maestro/references/storage.md"; Text = '包括 `SKIP`' },
-        @{ Path = "maestro/references/storage.md"; Text = '`playbooks/candidates/`' },
-        @{ Path = "maestro/references/storage.md"; Text = "规范正式 Playbook Markdown 或 YAML 文件" },
-        @{ Path = "maestro/references/storage.md"; Text = '`superseded_by`' },
-        @{ Path = "maestro/references/memory.md"; Text = "发现冲突 $([char]0x2192) pending-confirmation $([char]0x2192) resolved" },
-        @{ Path = "maestro/references/memory.md"; Text = "防止已取代/拒绝 Memory 复活" },
-        @{ Path = "maestro/references/storage.md"; Text = "团队共享 Memory（纳入 Git）" },
-        @{ Path = "maestro/references/storage.md"; Text = "本地 Runtime 状态（不纳入 Git）" },
-        @{ Path = "maestro/references/storage.md"; Text = "不读取、迁移或恢复旧 Role 目录" },
-        @{ Path = "maestro/references/memory.md"; Text = '`long-term/entries/<entry_id>.md`' },
-        @{ Path = "maestro/references/memory.md"; Text = "migrate-long-term" },
-        @{ Path = "maestro/references/storage.md"; Text = "不同 entry 的独立 UPDATE 不共享 revision 或 lock" },
-        @{ Path = "maestro/references/storage.md"; Text = '`completed_at` 是 Activity' },
-        @{ Path = "maestro/references/activity.md"; Text = "不是新的权威状态源" },
-        @{ Path = "maestro/references/activity.md"; Text = '不要直接读取完整 `activity/index.json`' },
-        @{ Path = "maestro/references/activity.md"; Text = '没有 `record` 操作' },
-        @{ Path = "maestro/references/activity.md"; Text = '`decision_approved` 和 `decision_superseded`' },
-        @{ Path = "maestro/references/activity.md"; Text = '`playbook_approved` 和 `playbook_superseded`' },
-        @{ Path = "maestro/references/playbooks.md"; Text = '### 不可变 Playbook 决策记录' },
-        @{ Path = "maestro/references/storage.md"; Text = '`playbook_approved` / `playbook_superseded`' },
-        @{ Path = "maestro/references/activity.md"; Text = '`temporary_promoted`' },
-        @{ Path = "maestro/references/activity.md"; Text = '不产生晋升事件' },
-        @{ Path = "maestro/references/activity.md"; Text = '`promotion_transaction` **不是**事件时间' },
-        @{ Path = "maestro/references/storage.md"; Text = '`promotion_transaction` 是事务关联、恢复与审计标记，不是事件时间' },
-        @{ Path = "maestro/references/storage.md"; Text = '必须在同一次生命周期更新中写入一次 `promoted_at`' },
-        @{ Path = "maestro/references/storage.md"; Text = '`promoted_at` 是 Activity 中' },
-        @{ Path = "maestro/references/memory.md"; Text = '`importance: milestone`' },
-        @{ Path = "maestro/references/memory.md"; Text = '`decided_at` 是批准、取代或拒绝实际发生的时间' },
-        @{ Path = "maestro/references/memory.md"; Text = '发布时必须严格验证其' },
-        @{ Path = "maestro/references/memory.md"; Text = '后续读取只检查路径格式、项目内边界和不可逃逸' },
-        @{ Path = "maestro/references/memory.md"; Text = 'validate.py decision-record <staged-record.json>' },
-        @{ Path = "maestro/SKILL.md"; Text = "references/activity.md" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "committed.yaml" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "before/<state-key>" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "staged/<state-key>" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "applied/<sequence>.yaml" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "SHA-256" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "checkpoint-observation.schema.json" },
+        @{ Path = "xiaotao/references/activity.md"; Text = "checkpoint_recovered" },
+        @{ Path = "xiaotao/references/activity.md"; Text = "worker_approved" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "worker-approval.schema.json" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "!.xiaotao/workers/approvals/" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "Task 已是唯一逻辑活动目标" },
+        @{ Path = "xiaotao/references/handoffs.md"; Text = '`needs_user_input: true` 要求 `status: blocked`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = "当前代码或运行时证据" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "Worker permissions 是请求的动作类别，不是授权" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "**能做什么**是当前委派中" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "直接修改 Long-term Memory" },
+        @{ Path = "xiaotao/references/contract.md"; Text = '始终只有 `user_request` 是必需的' },
+        @{ Path = "xiaotao/references/contract.md"; Text = "提案不能批准自身" },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`decision_context` 用在其他 memory kind 上无效' },
+        @{ Path = "xiaotao/references/workers.md"; Text = "Task 或 Temporary 恢复时使用快照" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "Worker 不会隐式继承父 Agent 的完整 Skill" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "delegation-packet.schema.json" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "不要假设 Worker 会继承" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "Worker 解析不得把探索工作提升为 Task" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "不得仅因协调器重新活跃就启动重复运行" },
+        @{ Path = "xiaotao/SKILL.md"; Text = "通过宿主原生机制等待" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "scope: session" },
+        @{ Path = "xiaotao/references/workers.md"; Text = "模型偏好绝不能自动提升它" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "选择前，将有界委派转换为能力需求" },
+        @{ Path = "xiaotao/references/coordination.md"; Text = "与 Task 或 Temporary 匹配" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "复制到匹配的 Task 或 Temporary" },
+        @{ Path = "xiaotao/references/handoffs.md"; Text = ".xiaotao/memory/temporary/active/<temporary-id>/handoffs/" },
+        @{ Path = "xiaotao/references/workers.md"; Text = '在所有宿主上使用 `/` 分隔符' },
+        @{ Path = "xiaotao/references/handoffs.md"; Text = "由工件触发的协议守卫" },
+        @{ Path = "xiaotao/references/memory.md"; Text = "此校验不得创建或转换 Task" },
+        @{ Path = "xiaotao/references/memory.md"; Text = "UPDATE $([char]0x2192) MERGE $([char]0x2192) CREATE" },
+        @{ Path = "xiaotao/references/memory.md"; Text = "这些动作是提案，不是写入" },
+        @{ Path = "xiaotao/references/memory.md"; Text = '不能替代 `source_refs`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = "绝不要把 Temporary 或 Task 内容直接" },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`current_playbooks`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`request_file`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`--request`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = "match.playbook_ids $([char]0x2286) current_playbooks.playbook_id" },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`evidence_refs: []`' },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = "UPDATE $([char]0x2192) MERGE $([char]0x2192) CREATE $([char]0x2192) SKIP" },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = "用户明确批准" },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = "候选不是生效的指导" },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = "提供一次迁移" },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = '`revision: 0`' },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = "任意项目文件不能" },
+        @{ Path = "xiaotao/references/storage.md"; Text = '包括 `SKIP`' },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`playbooks/candidates/`' },
+        @{ Path = "xiaotao/references/storage.md"; Text = "规范正式 Playbook Markdown 或 YAML 文件" },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`superseded_by`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = "发现冲突 $([char]0x2192) pending-confirmation $([char]0x2192) resolved" },
+        @{ Path = "xiaotao/references/memory.md"; Text = "防止已取代/拒绝 Memory 复活" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "团队共享 Memory（纳入 Git）" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "本地 Runtime 状态（不纳入 Git）" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "不读取、迁移或恢复旧 Role 目录" },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`long-term/entries/<entry_id>.md`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = "migrate-long-term" },
+        @{ Path = "xiaotao/references/storage.md"; Text = "不同 entry 的独立 UPDATE 不共享 revision 或 lock" },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`completed_at` 是 Activity' },
+        @{ Path = "xiaotao/references/activity.md"; Text = "不是新的权威状态源" },
+        @{ Path = "xiaotao/references/activity.md"; Text = '不要直接读取完整 `activity/index.json`' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '没有 `record` 操作' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '`decision_approved` 和 `decision_superseded`' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '`playbook_approved` 和 `playbook_superseded`' },
+        @{ Path = "xiaotao/references/playbooks.md"; Text = '### 不可变 Playbook 决策记录' },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`playbook_approved` / `playbook_superseded`' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '`temporary_promoted`' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '不产生晋升事件' },
+        @{ Path = "xiaotao/references/activity.md"; Text = '`promotion_transaction` **不是**事件时间' },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`promotion_transaction` 是事务关联、恢复与审计标记，不是事件时间' },
+        @{ Path = "xiaotao/references/storage.md"; Text = '必须在同一次生命周期更新中写入一次 `promoted_at`' },
+        @{ Path = "xiaotao/references/storage.md"; Text = '`promoted_at` 是 Activity 中' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`importance: milestone`' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '`decided_at` 是批准、取代或拒绝实际发生的时间' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '发布时必须严格验证其' },
+        @{ Path = "xiaotao/references/memory.md"; Text = '后续读取只检查路径格式、项目内边界和不可逃逸' },
+        @{ Path = "xiaotao/references/memory.md"; Text = 'validate.py decision-record <staged-record.json>' },
+        @{ Path = "xiaotao/SKILL.md"; Text = "references/activity.md" },
         @{ Path = "README.md"; Text = "CLI 只负责安装、更新和诊断" },
         @{ Path = "README.md"; Text = "绝不调度 Worker" },
-        @{ Path = "maestro/SKILL.md"; Text = "不负责编排工作" }
-        @{ Path = "maestro/SKILL.md"; Text = "Worker、Memory、Playbook 或旧授权都不能扩权" }
-        @{ Path = "maestro/SKILL.md"; Text = "唯一预置、直接面向用户的角色" }
+        @{ Path = "xiaotao/SKILL.md"; Text = "不负责编排工作" }
+        @{ Path = "xiaotao/SKILL.md"; Text = "Worker、Memory、Playbook 或旧授权都不能扩权" }
+        @{ Path = "xiaotao/SKILL.md"; Text = "唯一预置、直接面向用户的角色" }
     )
     foreach ($contract in $requiredContracts) {
         if (-not (Select-String -LiteralPath $contract.Path -SimpleMatch $contract.Text -Encoding utf8 -Quiet)) {
@@ -844,9 +844,9 @@ try {
     }
 
     $packageManifest = Get-Content -Raw "package.json" | ConvertFrom-Json
-    if ($packageManifest.name -ne "maestro-ai-workflow" -or
-        $packageManifest.bin.maestro -ne "bin/maestro.js") {
-        throw "npm package metadata does not expose the expected Maestro CLI"
+    if ($packageManifest.name -ne "xiaotao-ai-workflow" -or
+        $packageManifest.bin.xiaotao -ne "bin/xiaotao.js") {
+        throw "npm package metadata does not expose the expected XiaoTao CLI"
     }
     if ($null -ne $packageManifest.dependencies -and
         @($packageManifest.dependencies.PSObject.Properties).Count -gt 0) {
@@ -854,9 +854,9 @@ try {
     }
 
     $hostRegistryContracts = @(
-        "'.agents/skills/maestro'",
-        "'.claude/skills/maestro'",
-        "'.opencode/skills/maestro'"
+        "'.agents/skills/xiaotao'",
+        "'.claude/skills/xiaotao'",
+        "'.opencode/skills/xiaotao'"
     )
     foreach ($hostContract in $hostRegistryContracts) {
         if (-not (Select-String -LiteralPath "cli/hosts.js" -SimpleMatch $hostContract -Quiet)) {
@@ -864,7 +864,7 @@ try {
         }
     }
 
-    $markdownFiles = Get-ChildItem "maestro" -Recurse -Filter "*.md"
+    $markdownFiles = Get-ChildItem "xiaotao" -Recurse -Filter "*.md"
     foreach ($document in $markdownFiles) {
         $content = Get-Content -Raw -Encoding utf8 $document.FullName
         $fenceCount = [regex]::Matches($content, '(?m)^```').Count
@@ -885,7 +885,7 @@ try {
         }
     }
 
-    Write-Output "All Maestro contract checks passed."
+    Write-Output "All XiaoTao contract checks passed."
 }
 finally {
     Pop-Location

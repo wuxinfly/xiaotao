@@ -1,4 +1,4 @@
-# @maestro-ai/dsh-adapter
+# @xiaotao-ai/dsh-adapter
 
 Checkpoint M1 的接入证据、拟定协议与后续验收见
 [checkpoint contract](../../docs/architecture/checkpoint-contract.md)。可在仓库根目录运行
@@ -6,14 +6,14 @@ Checkpoint M1 的接入证据、拟定协议与后续验收见
 该检查不访问 Session、不启动宿主，也不代表功能启用。现已有默认按当前 Session 绑定项目的 snapshot checkpoint
 工具；真实模型提供方与持久文件系统的端到端验收仍未完成。
 
-DeepSeek Harness (dsh) 的 Maestro 适配层。它把可移植的 Maestro Core Skill 挂进 dsh，并在
+DeepSeek Harness (dsh) 的 XiaoTao 适配层。它把可移植的 XiaoTao Core Skill 挂进 dsh，并在
 dsh 的 `ctx.fs` 原语之上提供确定性的状态写协议。这是 [Issue #14][issue-14]「Core 可移植 +
 可选 Harness Plugin / Adapter」方向的第一个宿主实现。
 
 > **当前接线状态（如实）**：**Product A**（把 Core 注册成 dsh skill）已接线。
-> `ctx.fs` 存在时，确定性的 `MaestroStateStore`、`MaestroSchemaValidator` 与
-> `MaestroTransactionStore` 会被构建并注册成 Cordis service（`maestro.stateStore` /
-> `maestro.schemaValidator` / `maestro.transactionStore`），但**尚未暴露成
+> `ctx.fs` 存在时，确定性的 `XiaoTaoStateStore`、`XiaoTaoSchemaValidator` 与
+> `XiaoTaoTransactionStore` 会被构建并注册成 Cordis service（`xiaotao.stateStore` /
+> `xiaotao.schemaValidator` / `xiaotao.transactionStore`），但**尚未暴露成
 > 任意 model-facing storage tool**。启用下述 checkpoint 工具后，单目标快照保存会经过锁 / CAS /
 > 校验；事务 service 只提供 create/replace 的逻辑提交、overlay 与重启恢复机械层，现有 checkpoint
 > 及其他 Core 写入不会自动改道。DSH 没有 delete/rename seam，因此生命周期 move 仍不支持。
@@ -32,7 +32,7 @@ dsh 的 `ctx.fs` 原语之上提供确定性的状态写协议。这是 [Issue #
 
 | 层 | 职责 | 本仓库位置 |
 | --- | --- | --- |
-| **Maestro Core** | 角色调度、三层记忆语义、Handoff 边界、Playbook 规则（宿主无关） | `../../maestro/` |
+| **XiaoTao Core** | 角色调度、三层记忆语义、Handoff 边界、Playbook 规则（宿主无关） | `../../xiaotao/` |
 | **Skill adapter（薄）** | 把 Core 注册成 dsh skill | `src/skill.ts` |
 | **Capability plugin（厚）** | 锁 / 原子写 / 事务、schema 校验、session 生命周期 | `src/storage.ts`、`src/transaction.ts`、`src/validate.ts`、`src/hooks.ts` |
 | **detection + fallback** | 探测 dsh 提供了哪些 seam，按能力降级 | `src/detect.ts` |
@@ -40,8 +40,8 @@ dsh 的 `ctx.fs` 原语之上提供确定性的状态写协议。这是 [Issue #
 红线（来自 Issue #14 验收标准）：
 
 1. Core 不直接依赖宿主专有 API。
-2. Adapter 不复制 Maestro 的业务决策逻辑。
-3. 移除 Adapter 后，Maestro Core 仍可基本运行。
+2. Adapter 不复制 XiaoTao 的业务决策逻辑。
+3. 移除 Adapter 后，XiaoTao Core 仍可基本运行。
 
 ## 用法
 
@@ -58,21 +58,21 @@ npm run dsh:install:local -- --profile web
 安装器仅在本次 `dsh plugin add` 中传入 `--ignore-workspace-root-check`，允许向 DSH
 profile 自身的 workspace 根添加插件，不修改全局 pnpm 配置。
 
-该命令会安装 adapter 的构建依赖，生成包含当前 Maestro Core 的本地 `.tgz`，并把它安装进
+该命令会安装 adapter 的构建依赖，生成包含当前 XiaoTao Core 的本地 `.tgz`，并把它安装进
 `~/.dsh/profiles/web/`。DSH 会根据包内的 `dsh.bundle` 声明自动把它加入 profile，随后加载包内
 的 `cordis.patch.yml`：
 
 ```yaml
 - insert:
-    - id: maestro-adapter
-      name: '@maestro-ai/dsh-adapter'
+    - id: xiaotao-adapter
+      name: '@xiaotao-ai/dsh-adapter'
       inject:
         - skills
 ```
 
 安装包保存在 `~/.dsh/local-packages/<profile>/`，不会使用容易在 Windows 上生成错误 junction
 的本地目录 `link:`。安装器最后会验证包入口、随包 Core、`dsh.profile.bundles` 和
-`dsh --dump-config`。如果旧 profile 里存在手工添加的 Maestro insert，安装器会移除该重复项，
+`dsh --dump-config`。如果旧 profile 里存在手工添加的 XiaoTao insert，安装器会移除该重复项，
 改由包的 bundle 激活；新 profile 默认使用包内 `lib/core/`。
 
 常用选项：
@@ -94,28 +94,28 @@ npm install
 npm pack
 ```
 
-构建会输出 ESM 入口、类型声明和当前 Maestro Core 到 `lib/`。`lib/` 不提交 Git，但会进入
+构建会输出 ESM 入口、类型声明和当前 XiaoTao Core 到 `lib/`。`lib/` 不提交 Git，但会进入
 生成的 npm tarball。安装运行时不需要 TypeScript、tsx 或 esbuild。
 
 ### Cordis 调用
 
-把 `maestro/` 目录作为 Core 传入，插件在 `apply()` 时读取 `SKILL.md` 的 frontmatter
+把 `xiaotao/` 目录作为 Core 传入，插件在 `apply()` 时读取 `SKILL.md` 的 frontmatter
 （`name` / `description`）并用 `ctx.skills.register()` 注册为运行时 skill，`references/`
 和 `schemas/` 通过 `resourceBase: { kind: 'directory' }` 暴露给模型按需加载。
 
 ```ts
-import adapter from '@maestro-ai/dsh-adapter'
+import adapter from '@xiaotao-ai/dsh-adapter'
 
 // 在 Cordis profile / bundle 里挂载
-export const name = 'maestro-adapter'
+export const name = 'xiaotao-adapter'
 export const inject = ['skills']
 export function apply(ctx, config) {
   adapter.apply(ctx, config)
 }
 ```
 
-`Config.coreDir` 指向 Maestro Core 的 `maestro/` 目录（含 `SKILL.md`）。缺省时按
-`process.cwd()/.dsh/skills/maestro` → `process.cwd()/maestro` → adapter 包内 `lib/core/` 的
+`Config.coreDir` 指向 XiaoTao Core 的 `xiaotao/` 目录（含 `SKILL.md`）。缺省时按
+`process.cwd()/.dsh/skills/xiaotao` → `process.cwd()/xiaotao` → adapter 包内 `lib/core/` 的
 顺序探测。
 
 ## Capability detection 与降级
@@ -130,22 +130,22 @@ export function apply(ctx, config) {
 | agent registry | `ctx.agents` | 启用 `hooks`（session 生命周期） | 降级：不监听 agent 事件 |
 
 Session 启动时，Adapter 只通过 DSH 的非唤醒 `agent.inject()` 排队一份有界运行时概览；它会随
-用户下一次真实请求进入上下文，但不会因为项目存在 `.maestro/` 状态而自行开启模型轮次。启动 Hook
+用户下一次真实请求进入上下文，但不会因为项目存在 `.xiaotao/` 状态而自行开启模型轮次。启动 Hook
 只读取并验证已有 Catalog 快照，不扫描或重建项目状态。注入内容同时要求逻辑、历史与决策类问题
-先加载 Maestro Skill，并执行有界 `search` / `show`，再检查当前代码；具体查询会按需刷新 Catalog。
+先加载 XiaoTao Skill，并执行有界 `search` / `show`，再检查当前代码；具体查询会按需刷新 Catalog。
 
-降级到纯 skill 模式时，Maestro Core 仍可用——只是锁 / 原子写 / 校验由模型自行按 Core 里的
+降级到纯 skill 模式时，XiaoTao Core 仍可用——只是锁 / 原子写 / 校验由模型自行按 Core 里的
 文字协议执行，可靠性下降但不丢失功能。这对应 Issue #14 的「无 Plugin 也必须能运行」。
 
 ## 关键 API 映射
 
-| Maestro 概念 | dsh 原语 |
+| XiaoTao 概念 | dsh 原语 |
 | --- | --- |
 | `revision`（`storage.md`） | `ctx.fs` 的 `FsVersion`（`stat()` 返回的不透明版本 token） |
 | 原子替换 + 冲突检测 | `ctx.fs.writeText(target, content, { kind: 'replaceIfVersion', version })`；冲突抛 `FS_STALE_VERSION` |
 | 独占锁 create-if-absent | `ctx.fs.writeText(lockTarget, owner, { kind: 'createIfAbsent' })`；已存在抛 `FS_NOT_OBSERVED` |
-| 状态路径边界 | 每次解析都走 `ctx.fs.contains(.maestro/, target)` 做权威 containment 校验，`lockPathFor` / 状态路径再拒绝 `..` 与绝对路径 |
-| schema 校验 | 复用 `maestro/references/schemas/*.json`（JSON Schema draft 2020-12），用 `ajv` 校验 |
+| 状态路径边界 | 每次解析都走 `ctx.fs.contains(.xiaotao/, target)` 做权威 containment 校验，`lockPathFor` / 状态路径再拒绝 `..` 与绝对路径 |
+| schema 校验 | 复用 `xiaotao/references/schemas/*.json`（JSON Schema draft 2020-12），用 `ajv` 校验 |
 | create/replace 多文件事务 | 不可变 before/staged/intent + 互斥 terminal marker + overlay + CAS materialization；`execute` 强制调用方提供 fail-closed validator seam，缺失时不写入；内部 service，尚无通用模型工具 |
 | lifecycle move | 当前 filesystem 无 delete/rename，明确 unsupported，不用残留 source 文件伪装 move |
 | Worker 指令与上下文注入 | 尚未接线；独立 Worker 必须报告 `unsupported`，不能静默继承父上下文 |
@@ -167,7 +167,7 @@ dsh `ctx.fs` 目前没有 delete/remove 原语，锁不能像 `storage.md` 那�
 
 ## 与 `storage.md` 的已知偏差
 
-- **锁是文件而非目录**：`storage.md` 规定锁是 `.maestro/locks/<key>.lock/` 目录，但 dsh `ctx.fs`
+- **锁是文件而非目录**：`storage.md` 规定锁是 `.xiaotao/locks/<key>.lock/` 目录，但 dsh `ctx.fs`
   没有"创建目录"原语，适配层用同名**文件**实现，排他语义等价。
 - **锁靠 tombstone + 租约而非删除释放**：因无 delete 原语，release 是写 `released` tombstone
   而非删锁；回收过期锁依赖调用方 `canReclaim` 确认 owner 不活跃，符合 `storage.md` 的保守回收
@@ -190,13 +190,13 @@ adapters/deepseek-harness/
 ├── lib/             # 构建产物，不入 Git；发布包中包含
 │   ├── index.js
 │   ├── index.d.ts
-│   └── core/        # 打包时从 ../../maestro/ 复制
+│   └── core/        # 打包时从 ../../xiaotao/ 复制
 └── src/
     ├── index.ts        # 唯一插件入口，唯一 import dsh API 处；注册 Core skill + 提供 storage service
     ├── types.ts        # Config 与共享类型
     ├── detect.ts       # capability detection + fallback 决策
     ├── skill.ts        # 产物 A：注册 Core 为 dsh skill
-    ├── storage.ts      # 产物 B：ctx.fs 上的锁 / CAS 写协议（含 .maestro/ 边界强制）
+    ├── storage.ts      # 产物 B：ctx.fs 上的锁 / CAS 写协议（含 .xiaotao/ 边界强制）
     ├── transaction.ts  # 多文件 create/replace 逻辑提交、overlay、materialization 与恢复
     ├── validate.ts     # 产物 B：schema 校验
     ├── hooks.ts        # 产物 B：可等待的 turn-stopping 与上下文压力 checkpoint 触发器
@@ -210,8 +210,8 @@ adapters/deepseek-harness/
 无需填写项目路径。每次调用从当前 Agent 的 `session.header.cwd` 绑定项目，不使用启动
 DSH 进程的目录，也不接受模型传入路径。缺少会话或绝对路径时拒绝操作。
 
-默认恢复目录为 `${DSH_HOME}/maestro-recovery/<项目标识>/`，未设置 `DSH_HOME` 时使用
-`~/.dsh/maestro-recovery/<项目标识>/`。项目标识是文件系统规范 target key 的 SHA-256，
+默认恢复目录为 `${DSH_HOME}/xiaotao-recovery/<项目标识>/`，未设置 `DSH_HOME` 时使用
+`~/.dsh/xiaotao-recovery/<项目标识>/`。项目标识是文件系统规范 target key 的 SHA-256，
 同名但路径不同的项目不会共用恢复目录。默认仍是显式保存；自动触发需要单独配置。
 
 写入使用当前会话的 sandboxPolicy，保留会话只读等限制。默认外部恢复目录若被沙箱拒绝，
@@ -223,10 +223,10 @@ DSH 进程的目录，也不接受模型传入路径。缺少会话或绝对路�
 现有 profile 的空补丁 `[]` 可以保持原样。可选覆盖如下：
 
 ```yaml
-- id: maestro-adapter
+- id: xiaotao-adapter
   config:
     checkpoint:
-      recoveryRoot: 'E:\maestro-recovery' # 自动模式下是基目录，下面再按项目隔离
+      recoveryRoot: 'E:\xiaotao-recovery' # 自动模式下是基目录，下面再按项目隔离
 ```
 
 ### 自动触发（M2，实验性）
@@ -234,7 +234,7 @@ DSH 进程的目录，也不接受模型传入路径。缺少会话或绝对路�
 DSH 当前没有可等待的 pre-compaction / Session End Hook。Adapter 不把 `turn-stopping` 冒充成
 pre-compaction，而是在宿主能报告上下文压力时，把真实
 `agent/turn-stopping` 作为提前量触发点：达到阈值且存在新进展后，向当前 Agent 加入一个专用步骤，
-由 Agent 复用同一个 `maestro_checkpoint inspect/save/status/retry` 工具完成保存。
+由 Agent 复用同一个 `xiaotao_checkpoint inspect/save/status/retry` 工具完成保存。
 
 压力事实优先读取 DSH token-meter 的 `contextPressure.projectedTokens / contextWindow`，与 DSH
 占用率和 compaction 使用同一口径；projection 不可用时才退回最近一次 provider prompt usage
@@ -243,7 +243,7 @@ pre-compaction，而是在宿主能报告上下文压力时，把真实
 该能力默认关闭。先在可丢弃项目中启用：
 
 ```yaml
-- id: maestro-adapter
+- id: xiaotao-adapter
   config:
     checkpoint:
       auto:
@@ -275,7 +275,7 @@ Session 事件，模型忽略或保存失败时不会在同一 turn 无限循环
 ```yaml
 checkpoint:
   projectRoot: 'E:\projects\my-app'
-  recoveryRoot: 'E:\maestro-recovery'
+  recoveryRoot: 'E:\xiaotao-recovery'
 ```
 
 要从旧固定配置切换为自动模式，删除 `projectRoot`，或删除整个 checkpoint 覆盖配置。
@@ -287,7 +287,7 @@ checkpoint:
 工具不会自动清理、扩权或将源材料发送到外部服务。
 
 宿主必须同时提供 `fs`、`tools`，并加载带 checkpoint schema 的 Core。满足条件后默认注册
-`maestro_checkpoint`，保持原生 tools 审批/取消管线；缺少能力时日志说明未启用，裸 Skill 继续运行。
+`xiaotao_checkpoint`，保持原生 tools 审批/取消管线；缺少能力时日志说明未启用，裸 Skill 继续运行。
 固定模式下，调用 Agent 的 `session.header.cwd` 必须与配置项目的 canonical root 一致。
 自动模式每次从该会话重新绑定项目，写入仍受同一 canonical root 的边界检查。
 
@@ -346,7 +346,7 @@ npm run test:package
 
 1. ~~产物 A：skill 注册~~（本 PR）
 2. ~~detect 骨架 + fallback~~（本 PR）
-3. ~~storage 的锁 / CAS 写 + `.maestro/` 边界强制~~（本 PR，含单测）
+3. ~~storage 的锁 / CAS 写 + `.xiaotao/` 边界强制~~（本 PR，含单测）
 4. ~~hooks 的 turn-stopping 监听原语（正确 await）~~
 5. 已接通显式启用的 snapshot checkpoint 工具；通用 storage / validator 工具仍属后续
 6. 已接通可选的上下文压力自动 checkpoint；真实宿主验收后再判断默认策略
@@ -355,4 +355,4 @@ npm run test:package
 9. 将 Worker Delegation Packet 映射到 dsh subagent 指令、上下文、工具与权限隔离，并返回真实
    `supported` / `degraded` / `unsupported` 状态——后续
 
-[issue-14]: https://github.com/IHongTaoI/maestro-workflow/issues/14
+[issue-14]: https://github.com/IHongTaoI/xiaotao/issues/14

@@ -1,0 +1,17 @@
+{
+  "followup_id": "cleanup-redis",
+  "title": "Clean up obsolete Redis cluster nodes",
+  "status": "resolved",
+  "created_at": "2026-09-09T12:00:00Z",
+  "source_refs": [
+    ".xiaotao/evidence/performance.md"
+  ],
+  "related_ids": [
+    "lt-startup-performance"
+  ],
+  "resolved_at": "2026-09-10T12:00:00Z",
+  "resolution": "Decommissioned old nodes and updated routing config.",
+  "resolution_refs": [
+    ".xiaotao/evidence/performance.md"
+  ]
+}

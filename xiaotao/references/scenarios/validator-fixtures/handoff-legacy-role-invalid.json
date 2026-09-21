@@ -1,0 +1,14 @@
+{
+  "status": "completed",
+  "summary": "Legacy Role handoffs are no longer supported.",
+  "result_path": "xiaotao/references/scenarios/validator-fixtures/files/result.md",
+  "role_state_path": "xiaotao/references/scenarios/validator-fixtures/files/current-state.md",
+  "needs_user_input": false,
+  "questions": [],
+  "recommended_next": [
+    {
+      "role": "coder",
+      "reason": "Continue with the legacy Role protocol."
+    }
+  ]
+}

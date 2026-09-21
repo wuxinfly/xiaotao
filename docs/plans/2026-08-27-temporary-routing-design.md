@@ -2,7 +2,7 @@
 
 ## Problem
 
-Maestro may keep several Temporary Memories active at the same time, but it currently has no
+XiaoTao may keep several Temporary Memories active at the same time, but it currently has no
 contract for deciding which one a later request should resume. Choosing the newest directory or
 loading every historical Reference can silently contaminate an unrelated topic.
 
@@ -12,10 +12,10 @@ Routing uses a strict precedence order while leaving natural-language interpreta
 
 1. An explicit Temporary ID, unique topic, alias, or user selection wins.
 2. A valid binding in the current Session continues unless the user clearly switches topics.
-3. Without a binding, Maestro may auto-select only one uniquely relevant candidate supported by
+3. Without a binding, XiaoTao may auto-select only one uniquely relevant candidate supported by
    specific routing evidence from lightweight metadata and current state.
-4. If a second candidate remains plausibly relevant, Maestro asks the user to choose.
-5. If no candidate is meaningfully related, Maestro treats the request as a new topic and creates
+4. If a second candidate remains plausibly relevant, XiaoTao asks the user to choose.
+5. If no candidate is meaningfully related, XiaoTao treats the request as a new topic and creates
    Temporary Memory only when the existing persistence rules call for it.
 
 The policy deliberately avoids numeric semantic scores. Models and hosts may understand language

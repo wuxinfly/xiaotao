@@ -14,7 +14,7 @@ rename 或 delete。因此不能提供物理多文件原子性或通用生命周
 成员；需要删除或移动 source 的事务明确返回 unsupported。逻辑原子性由不可变 `committed.yaml`
 切换 overlay 视图实现，随后逐个实体化规范文件。
 
-非功能要求包括：所有路径位于 `.maestro/`；锁按规范路径字典序获取；过期 held 锁不按时间强抢；
+非功能要求包括：所有路径位于 `.xiaotao/`；锁按规范路径字典序获取；过期 held 锁不按时间强抢；
 所有持久记录有大小上限；中断后不依赖 mtime 猜测；冲突不覆盖较新状态；取消停止新增写入；完整
 materialization 前不释放正常执行者持有的锁。
 
@@ -23,7 +23,7 @@ materialization 前不释放正常执行者持有的锁。
 考虑过三种接线方式：
 
 1. **事务 service**：提供确定性的 execute/status/read-overlay/recover API，由未来的窄业务工具调用。
-2. 通用 `maestro_transaction` 模型工具：模型可提交任意 `.maestro/` 多文件替换，授权面过宽。
+2. 通用 `xiaotao_transaction` 模型工具：模型可提交任意 `.xiaotao/` 多文件替换，授权面过宽。
 3. 为 Temporary 晋升、Memory Merge、Playbook Merge 分别实现工具：安全但把 #68 扩成多个业务功能。
 
 采用方案 1。它先交付可复用、可故障注入的机制，不声称模型执行链已经使用事务。未来具体流程通过
@@ -31,7 +31,7 @@ materialization 前不释放正常执行者持有的锁。
 
 ## 持久结构
 
-每个事务使用安全的 `transaction_id`，目录为 `.maestro/transactions/<id>/`：
+每个事务使用安全的 `transaction_id`，目录为 `.xiaotao/transactions/<id>/`：
 
 ```text
 intent.yaml

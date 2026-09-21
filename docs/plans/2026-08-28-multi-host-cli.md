@@ -2,12 +2,12 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Ship a small npm CLI that installs and updates the portable Maestro Skill for Codex,
+**Goal:** Ship a small npm CLI that installs and updates the portable XiaoTao Skill for Codex,
 Claude Code, and OpenCode, then verifies each managed installation.
 
-**Architecture:** Keep `maestro/` as the canonical semantic Core and add a zero-dependency Node.js
+**Architecture:** Keep `xiaotao/` as the canonical semantic Core and add a zero-dependency Node.js
 adapter CLI. A declarative host registry maps tool IDs to project-local Skill destinations; managed
-markers and `.maestro/installation.json` make updates safe and repeatable.
+markers and `.xiaotao/installation.json` make updates safe and repeatable.
 
 **Tech Stack:** Node.js 22 ESM, built-in `node:test`, npm packaging, PowerShell contract checks.
 
@@ -17,7 +17,7 @@ markers and `.maestro/installation.json` make updates safe and repeatable.
 
 **Files:**
 - Create: `package.json`
-- Create: `bin/maestro.js`
+- Create: `bin/xiaotao.js`
 - Create: `cli/hosts.js`
 - Test: `test/hosts.test.js`
 
@@ -55,7 +55,7 @@ markers and `.maestro/installation.json` make updates safe and repeatable.
 
 **Files:**
 - Modify: `README.md`
-- Modify: `maestro/SKILL.md`
+- Modify: `xiaotao/SKILL.md`
 - Modify: `.github/workflows/contracts.yml`
 - Modify: `scripts/verify-contracts.ps1`
 
@@ -71,7 +71,7 @@ markers and `.maestro/installation.json` make updates safe and repeatable.
 
 1. Run `npm test`.
 2. Run `pwsh -File scripts/verify-contracts.ps1`.
-3. Run `npm pack --dry-run` and confirm `bin/`, `cli/`, and the complete `maestro/` tree are present.
-4. Run a clean global-style smoke test with `npm exec --package . -- maestro --version` or an
+3. Run `npm pack --dry-run` and confirm `bin/`, `cli/`, and the complete `xiaotao/` tree are present.
+4. Run a clean global-style smoke test with `npm exec --package . -- xiaotao --version` or an
    equivalent packed-package invocation.
 5. Inspect `git diff --check`, status, and the complete diff before committing only confirmed paths.

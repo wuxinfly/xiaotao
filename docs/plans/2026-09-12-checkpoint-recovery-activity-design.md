@@ -18,7 +18,7 @@ Activity 仅纳入一次事件：一个尚未提交的 checkpoint 请求通过�
 
 ```json
 {
-  "request_id": "maestro-checkpoint-example-1",
+  "request_id": "xiaotao-checkpoint-example-1",
   "record_hash": "...",
   "proposal_hash": "...",
   "revision": 8,
@@ -77,7 +77,7 @@ artifact。它以相邻的 `<request_id>.json` 请求记录作为绑定依据。
   "title": "恢复 checkpoint：验证 DSH checkpoint",
   "summary": "恢复 Temporary 20260912-验证DSH-checkpoint 到 revision 8",
   "source_refs": [
-    ".maestro/memory/temporary/active/20260912-验证DSH-checkpoint/references/checkpoints/maestro-checkpoint-example-1.committed.json"
+    ".xiaotao/memory/temporary/active/20260912-验证DSH-checkpoint/references/checkpoints/xiaotao-checkpoint-example-1.committed.json"
   ],
   "status": "completed"
 }
@@ -94,7 +94,7 @@ JavaScript 与 Python 各自处理精度。重复查询、重复 `retry` 和 Act
 
 所有规范目标下直属的请求记录与 committed observation 都参与 `source_digest`，确保新增恢复、
 请求链变化或权威记录损坏会使缓存失效。Activity Index 缺失、损坏或陈旧时仍可重建；删除
-`.maestro/activity/index.json` 不会修改请求、canonical 状态、failure event 或 observation。
+`.xiaotao/activity/index.json` 不会修改请求、canonical 状态、failure event 或 observation。
 
 ## 错误与兼容策略
 

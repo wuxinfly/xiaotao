@@ -9,7 +9,7 @@ import type {
 } from '@deepseek-ai/dsh-fs'
 import {
   acquireLock,
-  MaestroStateStore,
+  XiaoTaoStateStore,
   StatePathError,
   type StateFileSystem,
 } from './storage'
@@ -109,47 +109,47 @@ function makeFs(overrides: Partial<Pick<StateFileSystem, 'resolve'>> = {}) {
   }
 }
 
-test('lockPathFor derives a stable lock path under .maestro/locks', () => {
+test('lockPathFor derives a stable lock path under .xiaotao/locks', () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
-  assert.equal(store.lockPathFor('memory/long-term/current.md'), '.maestro/locks/memory-long-term-current.md.lock')
-  assert.equal(store.lockPathFor('.maestro/memory/long-term/current.md'), '.maestro/locks/memory-long-term-current.md.lock')
+  const store = new XiaoTaoStateStore(fs)
+  assert.equal(store.lockPathFor('memory/long-term/current.md'), '.xiaotao/locks/memory-long-term-current.md.lock')
+  assert.equal(store.lockPathFor('.xiaotao/memory/long-term/current.md'), '.xiaotao/locks/memory-long-term-current.md.lock')
 })
 
 test('lockPathFor rejects traversal and absolute paths', () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   assert.throws(() => store.lockPathFor('../escape'), StatePathError)
   assert.throws(() => store.lockPathFor('a/../../b'), StatePathError)
   assert.throws(() => store.lockPathFor('/abs/path'), StatePathError)
   assert.throws(() => store.lockPathFor('C:\\abs\\path'), StatePathError)
 })
 
-test('readSnapshot / createIfAbsent reject paths outside .maestro', async () => {
+test('readSnapshot / createIfAbsent reject paths outside .xiaotao', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   await assert.rejects(() => store.readSnapshot('../outside.md'), StatePathError)
   await assert.rejects(() => store.createIfAbsent('/abs/outside.md', 'x'), StatePathError)
 })
 
 test('containment check rejects a target that resolves outside the root', async () => {
-  // `resolve` maps a lexically-safe path to a target that escapes `.maestro/`,
+  // `resolve` maps a lexically-safe path to a target that escapes `.xiaotao/`,
   // simulating a symlink/backend alias the lexical check cannot see.
   const { fs } = makeFs({
     resolve: async (path: string) => {
-      if (path === '.maestro/leak') return target('/outside/leak')
+      if (path === '.xiaotao/leak') return target('/outside/leak')
       return target(path)
     },
   })
-  const store = new MaestroStateStore(fs)
-  await assert.rejects(() => store.readSnapshot('.maestro/leak'), StatePathError)
+  const store = new XiaoTaoStateStore(fs)
+  await assert.rejects(() => store.readSnapshot('.xiaotao/leak'), StatePathError)
 })
 
 test('writeGuarded replaces only when the version still matches', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
-  await store.createIfAbsent('.maestro/memory/current.md', 'v0')
-  const snap = await store.readSnapshot('.maestro/memory/current.md')
+  const store = new XiaoTaoStateStore(fs)
+  await store.createIfAbsent('.xiaotao/memory/current.md', 'v0')
+  const snap = await store.readSnapshot('.xiaotao/memory/current.md')
   assert.ok(snap)
   await store.writeGuarded(snap, 'v1')
   // The stale snapshot no longer matches the current version.
@@ -161,7 +161,7 @@ test('writeGuarded replaces only when the version still matches', async () => {
 
 test('acquireLock: release tombstone lets a second writer re-acquire immediately', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a')
   await release()
   // Re-acquire right away — must not block on lease expiry or contention.
@@ -177,7 +177,7 @@ test('acquireLock: release tombstone lets a second writer re-acquire immediately
 
 test('acquireLock: expired held lock is NOT reclaimed without canReclaim', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   // First owner holds the lock; its lease expires quickly.
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a', { leaseMs: 5 })
   try {
@@ -194,7 +194,7 @@ test('acquireLock: expired held lock is NOT reclaimed without canReclaim', async
 
 test('acquireLock: expired held lock is reclaimed when canReclaim confirms', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a', { leaseMs: 5 })
   await new Promise((r) => setTimeout(r, 20))
   const seen: string[] = []
@@ -213,7 +213,7 @@ test('acquireLock: expired held lock is reclaimed when canReclaim confirms', asy
 
 test('acquireLock: contention throws after the bounded timeout', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a', { leaseMs: 60_000 })
   try {
     await assert.rejects(
@@ -231,7 +231,7 @@ test('acquireLock: contention throws after the bounded timeout', async () => {
 
 test('acquireLock: contention wait is cooperatively cancellable', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a')
   const controller = new AbortController()
   const waiting = acquireLock(store, 'memory/long-term/current.md', 'agent-b', {
@@ -246,15 +246,15 @@ test('acquireLock: contention wait is cooperatively cancellable', async () => {
 
 test('acquireLock: release is idempotent and safe to call twice', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a')
   await release()
   await release() // second call must not throw or corrupt state
 })
 
-test('writeGuarded rejects a fabricated snapshot whose target escapes .maestro', async () => {
+test('writeGuarded rejects a fabricated snapshot whose target escapes .xiaotao', async () => {
   const { fs } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   // StateSnapshot is a public interface — a caller can hand us a snapshot
   // whose target points outside the state root. writeGuarded must still refuse.
   const fakeSnapshot = {
@@ -267,7 +267,7 @@ test('writeGuarded rejects a fabricated snapshot whose target escapes .maestro',
 
 test('acquireLock: release retries after a transient write failure', async () => {
   const { fs, failNextReplace } = makeFs()
-  const store = new MaestroStateStore(fs)
+  const store = new XiaoTaoStateStore(fs)
   const release = await acquireLock(store, 'memory/long-term/current.md', 'agent-a')
 
   // First release attempt hits a transient I/O error and must surface it…

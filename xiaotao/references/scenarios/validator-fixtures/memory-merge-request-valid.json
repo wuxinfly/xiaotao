@@ -1,0 +1,61 @@
+{
+  "file_path": ".xiaotao/memory/long-term/current.md",
+  "base_entries": [
+    {
+      "entry_id": "lt-init-strategy",
+      "title": "Module initialization",
+      "memory_kind": "decision",
+      "content": "Module initialization should happen during bootstrap.",
+      "decision_context": {
+        "reason": "Bootstrap previously provided the only verified initialization boundary.",
+        "rejected_alternatives": []
+      },
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+      ]
+    }
+  ],
+  "ours_entries": [
+    {
+      "entry_id": "lt-init-strategy",
+      "title": "Module initialization",
+      "memory_kind": "decision",
+      "content": "Module initialization can be delayed until first route access.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+      ]
+    },
+    {
+      "entry_id": "lt-trace-capture",
+      "title": "Trace capture strategy",
+      "memory_kind": "experience",
+      "content": "Capture traces before inspecting heap snapshots.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+      ]
+    }
+  ],
+  "theirs_entries": [
+    {
+      "entry_id": "lt-init-strategy",
+      "title": "Module initialization",
+      "memory_kind": "decision",
+      "content": "Module initialization must remain synchronous to avoid login race.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/result.md"
+      ]
+    },
+    {
+      "entry_id": "lt-perf-profile",
+      "title": "Performance profiling",
+      "memory_kind": "experience",
+      "content": "Collect CPU profiles and trace metrics during benchmark runs.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/result.md"
+      ]
+    }
+  ],
+  "merge_hints": {
+    "prefer_evidence_depth": true
+  }
+}

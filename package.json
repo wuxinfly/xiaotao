@@ -1,17 +1,17 @@
 {
-  "name": "maestro-ai-workflow",
+  "name": "xiaotao-ai-workflow",
   "version": "0.2.0",
   "description": "面向结果的 AI 协作 Skill，支持动态 Worker 和多宿主安装 CLI",
   "type": "module",
   "bin": {
-    "maestro": "bin/maestro.js"
+    "xiaotao": "bin/xiaotao.js"
   },
   "files": [
     "bin/",
     "cli/",
-    "maestro/",
-    "!maestro/**/__pycache__/**",
-    "!maestro/**/*.pyc",
+    "xiaotao/",
+    "!xiaotao/**/__pycache__/**",
+    "!xiaotao/**/*.pyc",
     "README.md"
   ],
   "scripts": {
@@ -27,11 +27,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/IHongTaoI/maestro-workflow.git"
+    "url": "git+https://github.com/IHongTaoI/xiaotao.git"
   },
-  "homepage": "https://github.com/IHongTaoI/maestro-workflow#readme",
+  "homepage": "https://github.com/IHongTaoI/xiaotao#readme",
   "bugs": {
-    "url": "https://github.com/IHongTaoI/maestro-workflow/issues"
+    "url": "https://github.com/IHongTaoI/xiaotao/issues"
   },
   "keywords": [
     "ai",

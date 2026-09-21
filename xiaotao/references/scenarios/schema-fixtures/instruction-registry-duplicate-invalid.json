@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "id": "duplicate-instructions",
+  "source": "project",
+  "instructions": [
+    {
+      "ref": "project:review-guidance",
+      "source_scope": "project",
+      "source_paths": ["README.md"]
+    },
+    {
+      "ref": "project:review-guidance",
+      "source_scope": "project",
+      "source_paths": ["xiaotao/SKILL.md"]
+    }
+  ]
+}

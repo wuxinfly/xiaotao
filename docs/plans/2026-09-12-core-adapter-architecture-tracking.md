@@ -4,7 +4,7 @@
 
 **Goal:** Refresh Issue #14 with a versioned Core / Adapter boundary, an evidence-based host capability matrix, and separately tracked remaining work.
 
-**Architecture:** Keep Maestro Core host-independent and describe host integrations as optional adapters whose capabilities are reported separately as available, activated, degraded, unsupported, or unverified. Do not add runtime behavior in this change; link every activation claim to current source, tests, or acceptance documentation and move implementation gaps into bounded follow-up issues.
+**Architecture:** Keep XiaoTao Core host-independent and describe host integrations as optional adapters whose capabilities are reported separately as available, activated, degraded, unsupported, or unverified. Do not add runtime behavior in this change; link every activation claim to current source, tests, or acceptance documentation and move implementation gaps into bounded follow-up issues.
 
 **Tech Stack:** Markdown, GitHub Issues, existing TypeScript/Python adapter evidence.
 

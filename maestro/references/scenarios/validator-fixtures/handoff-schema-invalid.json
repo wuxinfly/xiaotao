@@ -1,7 +1,0 @@
-{
-  "status": "completed",
-  "summary": "Missing the required result path.",
-  "worker_state_path": "maestro/references/scenarios/validator-fixtures/files/current-state.md",
-  "needs_user_input": false,
-  "recommended_next": []
-}

@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/memory-worker-request.schema.json",
+  "title": "XiaoTao Memory Worker Request",
+  "type": "object",
+  "required": [
+    "operation",
+    "source_files",
+    "current_memory",
+    "current_playbooks",
+    "memory_hints"
+  ],
+  "properties": {
+    "operation": {
+      "enum": ["worker-compress", "session-handoff", "task-bootstrap", "task-complete", "explicit-create"]
+    },
+    "source_files": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "current_memory": {
+      "type": "object",
+      "required": ["long_term_entries"],
+      "properties": {
+        "scope": { "enum": ["full", "bounded"] },
+        "query": { "type": "string", "minLength": 1 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "long_term_entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/longTermEntry" }
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "scope": { "const": "bounded" } },
+            "required": ["scope"]
+          },
+          "then": {
+            "required": ["query", "limit"],
+            "properties": {
+              "long_term_entries": { "type": "array", "maxItems": 3 }
+            }
+          },
+          "else": {
+            "properties": {
+              "query": false,
+              "limit": false
+            }
+          }
+        }
+      ]
+    },
+    "current_playbooks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/playbook" }
+    },
+    "memory_hints": { "type": "object" },
+    "task_context": { "type": "object" },
+    "source_content": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": { "operation": { "const": "explicit-create" } },
+        "required": ["operation"]
+      },
+      "then": {
+        "properties": {
+          "current_memory": {
+            "type": "object",
+            "properties": { "scope": { "const": "bounded" } },
+            "required": ["scope"]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "current_memory": {
+            "type": "object",
+            "properties": { "scope": { "enum": ["full"] } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "longTermEntry": {
+      "type": "object",
+      "required": ["entry_id", "title", "memory_kind", "content", "source_refs"],
+      "properties": {
+        "entry_id": { "$ref": "#/$defs/stableId" },
+        "title": { "type": "string", "minLength": 1 },
+        "memory_kind": {
+          "enum": ["fact", "experience", "principle", "decision", "constraint", "other"]
+        },
+        "content": { "type": "string", "minLength": 1 },
+        "valid_from": { "type": "string", "format": "date-time" },
+        "valid_until": { "type": "string", "format": "date-time" },
+        "decision_context": { "$ref": "#/$defs/decisionContext" },
+        "source_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "search_hints": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": ["active", "disputed", "superseded", "rejected"]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "memory_kind": { "not": { "const": "decision" } } },
+            "required": ["memory_kind"]
+          },
+          "then": { "properties": { "decision_context": false } }
+        },
+        {
+          "if": {
+            "properties": {
+              "memory_kind": { "not": { "enum": ["fact", "constraint"] } }
+            },
+            "required": ["memory_kind"]
+          },
+          "then": {
+            "properties": {
+              "valid_from": false,
+              "valid_until": false
+            }
+          }
+        }
+      ]
+    },
+    "decisionContext": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "rejected_alternatives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["alternative", "reason"],
+            "properties": {
+              "alternative": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "playbook": {
+      "type": "object",
+      "required": [
+        "playbook_id",
+        "file_path",
+        "title",
+        "trigger",
+        "steps",
+        "checks",
+        "status",
+        "revision",
+        "updated_at",
+        "updated_by",
+        "source_refs"
+      ],
+      "properties": {
+        "playbook_id": { "$ref": "#/$defs/stableId" },
+        "file_path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\.xiaotao/playbooks/(?!(?:candidates|decisions)(?:/|$)).+\\.(?:md|markdown|yaml|yml)$"
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "string", "minLength": 1 },
+        "steps": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "checks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "status": { "const": "active" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "updated_by": { "type": "string", "minLength": 1 },
+        "source_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "followup_id": "cleanup-redis",
+  "title": "Clean up obsolete Redis cluster nodes",
+  "status": "pending",
+  "created_at": "2026-09-09T12:00:00Z",
+  "source_refs": [
+    ".xiaotao/evidence/performance.md"
+  ],
+  "extra_unknown_field": "disallowed"
+}

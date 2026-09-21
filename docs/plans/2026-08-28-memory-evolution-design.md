@@ -2,7 +2,7 @@
 
 ## Context
 
-Maestro already separates Temporary, Task, and Long-term Memory, invokes a Memory Worker at
+XiaoTao already separates Temporary, Task, and Long-term Memory, invokes a Memory Worker at
 durable boundaries, requires reachable source references, and gates Long-term promotion on review.
 The missing piece is a machine-checkable decision between extraction and review. A candidate can
 currently say only what it contains, not whether it should update, merge with, create, or skip a

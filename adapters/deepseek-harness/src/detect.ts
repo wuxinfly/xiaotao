@@ -4,7 +4,7 @@
  * This is a point-in-time status snapshot. Optional fs/tools enhancements use
  * child injections in index.ts so late services activate without blocking Core.
  *
- * @module @maestro-ai/dsh-adapter/detect
+ * @module @xiaotao-ai/dsh-adapter/detect
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -34,7 +34,7 @@ export function detectCapabilities(ctx: Context): Capabilities {
 export function assertSkills(capabilities: Capabilities): void {
   if (!capabilities.skills) {
     throw new Error(
-      '@maestro-ai/dsh-adapter requires the dsh skill registry (`ctx.skills`). ' +
+      '@xiaotao-ai/dsh-adapter requires the dsh skill registry (`ctx.skills`). ' +
         'Load a profile that includes the skill plugin (dsh-base ships it).',
     )
   }

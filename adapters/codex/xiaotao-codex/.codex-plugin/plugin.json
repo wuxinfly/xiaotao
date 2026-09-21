@@ -1,0 +1,17 @@
+{
+  "name": "xiaotao-codex",
+  "version": "0.1.0",
+  "description": "在 Codex Session 边界恢复 XiaoTao 规则和 Memory 入口。",
+  "author": {
+    "name": "IHongTaoI"
+  },
+  "interface": {
+    "displayName": "XiaoTao Codex",
+    "shortDescription": "压缩后恢复 XiaoTao 上下文。",
+    "longDescription": "面向 XiaoTao 项目的只读 SessionStart Hook。提供共享项目 Memory 路径和可选的项目本地 Core 提示，不加载历史内容，也不选择 Task。",
+    "developerName": "IHongTaoI",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "帮我使用 XiaoTao Codex。"
+  }
+}

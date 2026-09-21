@@ -1,7 +1,7 @@
 ---
 import '../styles/global.css';
 
-const repo = 'https://github.com/IHongTaoI/maestro-workflow';
+const repo = 'https://github.com/IHongTaoI/xiaotao';
 const capabilities = [
   { index: '01', title: '一个入口', lead: '只和小涛沟通', text: '不需要挑选专家，也不用跟踪内部过程。小涛负责理解目标、确认边界、组织执行，最后只把结果和真正需要你决定的事带回来。', tag: 'Xiao Tao' },
   { index: '02', title: '动态执行', lead: '让合适的 Worker 做合适的事', text: '调查、实现、验证按能力拆成边界明确的工作单元。每次委派都有目标、权限与交付格式，不靠固定角色堆叠复杂度。', tag: 'Workers · Handoff' },
@@ -24,16 +24,16 @@ const flow = [
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <meta name="description" content="Maestro 是面向结果、带项目记忆的 AI 软件协作工作流。只说目标，剩下的交给小涛。" />
+    <meta name="description" content="XiaoTao 是面向结果、带项目记忆的 AI 软件协作工作流。只说目标，剩下的交给小涛。" />
     <meta name="theme-color" content="#07090d" />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}/favicon.svg`} />
-    <title>Maestro — 只说目标，剩下的交给小涛</title>
+    <title>XiaoTao — 只说目标，剩下的交给小涛</title>
   </head>
   <body>
     <div class="page-noise" aria-hidden="true"></div>
     <header class="nav shell">
-      <a class="brand" href="#top" aria-label="Maestro 首页">
-        <span class="brand-mark">M</span><span>Maestro</span>
+      <a class="brand" href="#top" aria-label="XiaoTao 首页">
+        <span class="brand-mark">M</span><span>XiaoTao</span>
       </a>
       <nav aria-label="主导航">
         <a href="#principles">理念</a><a href="#workflow">流程</a><a href="#architecture">架构</a><a href="#start">开始</a>
@@ -45,13 +45,13 @@ const flow = [
       <section class="hero shell">
         <div class="eyebrow reveal"><span class="status-dot"></span> Persistent AI collaboration</div>
         <h1 class="reveal delay-1">只说目标，<br /><span>剩下的交给小涛。</span></h1>
-        <p class="hero-copy reveal delay-2">Maestro 是面向结果、带项目记忆的 AI 软件协作工作流。<br />一个入口，动态协作，跨会话持续推进。</p>
+        <p class="hero-copy reveal delay-2">XiaoTao 是面向结果、带项目记忆的 AI 软件协作工作流。<br />一个入口，动态协作，跨会话持续推进。</p>
         <div class="hero-actions reveal delay-3">
           <a class="button primary" href="#start">快速开始 <span>→</span></a>
           <a class="button secondary" href={repo} target="_blank" rel="noreferrer">查看 GitHub <span>↗</span></a>
         </div>
 
-        <div class="orchestra reveal delay-3" aria-label="Maestro 工作关系示意图">
+        <div class="orchestra reveal delay-3" aria-label="XiaoTao 工作关系示意图">
           <div class="orbital-ring ring-one"></div><div class="orbital-ring ring-two"></div>
           <div class="orbit-node node-memory"><i></i><span>Memory</span></div>
           <div class="orbit-node node-worker"><i></i><span>Worker</span></div>
@@ -68,7 +68,7 @@ const flow = [
       <section id="principles" class="section shell">
         <div class="section-head">
           <div><span class="kicker">01 / Philosophy</span><h2>复杂留在系统里，<br />清晰留给你。</h2></div>
-          <p>Maestro 不要求你学习一套复杂流程。你只需要表达目标，内部的记忆、委派与恢复机制负责让工作可靠地继续。</p>
+          <p>XiaoTao 不要求你学习一套复杂流程。你只需要表达目标，内部的记忆、委派与恢复机制负责让工作可靠地继续。</p>
         </div>
         <div class="principle-grid">
           <article class="principle"><span>RESULTS</span><div class="principle-icon result-icon"><i></i><i></i><i></i></div><h3>结果优先</h3><p>先给结论、风险和决策，不用实现过程淹没对话。</p></article>
@@ -89,7 +89,7 @@ const flow = [
       <section id="architecture" class="section shell">
         <div class="section-head">
           <div><span class="kicker">03 / Architecture</span><h2>一个 Core，<br />连接不同 AI 宿主。</h2></div>
-          <p>规则、记忆与协作模型属于项目。Adapter 只负责连接宿主能力，让 Maestro 不依赖某一个聊天窗口。</p>
+          <p>规则、记忆与协作模型属于项目。Adapter 只负责连接宿主能力，让 XiaoTao 不依赖某一个聊天窗口。</p>
         </div>
         <div class="architecture-card">
           <div class="arch-row user-row"><span class="arch-label">USER LAYER</span><div class="arch-main"><small>唯一用户入口</small><strong>小涛 · Xiao Tao</strong><p>理解目标 · 确认授权 · 判断结果 · 大白话汇报</p></div></div>
@@ -123,7 +123,7 @@ const flow = [
             <div class="terminal-top"><div><i></i><i></i><i></i></div><span>terminal</span><button type="button" aria-label="复制命令">COPY</button></div>
             <pre><code><span class="comment"># 克隆并安装依赖</span>
 <span class="prompt">$</span> git clone {repo}.git
-<span class="prompt">$</span> cd maestro-workflow
+<span class="prompt">$</span> cd xiaotao
 <span class="prompt">$</span> npm install
 
 <span class="comment"># 安装到 Codex</span>
@@ -133,14 +133,14 @@ const flow = [
       </section>
 
       <section class="final-cta shell">
-        <div class="cta-glow"></div><span class="kicker">Maestro Workflow</span>
+        <div class="cta-glow"></div><span class="kicker">XiaoTao Workflow</span>
         <h2>让 AI 记得项目，<br />也记得为什么这样做。</h2>
         <p>一个入口。动态协作。持续记忆。</p>
         <div class="hero-actions"><a class="button primary" href={repo} target="_blank" rel="noreferrer">View on GitHub <span>↗</span></a><a class="button secondary" href={`${repo}/issues`} target="_blank" rel="noreferrer">Report an Issue</a></div>
       </section>
     </main>
 
-    <footer class="footer shell"><a class="brand" href="#top"><span class="brand-mark">M</span><span>Maestro</span></a><p>Result-first workflow for persistent AI collaboration.</p><span>Open source on GitHub · MIT License</span></footer>
+    <footer class="footer shell"><a class="brand" href="#top"><span class="brand-mark">M</span><span>XiaoTao</span></a><p>Result-first workflow for persistent AI collaboration.</p><span>Open source on GitHub · MIT License</span></footer>
 
     <script>
       const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {

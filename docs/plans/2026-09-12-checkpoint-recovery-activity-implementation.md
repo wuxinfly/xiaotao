@@ -13,7 +13,7 @@
 ### Task 1: Version checkpoint observations
 
 **Files:**
-- Create: `maestro/references/schemas/checkpoint-observation.schema.json`
+- Create: `xiaotao/references/schemas/checkpoint-observation.schema.json`
 - Modify: `adapters/deepseek-harness/src/checkpoint.ts`
 - Test: `adapters/deepseek-harness/src/checkpoint.test.ts`
 
@@ -27,10 +27,10 @@
 ### Task 2: Derive checkpoint recovery Activity events
 
 **Files:**
-- Modify: `maestro/references/schemas/activity-event.schema.json`
-- Modify: `maestro/scripts/validate.py`
-- Modify: `maestro/scripts/activity_catalog.py`
-- Create: `maestro/references/scenarios/validator-fixtures/activity-event-checkpoint-recovered-valid.json`
+- Modify: `xiaotao/references/schemas/activity-event.schema.json`
+- Modify: `xiaotao/scripts/validate.py`
+- Modify: `xiaotao/scripts/activity_catalog.py`
+- Create: `xiaotao/references/scenarios/validator-fixtures/activity-event-checkpoint-recovered-valid.json`
 - Test: `test/activity-catalog.test.js`
 
 **Steps:**
@@ -44,8 +44,8 @@
 ### Task 3: Align lifecycle documentation and contracts
 
 **Files:**
-- Modify: `maestro/references/activity.md`
-- Modify: `maestro/references/storage.md`
+- Modify: `xiaotao/references/activity.md`
+- Modify: `xiaotao/references/storage.md`
 - Modify: `docs/architecture/checkpoint-contract.md`
 - Modify: `docs/manual-acceptance.md`
 - Modify: `scripts/verify-contracts.ps1`

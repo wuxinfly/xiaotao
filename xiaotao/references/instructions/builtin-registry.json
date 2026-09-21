@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "xiaotao-instructions",
+  "source": "builtin",
+  "instructions": [
+    { "ref": "contract:handoff", "source_scope": "core", "source_paths": ["references/handoffs.md"] },
+    { "ref": "policy:safety-boundary", "source_scope": "core", "source_paths": ["references/workers.md", "references/coordination.md"] },
+    { "ref": "policy:core-guard", "source_scope": "core", "source_paths": ["references/guard.md"] },
+    { "ref": "practice:requirements", "source_scope": "core", "source_paths": ["references/practices/requirements.md"] },
+    { "ref": "practice:investigation", "source_scope": "core", "source_paths": ["references/practices/investigation.md"] },
+    { "ref": "practice:design", "source_scope": "core", "source_paths": ["references/practices/design.md"] },
+    { "ref": "practice:work-planning", "source_scope": "core", "source_paths": ["references/practices/work-planning.md"] },
+    { "ref": "practice:implementation", "source_scope": "core", "source_paths": ["references/practices/implementation.md"] },
+    { "ref": "practice:verification", "source_scope": "core", "source_paths": ["references/practices/verification.md"] },
+    { "ref": "practice:delivery", "source_scope": "core", "source_paths": ["references/practices/delivery.md"] },
+    { "ref": "practice:memory-merge", "source_scope": "core", "source_paths": ["references/practices/memory-merge.md"] }
+  ]
+}

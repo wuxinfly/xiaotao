@@ -2,19 +2,19 @@ export const HOSTS = Object.freeze({
   codex: Object.freeze({
     id: 'codex',
     name: 'Codex / shared Agent Skills',
-    skillDir: '.agents/skills/maestro',
+    skillDir: '.agents/skills/xiaotao',
     detectionPaths: ['.agents/skills', '.codex'],
   }),
   claude: Object.freeze({
     id: 'claude',
     name: 'Claude Code',
-    skillDir: '.claude/skills/maestro',
+    skillDir: '.claude/skills/xiaotao',
     detectionPaths: ['.claude'],
   }),
   opencode: Object.freeze({
     id: 'opencode',
     name: 'OpenCode',
-    skillDir: '.opencode/skills/maestro',
+    skillDir: '.opencode/skills/xiaotao',
     detectionPaths: ['.opencode'],
   }),
 });

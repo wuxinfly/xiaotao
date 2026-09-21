@@ -1,0 +1,9 @@
+{
+  "event_id": "activity-20260912-abcdef123456",
+  "occurred_at": "2026-09-12T02:00:00Z",
+  "event_type": "worker_approved",
+  "title": "小林（运行时排查）",
+  "summary": "批准 Worker runtime-investigator 进入 registry project-workers revision 3",
+  "source_refs": ["xiaotao/references/scenarios/validator-fixtures/activity-event-worker-approved-valid.json"],
+  "status": "completed"
+}

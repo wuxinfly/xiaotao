@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { recoveryContext } from '../adapters/codex/maestro-codex/scripts/session-start.mjs';
+import { recoveryContext } from '../adapters/codex/xiaotao-codex/scripts/session-start.mjs';
 
 const json = async filePath => JSON.parse(await readFile(filePath, 'utf8'));
 
 test('Core Guard markdown file defines the 4 invariant boundaries and satisfies token budget', async () => {
-  const guardDoc = await readFile('maestro/references/guard.md', 'utf8');
+  const guardDoc = await readFile('xiaotao/references/guard.md', 'utf8');
 
   // Hard character budget: < 1200 characters for the canonical prompt text block
   const promptMatch = guardDoc.match(/```text\r?\n([\s\S]+?)\r?\n```/);
@@ -43,13 +43,13 @@ test('Core Guard markdown file defines the 4 invariant boundaries and satisfies 
   assert.match(canonicalPrompt, /In-Session 回退/);
 
   // 4. Bounded Cognition & 4-tier routing (严禁直接读 index.json、四层路由、按需加载)
-  assert.match(canonicalPrompt, /严禁直接 Read\/cat 完整 \.maestro\/memory\/index\.json/);
+  assert.match(canonicalPrompt, /严禁直接 Read\/cat 完整 \.xiaotao\/memory\/index\.json/);
   assert.match(canonicalPrompt, /overview.*recent.*search.*show/);
   assert.match(canonicalPrompt, /按需加载/);
 });
 
 test('builtin instructions registry includes policy:core-guard and references guard.md', async () => {
-  const instructions = await json('maestro/references/instructions/builtin-registry.json');
+  const instructions = await json('xiaotao/references/instructions/builtin-registry.json');
   const guardEntry = instructions.instructions.find(i => i.ref === 'policy:core-guard');
   assert.ok(guardEntry, 'policy:core-guard must be defined in builtin registry');
   assert.equal(guardEntry.source_scope, 'core');
@@ -65,20 +65,20 @@ test('builtin instructions registry includes policy:core-guard and references gu
 
   for (const item of instructions.instructions) {
     for (const source of item.source_paths) {
-      await access(`maestro/${source}`);
+      await access(`xiaotao/${source}`);
     }
   }
 });
 
 test('Memory Worker request and response schemas enforce bounded input and proposal-only output', async () => {
   const requestSchema = await json(
-    'maestro/references/schemas/memory-worker-request.schema.json',
+    'xiaotao/references/schemas/memory-worker-request.schema.json',
   );
   const responseSchema = await json(
-    'maestro/references/schemas/memory-worker-response.schema.json',
+    'xiaotao/references/schemas/memory-worker-response.schema.json',
   );
   const sourceSchema = await json(
-    'maestro/references/schemas/memory-source.schema.json',
+    'xiaotao/references/schemas/memory-source.schema.json',
   );
 
   // Request schema requires bounded inputs: operation, source_files, current_memory, current_playbooks
@@ -105,13 +105,13 @@ test('Memory Worker request and response schemas enforce bounded input and propo
 });
 
 test('Codex SessionStart reminder satisfies Core Guard invariants and length budget', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'maestro-guard-test-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-guard-test-'));
   t.after(() => rm(root, { recursive: true, force: true }));
 
-  await mkdir(path.join(root, '.maestro'), { recursive: true });
+  await mkdir(path.join(root, '.xiaotao'), { recursive: true });
   await writeFile(
-    path.join(root, '.maestro/installation.json'),
-    JSON.stringify({ package: 'maestro-ai-workflow', schema_version: 1, tools: ['codex'] }),
+    path.join(root, '.xiaotao/installation.json'),
+    JSON.stringify({ package: 'xiaotao-ai-workflow', schema_version: 1, tools: ['codex'] }),
   );
 
   const event = {

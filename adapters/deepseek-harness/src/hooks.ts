@@ -1,10 +1,10 @@
 /**
  * Session-lifecycle hooks (capability plugin, skeleton): observe dsh agent
  * events and hand the adapter a deterministic, host-specific trigger for
- * Maestro's Handoff / session-boundary checks.
+ * XiaoTao's Handoff / session-boundary checks.
  *
  * The boundary is deliberate: the adapter only decides *when* a hook fires
- * (a turn stopping, a session starting). It never decides *what* Maestro does
+ * (a turn stopping, a session starting). It never decides *what* XiaoTao does
  * with that signal — that stays in the Core Skill. This module is a mount
  * point, not business logic.
  *
@@ -13,7 +13,7 @@
  * agent rather than one scoped agent. `agent/turn-stopping` is serial and has
  * no `next()`.
  *
- * @module @maestro-ai/dsh-adapter/hooks
+ * @module @xiaotao-ai/dsh-adapter/hooks
  */
 
 import { readFile, readdir, stat } from 'node:fs/promises'
@@ -30,11 +30,11 @@ import type { AutoCheckpointConfig } from './types'
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 
-const MEMORY_FIRST_RUNTIME_RULE = `## Maestro 工作规则
+const MEMORY_FIRST_RUNTIME_RULE = `## XiaoTao 工作规则
 
-你面向用户时的唯一身份是“小涛”。不要自称执行者、Worker、Agent 或 Maestro 工作流；使用简洁的大白话，先说结果，只在用户需要时补充过程。
+你面向用户时的唯一身份是“小涛”。不要自称执行者、Worker、Agent 或 XiaoTao 工作流；使用简洁的大白话，先说结果，只在用户需要时补充过程。
 
-当用户询问项目现有逻辑、历史原因、设计决策、旧问题或以前做过的工作时，必须先加载 Maestro Skill，使用用户问题中的关键词执行一次有界 Memory Catalog \`search\`。命中后最多 \`show\` 3 条相关记忆，再检查当前代码；未命中再直接检查代码。不得因为可以搜索代码而跳过记忆搜索。记忆只提供线索，最终以当前代码和可验证证据为准。`
+当用户询问项目现有逻辑、历史原因、设计决策、旧问题或以前做过的工作时，必须先加载 XiaoTao Skill，使用用户问题中的关键词执行一次有界 Memory Catalog \`search\`。命中后最多 \`show\` 3 条相关记忆，再检查当前代码；未命中再直接检查代码。不得因为可以搜索代码而跳过记忆搜索。记忆只提供线索，最终以当前代码和可验证证据为准。`
 
 interface RecoverableCheckpointInfo {
   status?: 'committed' | 'pending'
@@ -124,9 +124,9 @@ async function findRecoverableCheckpointDsh(
     }
   }
 
-  // 1. Task checkpoints: .maestro/tasks/*/references/checkpoints/*.json and progress.md
+  // 1. Task checkpoints: .xiaotao/tasks/*/references/checkpoints/*.json and progress.md
   try {
-    const tasksDir = path.join(projectRoot, '.maestro/tasks')
+    const tasksDir = path.join(projectRoot, '.xiaotao/tasks')
     const taskEntries = await readdir(tasksDir)
     for (const t of taskEntries) {
       if (t === 'archive' || t.startsWith('.')) continue
@@ -147,9 +147,9 @@ async function findRecoverableCheckpointDsh(
     }
   } catch {}
 
-  // 2. Temporary checkpoints: .maestro/memory/temporary/active/*/references/checkpoints/*.json and current.md
+  // 2. Temporary checkpoints: .xiaotao/memory/temporary/active/*/references/checkpoints/*.json and current.md
   try {
-    const tempDir = path.join(projectRoot, '.maestro/memory/temporary/active')
+    const tempDir = path.join(projectRoot, '.xiaotao/memory/temporary/active')
     const tempEntries = await readdir(tempDir)
     for (const t of tempEntries) {
       if (t.startsWith('.')) continue
@@ -170,8 +170,8 @@ async function findRecoverableCheckpointDsh(
     }
   } catch {}
 
-  // 3. Project checkpoints: .maestro/checkpoints/*.json
-  await scanTargetCheckpoints('session', 'session', path.join(projectRoot, '.maestro/checkpoints'), null, 0)
+  // 3. Project checkpoints: .xiaotao/checkpoints/*.json
+  await scanTargetCheckpoints('session', 'session', path.join(projectRoot, '.xiaotao/checkpoints'), null, 0)
 
   if (candidates.length === 0) return null
 
@@ -275,11 +275,11 @@ function formatBoundedRuntimeContextDsh(options: {
 
 /**
  * Detect whether projectRoot has any authoritative source files for memory/tasks/checkpoints.
- * Derived files like .maestro/memory/index.json or manifest.md are NOT authoritative sources.
+ * Derived files like .xiaotao/memory/index.json or manifest.md are NOT authoritative sources.
  */
 export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
   try {
-    const tasksDir = path.join(projectRoot, '.maestro/tasks')
+    const tasksDir = path.join(projectRoot, '.xiaotao/tasks')
     if (existsSync(tasksDir)) {
       const taskEntries = readdirSync(tasksDir)
       for (const t of taskEntries) {
@@ -296,7 +296,7 @@ export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
   } catch {}
 
   try {
-    const tempDir = path.join(projectRoot, '.maestro/memory/temporary/active')
+    const tempDir = path.join(projectRoot, '.xiaotao/memory/temporary/active')
     if (existsSync(tempDir)) {
       const tempEntries = readdirSync(tempDir)
       for (const t of tempEntries) {
@@ -313,7 +313,7 @@ export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
   } catch {}
 
   try {
-    const ltDir = path.join(projectRoot, '.maestro/memory/long-term/entries')
+    const ltDir = path.join(projectRoot, '.xiaotao/memory/long-term/entries')
     if (existsSync(ltDir)) {
       const ltEntries = readdirSync(ltDir)
       if (ltEntries.some(e => e.endsWith('.md'))) return true
@@ -321,12 +321,12 @@ export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
   } catch {}
 
   try {
-    if (existsSync(path.join(projectRoot, '.maestro/memory/long-term/current.md'))) return true
-    if (existsSync(path.join(projectRoot, '.maestro/memory/legacy/memory.md'))) return true
+    if (existsSync(path.join(projectRoot, '.xiaotao/memory/long-term/current.md'))) return true
+    if (existsSync(path.join(projectRoot, '.xiaotao/memory/legacy/memory.md'))) return true
   } catch {}
 
   try {
-    const fuDir = path.join(projectRoot, '.maestro/memory/followups/pending')
+    const fuDir = path.join(projectRoot, '.xiaotao/memory/followups/pending')
     if (existsSync(fuDir)) {
       const fuEntries = readdirSync(fuDir)
       if (fuEntries.some(e => e.endsWith('.yaml') || e.endsWith('.yml'))) return true
@@ -334,7 +334,7 @@ export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
   } catch {}
 
   try {
-    const chkDir = path.join(projectRoot, '.maestro/checkpoints')
+    const chkDir = path.join(projectRoot, '.xiaotao/checkpoints')
     if (existsSync(chkDir)) {
       const chkEntries = readdirSync(chkDir)
       if (chkEntries.some(e => e.endsWith('.json') && !e.includes('.failed-'))) return true
@@ -345,7 +345,7 @@ export function hasAuthoritativeSourcesDsh(projectRoot: string): boolean {
 }
 
 /**
- * Load bounded Runtime Context summary from `.maestro/memory/index.json`.
+ * Load bounded Runtime Context summary from `.xiaotao/memory/index.json`.
  * If no active Task, Temporary, follow-up, or recoverable checkpoint exist, returns null.
  */
 export async function loadBoundedRuntimeContext(
@@ -364,10 +364,10 @@ export async function loadBoundedRuntimeContext(
       const candidateScripts = [
         path.resolve(currentDir, 'core/scripts/memory_catalog.py'),
         path.resolve(currentDir, '../lib/core/scripts/memory_catalog.py'),
-        path.resolve(currentDir, '../../../maestro/scripts/memory_catalog.py'),
-        path.join(projectRoot, 'maestro/scripts/memory_catalog.py'),
-        path.join(projectRoot, '.agents/skills/maestro/scripts/memory_catalog.py'),
-        path.join(projectRoot, '.maestro/scripts/memory_catalog.py'),
+        path.resolve(currentDir, '../../../xiaotao/scripts/memory_catalog.py'),
+        path.join(projectRoot, 'xiaotao/scripts/memory_catalog.py'),
+        path.join(projectRoot, '.agents/skills/xiaotao/scripts/memory_catalog.py'),
+        path.join(projectRoot, '.xiaotao/scripts/memory_catalog.py'),
       ]
       let scriptPath: string | null = null
       for (const p of candidateScripts) {
@@ -377,7 +377,7 @@ export async function loadBoundedRuntimeContext(
         }
       }
 
-      if (scriptPath && process.env.MAESTRO_FORCE_PYTHON_FAIL !== '1') {
+      if (scriptPath && process.env.XIAOTAO_FORCE_PYTHON_FAIL !== '1') {
         try {
           const pyCandidates = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
           for (const python of pyCandidates) {
@@ -413,7 +413,7 @@ export async function loadBoundedRuntimeContext(
     const checkpoint = await findRecoverableCheckpointDsh(projectRoot)
     return formatBoundedRuntimeContextDsh({
       checkpoint,
-      degradedWarning: '检测到项目存在 Maestro 权威工作源，但启动时没有可用的 Catalog 快照。无需在新会话中自动重建；处理具体问题时再按需刷新。',
+      degradedWarning: '检测到项目存在 XiaoTao 权威工作源，但启动时没有可用的 Catalog 快照。无需在新会话中自动重建；处理具体问题时再按需刷新。',
     })
   } catch {
     return null
@@ -423,7 +423,7 @@ export async function loadBoundedRuntimeContext(
 /**
  * Queue bounded Runtime Context for the next real agent request if active work exists.
  * `agent.inject()` is intentionally non-waking: session startup must not create
- * an autonomous model turn merely because a project has Maestro state.
+ * an autonomous model turn merely because a project has XiaoTao state.
  * Returns true if context was injected, false otherwise.
  */
 export async function injectSessionRuntimeContext(
@@ -435,22 +435,22 @@ export async function injectSessionRuntimeContext(
   // back to process.cwd(): one DSH host can serve sessions from many projects.
   if (typeof projectRoot !== 'string' || !path.isAbsolute(projectRoot)) return false
   const runtimeContext = await loadBoundedRuntimeContext(projectRoot, fs)
-  // Even a Maestro project without active work still needs the memory-first
+  // Even a XiaoTao project without active work still needs the memory-first
   // routing rule. This check is metadata-only and never scans memory sources.
-  if (!runtimeContext && !existsSync(path.join(projectRoot, '.maestro'))) return false
+  if (!runtimeContext && !existsSync(path.join(projectRoot, '.xiaotao'))) return false
   payload.agent.inject(createUserMessage({
     content: [{
       type: 'text',
       // Keep this routing rule in the always-injected plugin context. Putting
       // it only in Core SKILL.md is insufficient when the host starts solving
-      // a code question before explicitly loading the Maestro Skill.
+      // a code question before explicitly loading the XiaoTao Skill.
       text: runtimeContext
         ? `${runtimeContext}\n\n${MEMORY_FIRST_RUNTIME_RULE}`
         : MEMORY_FIRST_RUNTIME_RULE,
     }],
     source: {
       kind: 'plugin',
-      plugin: 'maestro-runtime-context',
+      plugin: 'xiaotao-runtime-context',
       form: 'notice',
       summary: '当前项目存在活动工作，已注入运行时上下文。',
     },
@@ -460,7 +460,7 @@ export async function injectSessionRuntimeContext(
 
 
 
-const AUTO_SOURCE = 'maestro-auto-checkpoint'
+const AUTO_SOURCE = 'xiaotao-auto-checkpoint'
 const DEFAULT_PRESSURE_THRESHOLD = 0.72
 const DEFAULT_COOLDOWN_TURNS = 2
 const DEFAULT_TIMEOUT_MS = 1_000
@@ -506,7 +506,7 @@ function boundedInteger(value: number | undefined, fallback: number, min: number
   name: string): number {
   const selected = value ?? fallback
   if (!Number.isSafeInteger(selected) || selected < min || selected > max) {
-    throw new Error(`maestro-adapter: ${name} must be an integer from ${min} to ${max}`)
+    throw new Error(`xiaotao-adapter: ${name} must be an integer from ${min} to ${max}`)
   }
   return selected
 }
@@ -514,7 +514,7 @@ function boundedInteger(value: number | undefined, fallback: number, min: number
 function pressureThreshold(value: number | undefined): number {
   const selected = value ?? DEFAULT_PRESSURE_THRESHOLD
   if (!Number.isFinite(selected) || selected < 0.5 || selected > 0.95) {
-    throw new Error('maestro-adapter: checkpoint.auto.pressureThreshold must be from 0.5 to 0.95')
+    throw new Error('xiaotao-adapter: checkpoint.auto.pressureThreshold must be from 0.5 to 0.95')
   }
   return selected
 }
@@ -533,7 +533,7 @@ function nestedText(value: unknown): string {
 function checkpointCalls(events: readonly SessionEvent[]): Map<string, { seq: number; turn: number }> {
   const calls = new Map<string, { seq: number; turn: number }>()
   for (const event of events) {
-    if (event?.type !== 'tool/call' || event.data?.name !== 'maestro_checkpoint') continue
+    if (event?.type !== 'tool/call' || event.data?.name !== 'xiaotao_checkpoint') continue
     try {
       const args = JSON.parse(event.data.arguments) as { operation?: unknown }
       if (args.operation === 'save' || args.operation === 'retry') {
@@ -674,9 +674,9 @@ export class AutoCheckpointCoordinator {
       content: [{
         type: 'text',
         text: [
-          `Maestro 自动 checkpoint 触发：预计下一次模型请求约占上下文窗口 ${percent}%，达到配置阈值。`,
+          `XiaoTao 自动 checkpoint 触发：预计下一次模型请求约占上下文窗口 ${percent}%，达到配置阈值。`,
           '这是 DSH 的真实 turn-stopping 压力提醒，不是 pre-compaction 事件。',
-          '请先判断当前工作是否产生了值得恢复的新进展。若有，只选择当前相关且已存在的活动 Temporary 或 Task，调用 maestro_checkpoint：先 inspect，再用同一 revision/hash 执行 save；失败时保留同一 request_id 并按 status/retry 处理。',
+          '请先判断当前工作是否产生了值得恢复的新进展。若有，只选择当前相关且已存在的活动 Temporary 或 Task，调用 xiaotao_checkpoint：先 inspect，再用同一 revision/hash 执行 save；失败时保留同一 request_id 并按 status/retry 处理。',
           '不要创建新 Task，不要恢复无关旧任务，不要扩大权限，也不要向用户展开保存过程。若没有可安全选择的活动目标，则跳过并继续正常结束。',
         ].join('\n'),
       }],
@@ -684,7 +684,7 @@ export class AutoCheckpointCoordinator {
         kind: 'plugin',
         plugin: `${AUTO_SOURCE}/turn-${payload.turn}`,
         form: 'notice',
-        summary: '上下文压力达到阈值，先检查是否需要保存 Maestro checkpoint。',
+        summary: '上下文压力达到阈值，先检查是否需要保存 XiaoTao checkpoint。',
       },
     }))
     return 'triggered'
@@ -719,14 +719,14 @@ export function registerLifecycleHooks(ctx: Context, handlers: LifecycleHandlers
         const deadline = new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             timeout.abort(new Error('lifecycle hook timeout'))
-            ctx.logger.warn(`maestro-adapter: onTurnStopping listener timed out after ${timeoutMs}ms`)
+            ctx.logger.warn(`xiaotao-adapter: onTurnStopping listener timed out after ${timeoutMs}ms`)
             resolve()
           }, timeoutMs)
         })
         const handled = Promise.resolve()
           .then(() => onTurnStopping({ ...payload, signal }))
           .catch((error: unknown) => {
-            ctx.logger.warn(`maestro-adapter: onTurnStopping listener failed: ${String(error)}`)
+            ctx.logger.warn(`xiaotao-adapter: onTurnStopping listener failed: ${String(error)}`)
           })
         return Promise.race([handled, deadline]).finally(() => {
           if (timer !== undefined) clearTimeout(timer)
@@ -745,11 +745,11 @@ export function registerLifecycleHooks(ctx: Context, handlers: LifecycleHandlers
           const handled = onSessionStart(payload)
           if (handled instanceof Promise) {
             handled.catch((error: unknown) => {
-              ctx.logger.warn(`maestro-adapter: onSessionStart listener failed: ${String(error)}`)
+              ctx.logger.warn(`xiaotao-adapter: onSessionStart listener failed: ${String(error)}`)
             })
           }
         } catch (error: unknown) {
-          ctx.logger.warn(`maestro-adapter: onSessionStart listener failed: ${String(error)}`)
+          ctx.logger.warn(`xiaotao-adapter: onSessionStart listener failed: ${String(error)}`)
         }
       },
       { global: true },

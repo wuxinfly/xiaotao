@@ -2,7 +2,7 @@
 
 ## Context
 
-Maestro Core models a Worker as a bounded unit executed through the host's native subagent
+XiaoTao Core models a Worker as a bounded unit executed through the host's native subagent
 mechanism. The Codex recovery plugin currently reminds the model about delegation boundaries but
 does not distinguish a spawned subagent from a separate user-owned Codex task or conversation.
 Observed runs can therefore try `create_thread` before discovering the native subagent capability.
@@ -15,7 +15,7 @@ Codex Adapter rather than the portable Core.
 ## Selected design
 
 Extend the existing bounded `SessionStart.additionalContext` reminder with one short Codex mapping
-rule. A bounded Maestro Worker uses an available Codex-native subagent capability. A separate
+rule. A bounded XiaoTao Worker uses an available Codex-native subagent capability. A separate
 user-owned Codex task or conversation is created only when the user explicitly requests one. The
 text names `spawn_agent` only as a current example and must not claim that a particular API is
 always present.
@@ -28,8 +28,8 @@ separate display-name field.
 
 ## Scope and verification
 
-This behavior is guaranteed only when the Maestro Codex Adapter is installed, enabled, trusted, and
-its `SessionStart` Hook runs for a valid Maestro project. It does not modify Core or other adapters.
+This behavior is guaranteed only when the XiaoTao Codex Adapter is installed, enabled, trusted, and
+its `SessionStart` Hook runs for a valid XiaoTao project. It does not modify Core or other adapters.
 Unit tests assert the semantic prompt contract without pretending to execute model tool selection.
 The Codex guide records three manual acceptance paths: Worker delegation, explicit separate-task
 creation, and graceful behavior when subagent capability is unavailable.

@@ -1,8 +1,8 @@
-# Maestro Reliability Contracts Design
+# XiaoTao Reliability Contracts Design
 
 ## Requirements
 
-Issue #6 asks Maestro to become safer across Sessions, Tasks, role runs, and concurrent writes
+Issue #6 asks XiaoTao to become safer across Sessions, Tasks, role runs, and concurrent writes
 without adding a standalone Runtime or turning dynamic delegation into a fixed workflow. The design
 must prevent silent stale-state replacement, carry blocking questions in lightweight Handoffs,
 separate exploration from execution, require fresh authority for high-risk actions, keep durable
@@ -61,7 +61,7 @@ remains Temporary and requires one concise confirmation.
 
 ### Authorization
 
-Internal read-only work, non-destructive verification, Maestro state maintenance, and role
+Internal read-only work, non-destructive verification, XiaoTao state maintenance, and role
 delegation are autonomous within approved scope. Deploying, publishing, releasing, externally
 visible Git writes without prior authority, destructive or irreversible operations, access-control
 changes, secret operations, and material scope expansion require explicit authorization close to

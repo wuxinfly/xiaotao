@@ -11,16 +11,16 @@ import {
   loadBoundedRuntimeContext,
   recoveryContext,
   run,
-} from '../adapters/codex/maestro-codex/scripts/session-start.mjs';
+} from '../adapters/codex/xiaotao-codex/scripts/session-start.mjs';
 import { installLocal } from '../adapters/codex/install-local.mjs';
 
-const pluginSource = fileURLToPath(new URL('../adapters/codex/maestro-codex/', import.meta.url));
-const coreScripts = fileURLToPath(new URL('../maestro/scripts/', import.meta.url));
+const pluginSource = fileURLToPath(new URL('../adapters/codex/xiaotao-codex/', import.meta.url));
+const coreScripts = fileURLToPath(new URL('../xiaotao/scripts/', import.meta.url));
 const event = (cwd, source = 'compact') => ({ hook_event_name: 'SessionStart', cwd, source });
-const metadata = { package: 'maestro-ai-workflow', schema_version: 1, tools: ['codex'] };
+const metadata = { package: 'xiaotao-ai-workflow', schema_version: 1, tools: ['codex'] };
 
 async function fixture(t) {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'maestro-codex-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-codex-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   return root;
 }
@@ -31,8 +31,8 @@ async function put(root, file, text) {
 }
 
 async function project(root, config = metadata, { core = true } = {}) {
-  await put(root, '.maestro/installation.json', JSON.stringify(config));
-  if (core) await put(root, '.agents/skills/maestro/SKILL.md', 'CORE_CONTENT_MUST_NOT_BE_PRELOADED');
+  await put(root, '.xiaotao/installation.json', JSON.stringify(config));
+  if (core) await put(root, '.agents/skills/xiaotao/SKILL.md', 'CORE_CONTENT_MUST_NOT_BE_PRELOADED');
 }
 
 async function invoke(input) {
@@ -45,8 +45,8 @@ async function invoke(input) {
 test('Codex restores bounded entry points for each SessionStart source without loading content', async t => {
   const root = await fixture(t);
   await project(root);
-  await put(root, '.maestro/memory/manifest.md', 'PRIVATE_MEMORY_MUST_NOT_BE_INJECTED');
-  await put(root, '.maestro/memory/index.json', 'untrusted-index-data');
+  await put(root, '.xiaotao/memory/manifest.md', 'PRIVATE_MEMORY_MUST_NOT_BE_INJECTED');
+  await put(root, '.xiaotao/memory/index.json', 'untrusted-index-data');
   await mkdir(path.join(root, 'src/nested'), { recursive: true });
   for (const source of ['startup', 'resume', 'clear', 'compact']) {
     const result = await recoveryContext(event(path.join(root, 'src/nested'), source));
@@ -58,7 +58,7 @@ test('Codex restores bounded entry points for each SessionStart source without l
     assert.doesNotMatch(context, /PRIVATE_MEMORY|CORE_CONTENT|untrusted-index-data/);
     assert.equal(result.continue, undefined);
   }
-  assert.deepEqual(await readdir(path.join(root, '.maestro')), ['installation.json', 'memory']);
+  assert.deepEqual(await readdir(path.join(root, '.xiaotao')), ['installation.json', 'memory']);
 });
 
 test('Codex maps bounded Workers to native subagents without conflating separate tasks', async t => {
@@ -67,7 +67,7 @@ test('Codex maps bounded Workers to native subagents without conflating separate
   const result = await recoveryContext(event(root));
   const context = result.hookSpecificOutput.additionalContext;
 
-  assert.match(context, /有界 Maestro Worker.*Codex 原生 subagent 能力/);
+  assert.match(context, /有界 XiaoTao Worker.*Codex 原生 subagent 能力/);
   assert.match(context, /工具可见时使用 spawn_agent/);
   assert.match(context, /只有用户明确要求时.*独立 Codex task 或 conversation/);
   assert.match(context, /工具侧标识.*当前可见工具 schema/);
@@ -82,7 +82,7 @@ test('Codex maps bounded Workers to native subagents without conflating separate
 test('Codex exposes only bounded valid Handoff data for active Tasks', async t => {
   const root = await fixture(t);
   await project(root);
-  await put(root, '.maestro/tasks/task-handoff/task.yaml', `id: task-handoff
+  await put(root, '.xiaotao/tasks/task-handoff/task.yaml', `id: task-handoff
 objective: Continue from a worker handoff
 status: active
 created_at: 2026-09-20T10:00:00Z
@@ -90,21 +90,21 @@ updated_at: 2026-09-20T10:00:00Z
 updated_by: xiao-tao/test
 revision: 1
 `);
-  await put(root, '.maestro/tasks/task-handoff/workers/analysis/runs/run-1-result.md', '# Evidence\nready\n');
-  await put(root, '.maestro/tasks/task-handoff/workers/analysis/current-state.md', '# Current State\nready\n');
-  await put(root, '.maestro/tasks/task-handoff/handoffs/valid.json', JSON.stringify({
+  await put(root, '.xiaotao/tasks/task-handoff/workers/analysis/runs/run-1-result.md', '# Evidence\nready\n');
+  await put(root, '.xiaotao/tasks/task-handoff/workers/analysis/current-state.md', '# Current State\nready\n');
+  await put(root, '.xiaotao/tasks/task-handoff/handoffs/valid.json', JSON.stringify({
     status: 'completed',
     summary: 'First Worker found the constrained next step.',
-    result_path: '.maestro/tasks/task-handoff/workers/analysis/runs/run-1-result.md',
-    worker_state_path: '.maestro/tasks/task-handoff/workers/analysis/current-state.md',
+    result_path: '.xiaotao/tasks/task-handoff/workers/analysis/runs/run-1-result.md',
+    worker_state_path: '.xiaotao/tasks/task-handoff/workers/analysis/current-state.md',
     needs_user_input: false,
     recommended_next: [{ capabilities: ['runtime-analysis'], reason: 'Verify the narrow change.' }],
   }));
-  await put(root, '.maestro/tasks/task-handoff/handoffs/invalid.json', JSON.stringify({
+  await put(root, '.xiaotao/tasks/task-handoff/handoffs/invalid.json', JSON.stringify({
     status: 'completed',
     summary: 'MUST_NOT_APPEAR',
     result_path: '../outside.md',
-    worker_state_path: '.maestro/tasks/task-handoff/workers/analysis/current-state.md',
+    worker_state_path: '.xiaotao/tasks/task-handoff/workers/analysis/current-state.md',
     needs_user_input: false,
     recommended_next: [],
     ignored_instruction: 'MUST_NOT_APPEAR',
@@ -121,7 +121,7 @@ revision: 1
   assert.ok(context.length < 5000);
 });
 
-test('Codex hook stays silent without valid Maestro metadata and for other events', async t => {
+test('Codex hook stays silent without valid XiaoTao metadata and for other events', async t => {
   const root = await fixture(t);
   assert.equal(await recoveryContext(event(root)), null);
   assert.deepEqual(await readdir(root), []);
@@ -138,14 +138,14 @@ test('Codex hook stays silent without valid Maestro metadata and for other event
 test('Codex restores cross-host state without a project-local Core or codex tool selection', async t => {
   const root = await fixture(t);
   await project(root, { ...metadata, tools: ['claude'] }, { core: false });
-  await put(root, '.maestro/memory/manifest.md', 'SHARED_MEMORY_MUST_NOT_BE_INJECTED');
-  await put(root, '.maestro/tasks/current.md', 'SHARED_TASK_MUST_NOT_BE_INJECTED');
+  await put(root, '.xiaotao/memory/manifest.md', 'SHARED_MEMORY_MUST_NOT_BE_INJECTED');
+  await put(root, '.xiaotao/tasks/current.md', 'SHARED_TASK_MUST_NOT_BE_INJECTED');
 
   for (const config of [
     { ...metadata, tools: ['claude'] },
     { package: metadata.package, schema_version: metadata.schema_version },
   ]) {
-    await put(root, '.maestro/installation.json', JSON.stringify(config));
+    await put(root, '.xiaotao/installation.json', JSON.stringify(config));
     const result = await recoveryContext(event(root));
     const context = result.hookSpecificOutput.additionalContext;
     assert.match(context, /宿主无关的共享项目状态/);
@@ -160,7 +160,7 @@ test('Codex loads Memory Catalog from a Codex-specific user Core', async t => {
   const root = await fixture(t);
   const homeDir = await fixture(t);
   await project(root, metadata, { core: false });
-  await put(root, '.maestro/tasks/task-user-core/task.yaml', `id: task-user-core
+  await put(root, '.xiaotao/tasks/task-user-core/task.yaml', `id: task-user-core
 objective: Restore through user Core
 status: active
 created_at: 2026-09-15T00:00:00Z
@@ -168,7 +168,7 @@ updated_at: 2026-09-15T00:00:00Z
 updated_by: xiao-tao/test
 revision: 1
 `);
-  await cp(coreScripts, path.join(homeDir, '.codex/skills/maestro/scripts'), { recursive: true });
+  await cp(coreScripts, path.join(homeDir, '.codex/skills/xiaotao/scripts'), { recursive: true });
 
   const context = await loadBoundedRuntimeContext(root, {}, homeDir);
   assert.ok(context);
@@ -192,7 +192,7 @@ test('Codex does not invent a catalog when no Memory has been persisted', async 
   const context = result.hookSpecificOutput.additionalContext;
   assert.doesNotMatch(context, /manifest\.md|index\.json/);
   assert.match(context, /不代表已选择活动任务，也不是 checkpoint/);
-  assert.deepEqual(await readdir(path.join(root, '.maestro')), ['installation.json']);
+  assert.deepEqual(await readdir(path.join(root, '.xiaotao')), ['installation.json']);
 });
 
 test('Codex rejects malformed and oversized input without echoing private data', async t => {
@@ -204,7 +204,7 @@ test('Codex rejects malformed and oversized input without echoing private data',
     assert.doesNotMatch(result.stderr, /SECRET/);
   }
   await project(root);
-  await put(root, '.maestro/installation.json', 'x'.repeat(17000));
+  await put(root, '.xiaotao/installation.json', 'x'.repeat(17000));
   const result = await invoke(JSON.stringify(event(root)));
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /skipped/);
@@ -213,7 +213,7 @@ test('Codex rejects malformed and oversized input without echoing private data',
 test('Codex ignores an external symlinked Core hint but still restores project state', async t => {
   const root = await fixture(t);
   await project(root);
-  const core = path.join(root, '.agents/skills/maestro/SKILL.md');
+  const core = path.join(root, '.agents/skills/xiaotao/SKILL.md');
   const outside = await fixture(t);
   await put(outside, 'SKILL.md', 'external');
   await rm(core);
@@ -246,13 +246,13 @@ test('local installer prepares a hooks-only personal source without activation o
   const catalog = JSON.parse(await readFile(result.marketplace, 'utf8'));
   const manifest = JSON.parse(await readFile(path.join(result.pluginDir, '.codex-plugin/plugin.json'), 'utf8'));
   assert.equal(catalog.name, 'personal');
-  assert.equal(result.pluginDir, path.join(homeDir, '.codex/plugins/maestro-codex'));
-  assert.equal(catalog.plugins[0].source.path, './.codex/plugins/maestro-codex');
+  assert.equal(result.pluginDir, path.join(homeDir, '.codex/plugins/xiaotao-codex'));
+  assert.equal(catalog.plugins[0].source.path, './.codex/plugins/xiaotao-codex');
   assert.equal(catalog.plugins[0].policy.installation, 'AVAILABLE');
   assert.equal(manifest.skills, undefined);
   assert.match(manifest.version, /^0\.1\.0\+codex\.[a-f0-9]{16}$/);
   assert.ok(!(await readdir(homeDir)).includes('plugins'));
-  assert.ok(!(await readdir(homeDir)).includes('.maestro'));
+  assert.ok(!(await readdir(homeDir)).includes('.xiaotao'));
 });
 
 test('local reinstall preserves catalog ordering, policy, and unrelated plugin files', async t => {
@@ -275,7 +275,7 @@ test('local reinstall preserves catalog ordering, policy, and unrelated plugin f
 
 test('changed plugin source gets a fresh version for reinstall', async t => {
   const homeDir = await fixture(t);
-  const sourceDir = path.join(await fixture(t), 'maestro-codex');
+  const sourceDir = path.join(await fixture(t), 'xiaotao-codex');
   await cp(pluginSource, sourceDir, { recursive: true });
   const first = await installLocal({ homeDir, sourceDir });
   await put(sourceDir, 'scripts/session-start.mjs', '// new revision');
@@ -287,15 +287,15 @@ test('local installer refuses a foreign destination or conflicting marketplace e
   for (const scenario of ['directory', 'catalog']) {
     const homeDir = await fixture(t);
     if (scenario === 'directory') {
-      await put(homeDir, '.codex/plugins/maestro-codex/custom.txt', 'keep');
+      await put(homeDir, '.codex/plugins/xiaotao-codex/custom.txt', 'keep');
     } else {
       await put(homeDir, '.agents/plugins/marketplace.json', JSON.stringify({
-        name: 'personal', plugins: [{ name: 'maestro-codex', source: { source: 'local', path: './elsewhere' } }],
+        name: 'personal', plugins: [{ name: 'xiaotao-codex', source: { source: 'local', path: './elsewhere' } }],
       }));
     }
     await assert.rejects(installLocal({ homeDir }), /not managed|points elsewhere/);
     if (scenario === 'directory') {
-      assert.equal(await readFile(path.join(homeDir, '.codex/plugins/maestro-codex/custom.txt'), 'utf8'), 'keep');
+      assert.equal(await readFile(path.join(homeDir, '.codex/plugins/xiaotao-codex/custom.txt'), 'utf8'), 'keep');
     }
   }
 });
@@ -314,22 +314,22 @@ test('local installer preserves invalid marketplace contents and refuses an occu
   await put(homeDir, '.agents/plugins/marketplace.json', 'invalid');
   await assert.rejects(installLocal({ homeDir }));
   assert.equal(await readFile(path.join(homeDir, '.agents/plugins/marketplace.json'), 'utf8'), 'invalid');
-  await put(homeDir, '.agents/plugins/.maestro-codex-install.lock', 'another installer');
+  await put(homeDir, '.agents/plugins/.xiaotao-codex-install.lock', 'another installer');
   await assert.rejects(installLocal({ homeDir }), { code: 'EEXIST' });
-  assert.equal(await readFile(path.join(homeDir, '.agents/plugins/.maestro-codex-install.lock'), 'utf8'), 'another installer');
+  assert.equal(await readFile(path.join(homeDir, '.agents/plugins/.xiaotao-codex-install.lock'), 'utf8'), 'another installer');
 });
 
 test('Codex injects bounded live Runtime Context when active Task, Temporary, or follow-up exist', async t => {
   const root = await fixture(t);
   await project(root);
 
-  await put(root, '.maestro/evidence/rules.md', '# Rules\nSome rules.\n');
-  await put(root, '.maestro/tasks/task-cache/task.yaml', 'id: task-cache\nobjective: Implement caching layer\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
-  await put(root, '.maestro/tasks/task-auth/task.yaml', 'id: task-auth\nobjective: OAuth integration\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
-  await put(root, '.maestro/tasks/task-ci/task.yaml', 'id: task-ci\nobjective: Setup CI pipelines\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
-  await put(root, '.maestro/tasks/task-db/task.yaml', 'id: task-db\nobjective: DB migration\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
-  await put(root, '.maestro/memory/temporary/active/temp-investigate/meta.yaml', 'id: temp-investigate\ntopic: Investigate leak\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
-  await put(root, '.maestro/memory/long-term/entries/lt-api-boundary.md', `---
+  await put(root, '.xiaotao/evidence/rules.md', '# Rules\nSome rules.\n');
+  await put(root, '.xiaotao/tasks/task-cache/task.yaml', 'id: task-cache\nobjective: Implement caching layer\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
+  await put(root, '.xiaotao/tasks/task-auth/task.yaml', 'id: task-auth\nobjective: OAuth integration\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
+  await put(root, '.xiaotao/tasks/task-ci/task.yaml', 'id: task-ci\nobjective: Setup CI pipelines\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
+  await put(root, '.xiaotao/tasks/task-db/task.yaml', 'id: task-db\nobjective: DB migration\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
+  await put(root, '.xiaotao/memory/temporary/active/temp-investigate/meta.yaml', 'id: temp-investigate\ntopic: Investigate leak\nstatus: active\ncreated_at: 2026-09-12T10:00:00Z\nupdated_at: 2026-09-12T10:00:00Z\nupdated_by: xiao-tao/test\nrevision: 1\n');
+  await put(root, '.xiaotao/memory/long-term/entries/lt-api-boundary.md', `---
 revision: 1
 updated_at: 2026-09-12T10:00:00Z
 updated_by: xiao-tao/test
@@ -337,11 +337,11 @@ updated_by: xiao-tao/test
 
 # Entry
 
-\`\`\`maestro-memory-entry
-{"entry_id":"lt-api-boundary","title":"API boundary rules","memory_kind":"experience","content":"Boundary rules","source_refs":[".maestro/evidence/rules.md"],"status":"active"}
+\`\`\`xiaotao-memory-entry
+{"entry_id":"lt-api-boundary","title":"API boundary rules","memory_kind":"experience","content":"Boundary rules","source_refs":[".xiaotao/evidence/rules.md"],"status":"active"}
 \`\`\`
 `);
-  await put(root, '.maestro/memory/followups/pending/followup-review.yaml', 'followup_id: followup-review\ntitle: Review memory invariants\nstatus: pending\ncreated_at: 2026-09-12T10:00:00Z\nsource_refs:\n  - .maestro/evidence/rules.md\n');
+  await put(root, '.xiaotao/memory/followups/pending/followup-review.yaml', 'followup_id: followup-review\ntitle: Review memory invariants\nstatus: pending\ncreated_at: 2026-09-12T10:00:00Z\nsource_refs:\n  - .xiaotao/evidence/rules.md\n');
 
   const result = await recoveryContext(event(root));
   assert.ok(result);
@@ -370,11 +370,11 @@ test('Codex SessionStart does not inject runtime context when index.json exists 
   const indexPayload = {
     schema_version: 1,
     entries: [
-      { memory_id: 'task-orphaned', title: 'Orphaned task', record_type: 'task', status: 'active', path: '.maestro/tasks/task-orphaned/task.yaml' },
+      { memory_id: 'task-orphaned', title: 'Orphaned task', record_type: 'task', status: 'active', path: '.xiaotao/tasks/task-orphaned/task.yaml' },
     ],
     pending_followups: [],
   };
-  await put(root, '.maestro/memory/index.json', JSON.stringify(indexPayload));
+  await put(root, '.xiaotao/memory/index.json', JSON.stringify(indexPayload));
 
   const result = await recoveryContext(event(root));
   assert.ok(result);
@@ -385,8 +385,8 @@ test('Codex SessionStart rebuilds missing index when authoritative sources exist
   const root = await fixture(t);
   await project(root);
 
-  // Authoritative task on disk, but NO .maestro/memory/index.json
-  await put(root, '.maestro/tasks/task-live/task.yaml', `id: task-live
+  // Authoritative task on disk, but NO .xiaotao/memory/index.json
+  await put(root, '.xiaotao/tasks/task-live/task.yaml', `id: task-live
 objective: Live active task
 status: active
 created_at: 2026-09-12T10:00:00Z
@@ -406,7 +406,7 @@ revision: 1
   assert.match(context, /task-live/);
 
   // Asserts index.json was indeed rebuilt on disk
-  const indexPath = path.join(root, '.maestro/memory/index.json');
+  const indexPath = path.join(root, '.xiaotao/memory/index.json');
   assert.ok(await readFile(indexPath, 'utf8'));
 });
 
@@ -415,7 +415,7 @@ test('Codex SessionStart refreshes stale index when authoritative sources change
   await project(root);
 
   // Authoritative new task on disk
-  await put(root, '.maestro/tasks/task-updated/task.yaml', `id: task-updated
+  await put(root, '.xiaotao/tasks/task-updated/task.yaml', `id: task-updated
 objective: Freshly updated task
 status: active
 created_at: 2026-09-12T10:00:00Z
@@ -430,11 +430,11 @@ revision: 1
     generated_at: '2026-09-01T00:00:00Z',
     source_digest: 'obsolete-hash',
     entries: [
-      { memory_id: 'task-obsolete', title: 'Obsolete task', record_type: 'task', status: 'active', path: '.maestro/tasks/task-obsolete/task.yaml' },
+      { memory_id: 'task-obsolete', title: 'Obsolete task', record_type: 'task', status: 'active', path: '.xiaotao/tasks/task-obsolete/task.yaml' },
     ],
     pending_followups: [],
   };
-  await put(root, '.maestro/memory/index.json', JSON.stringify(staleIndex));
+  await put(root, '.xiaotao/memory/index.json', JSON.stringify(staleIndex));
 
   const result = await recoveryContext(event(root));
   assert.ok(result);
@@ -445,7 +445,7 @@ revision: 1
   assert.doesNotMatch(context, /task-obsolete/);
 
   // Asserts index.json was refreshed on disk
-  const refreshedIndex = JSON.parse(await readFile(path.join(root, '.maestro/memory/index.json'), 'utf8'));
+  const refreshedIndex = JSON.parse(await readFile(path.join(root, '.xiaotao/memory/index.json'), 'utf8'));
   assert.ok(refreshedIndex.entries.some(e => e.memory_id === 'task-updated'));
   assert.ok(!refreshedIndex.entries.some(e => e.memory_id === 'task-obsolete'));
 });
@@ -475,12 +475,12 @@ test('Codex SessionStart injects recoverable checkpoint runtime context when no 
       in_progress: ['step 2 in progress'],
       next: ['step 3 next'],
       open_questions: [],
-      source_refs: ['.maestro/tasks/task-suspended/progress.md'],
+      source_refs: ['.xiaotao/tasks/task-suspended/progress.md'],
     },
   };
   await put(
     root,
-    '.maestro/tasks/task-suspended/references/checkpoints/req-chk-99.json',
+    '.xiaotao/tasks/task-suspended/references/checkpoints/req-chk-99.json',
     JSON.stringify(checkpointPayload, null, 2),
   );
 
@@ -501,7 +501,7 @@ test('Codex SessionStart injects recoverable checkpoint runtime context when no 
   // 2. Committed checkpoint observation: outputs status: committed and revision: 4
   await put(
     root,
-    '.maestro/tasks/task-suspended/references/checkpoints/req-chk-99.committed.json',
+    '.xiaotao/tasks/task-suspended/references/checkpoints/req-chk-99.committed.json',
     JSON.stringify({ request_id: 'req-chk-99', revision: 4 }),
   );
 
@@ -522,7 +522,7 @@ test('Codex SessionStart does not consume stale index when refresh/rebuild fails
   await project(root);
 
   // Authoritative task on disk
-  await put(root, '.maestro/tasks/task-current/task.yaml', `id: task-current
+  await put(root, '.xiaotao/tasks/task-current/task.yaml', `id: task-current
 objective: Real current task
 status: active
 created_at: 2026-09-12T10:00:00Z
@@ -532,7 +532,7 @@ revision: 1
 `);
 
   // Stale index containing obsolete task
-  await put(root, '.maestro/memory/index.json', JSON.stringify({
+  await put(root, '.xiaotao/memory/index.json', JSON.stringify({
     schema_version: 1,
     generated_at: '2026-09-01T00:00:00Z',
     source_digest: 'obsolete',
@@ -545,13 +545,13 @@ revision: 1
   // Authoritative committed checkpoint exists
   await put(
     root,
-    '.maestro/tasks/task-current/references/checkpoints/req-deg-1.committed.json',
+    '.xiaotao/tasks/task-current/references/checkpoints/req-deg-1.committed.json',
     JSON.stringify({ request_id: 'req-deg-1', revision: 1 }),
   );
 
   // Force Python overview/rebuild to fail
-  process.env.MAESTRO_FORCE_PYTHON_FAIL = '1';
-  t.after(() => { delete process.env.MAESTRO_FORCE_PYTHON_FAIL; });
+  process.env.XIAOTAO_FORCE_PYTHON_FAIL = '1';
+  t.after(() => { delete process.env.XIAOTAO_FORCE_PYTHON_FAIL; });
 
   const result = await recoveryContext(event(root));
   assert.ok(result);
@@ -562,7 +562,7 @@ revision: 1
   assert.doesNotMatch(context, /Stale task that must not be consumed/);
 
   // Explicit degraded warning MUST be output
-  assert.match(context, /警告：检测到项目存在 Maestro 权威工作源，但 Memory Catalog 缺失或刷新失败/);
+  assert.match(context, /警告：检测到项目存在 XiaoTao 权威工作源，但 Memory Catalog 缺失或刷新失败/);
 
   // Authoritative checkpoint MUST still be presented
   assert.match(context, /## Recoverable Checkpoint/);

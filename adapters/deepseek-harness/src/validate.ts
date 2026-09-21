@@ -1,13 +1,13 @@
 /**
- * Schema validation (capability plugin): validate Maestro's mutable-state
+ * Schema validation (capability plugin): validate XiaoTao's mutable-state
  * documents against the JSON Schemas shipped inside the Core Skill.
  *
- * Maestro Core already owns the schemas (`maestro/references/schemas/*.json`,
+ * XiaoTao Core already owns the schemas (`xiaotao/references/schemas/*.json`,
  * JSON Schema draft 2020-12). The adapter reuses those files verbatim and adds
  * only the runtime validation call — it does not re-declare or reinterpret the
  * contracts. This keeps the Core as the single source of truth.
  *
- * @module @maestro-ai/dsh-adapter/validate
+ * @module @xiaotao-ai/dsh-adapter/validate
  */
 
 import { readdir, readFile } from 'node:fs/promises'
@@ -23,7 +23,7 @@ export interface ValidationResult {
 /**
  * Validator that loads and evaluates the Core Skill's JSON Schemas.
  */
-export class MaestroSchemaValidator {
+export class XiaoTaoSchemaValidator {
   private readonly ajv = new Ajv2020({ allErrors: true, strict: false })
 
   has(schemaId: string): boolean {
@@ -38,7 +38,7 @@ export class MaestroSchemaValidator {
    * contract means validation simply reports "schema not loaded" later,
    * while the rest of the storage path keeps working.
    *
-   * @param schemasDir - absolute path to `maestro/references/schemas/`.
+   * @param schemasDir - absolute path to `xiaotao/references/schemas/`.
    * @returns the number of schemas registered.
    */
   async loadAll(schemasDir: string): Promise<number> {
@@ -63,7 +63,7 @@ export class MaestroSchemaValidator {
   /**
    * Validate a document against the schema identified by `$id`.
    *
-   * @param schemaId - the schema `$id` (e.g. `https://maestro.local/schemas/task.schema.json`).
+   * @param schemaId - the schema `$id` (e.g. `https://xiaotao.local/schemas/task.schema.json`).
    * @param data - the parsed document.
    */
   validate(schemaId: string, data: unknown): ValidationResult {

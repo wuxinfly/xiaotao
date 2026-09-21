@@ -2,7 +2,7 @@
 
 ## Context
 
-Issue #7 asks Maestro to preserve a small set of stable organizational roles while selecting or
+Issue #7 asks XiaoTao to preserve a small set of stable organizational roles while selecting or
 creating execution workers from the capabilities required by the current work. The mechanism must
 remain Skill-first and host-independent, preserve direct role calls, and respect the reliability
 and authorization boundaries established by issue #6.
@@ -44,8 +44,8 @@ a mandatory workflow state.
 
 ### Registry and snapshots
 
-Maestro ships an immutable built-in registry. Projects may add a small mutable registry under
-`.maestro/workers/registry.yaml`; it uses the revision, lock, and atomic replacement protocol from
+XiaoTao ships an immutable built-in registry. Projects may add a small mutable registry under
+`.xiaotao/workers/registry.yaml`; it uses the revision, lock, and atomic replacement protocol from
 issue #6. Every persisted selected worker is copied as an immutable Task or Temporary snapshot
 before execution. Resumption uses the snapshot, not the current registry, so later registry edits
 cannot change in-flight or historical behavior.

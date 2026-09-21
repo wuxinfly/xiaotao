@@ -1,9 +1,0 @@
-{
-  "event_id": "activity-20260908-6a1b2c3d4e5f",
-  "occurred_at": "2026-09-08T02:00:00Z",
-  "event_type": "playbook_approved",
-  "title": "证据优先的性能诊断",
-  "summary": "批准 Playbook：重复成功证据支持该流程。",
-  "source_refs": ["maestro/references/playbooks.md"],
-  "status": "completed"
-}

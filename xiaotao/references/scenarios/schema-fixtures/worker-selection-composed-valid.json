@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "resolved_at": "2026-08-27T14:05:00Z",
+  "requirements": {
+    "schema_version": 1,
+    "objective": "Evaluate a runtime bottleneck and its architectural boundary",
+    "required_capabilities": ["architecture-design", "runtime-analysis"],
+    "optional_capabilities": [],
+    "available_tools": [],
+    "context": { "read_paths": ["."], "write_paths": [".xiaotao/tasks/example/"] },
+    "permission_ceiling": {
+      "autonomous": ["inspect-project", "run-nondestructive-checks", "write-xiaotao-state", "write-work-artifacts"],
+      "conditional": []
+    },
+    "constraints": []
+  },
+  "registry_versions": [{ "registry_id": "project-workers", "version": "revision:3" }],
+  "resolution": "composed",
+  "selected_workers": [
+    { "id": "runtime-investigator", "snapshot_path": ".xiaotao/tasks/example/workers/runtime-investigator/spec.yaml" },
+    { "id": "system-boundary-reviewer", "snapshot_path": ".xiaotao/tasks/example/workers/system-boundary-reviewer/spec.yaml" }
+  ],
+  "rationale": "No single project Worker covers both requirements; the two selected Workers form the smallest safe set."
+}

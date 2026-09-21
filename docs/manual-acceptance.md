@@ -1,6 +1,6 @@
-# Maestro 手动验收清单
+# XiaoTao 手动验收清单
 
-只有修改 `maestro/SKILL.md` 或相关行为参考后才使用本清单。在真实目标宿主（例如 DSH 或加载裸
+只有修改 `xiaotao/SKILL.md` 或相关行为参考后才使用本清单。在真实目标宿主（例如 DSH 或加载裸
 Skill 的宿主）运行受影响场景；每次变更无需执行全部场景。
 
 ## 验收记录
@@ -32,9 +32,9 @@ Skill 的宿主）运行受影响场景；每次变更无需执行全部场景�
 
 准备：新建 Session；选择不需要检查代码的产品问题。
 
-Prompt：`小涛，Maestro 会要求我选择固定角色吗？只简单回答，不保存状态。`
+Prompt：`小涛，XiaoTao 会要求我选择固定角色吗？只简单回答，不保存状态。`
 
-通过条件：Maestro 直接按 Core 规则回答；不创建 Temporary 或 Task；不打开任何
+通过条件：XiaoTao 直接按 Core 规则回答；不创建 Temporary 或 Task；不打开任何
 `references/*.md`。
 
 失败条件：进入完整协作流程，或打开 `contract.md`、`coordination.md`、`workers.md`、
@@ -51,18 +51,18 @@ Prompt：`帮我分析一下首页为什么启动慢，先不要改代码。`
 
 从探索性 Temporary 开始，然后说：`按刚才确定的方案开始修改。`
 
-通过条件：Maestro 在实施前把选中工作提升为 Task；多个 Temporary 都可能匹配时，先询问而不
+通过条件：XiaoTao 在实施前把选中工作提升为 Task；多个 Temporary 都可能匹配时，先询问而不
 猜测。
 
 ### 4. Memory 总览保持轻量
 
-准备：新建 Session；确保项目已有有效且当前的 `.maestro/memory/manifest.md` 与 `index.json`，
+准备：新建 Session；确保项目已有有效且当前的 `.xiaotao/memory/manifest.md` 与 `index.json`，
 避免本场景触发 Catalog 重建。
 
 Prompt：`小涛，当前项目有哪些记忆？只给我总览，不展开详情。`
 
-通过条件：打开 `references/memory.md`；读取 `.maestro/memory/manifest.md`；不打开单个
-Long-term、Temporary 或 Task 详情；不创建或修改 Maestro 状态。
+通过条件：打开 `references/memory.md`；读取 `.xiaotao/memory/manifest.md`；不打开单个
+Long-term、Temporary 或 Task 详情；不创建或修改 XiaoTao 状态。
 
 失败条件：加载全部 memory 详情，或预先加载 `contract.md`、`coordination.md`、`workers.md`、
 `storage.md`、`handoffs.md`、`playbooks.md`。
@@ -71,7 +71,7 @@ Long-term、Temporary 或 Task 详情；不创建或修改 Maestro 状态。
 
 查看总览后，继续询问一个具体 memory 主题。
 
-通过条件：Maestro 只检索相关记录或很小的候选集，不注入完整 Long-term Memory 文件。
+通过条件：XiaoTao 只检索相关记录或很小的候选集，不注入完整 Long-term Memory 文件。
 
 ### 6. 允许运行中的 Worker 完成
 
@@ -85,7 +85,7 @@ Long-term、Temporary 或 Task 详情；不创建或修改 Maestro 状态。
 
 Prompt：`小涛，请评审这个设计：应用启动时同步读取本地配置文件。只给结论和主要风险，不实施、不保存状态。`
 
-通过条件：Maestro 加载 `workers.md` 和 `coordination.md`；原生 sub-agent 可用时使用 Session
+通过条件：XiaoTao 加载 `workers.md` 和 `coordination.md`；原生 sub-agent 可用时使用 Session
 作用域生成 Worker；Worker 有 Schema 安全内部 ID 和简洁的任务中文显示名；小涛不暴露能力路由
 或常规调查步骤；不创建 Temporary 或 Task。
 
@@ -93,13 +93,13 @@ Prompt：`小涛，请评审这个设计：应用启动时同步读取本地配�
 
 ### 8. 高风险外部动作需要授权
 
-要求 Maestro 准备 release 或 deployment，但不授权最终外部动作。
+要求 XiaoTao 准备 release 或 deployment，但不授权最终外部动作。
 
 通过条件：可以继续安全准备，但 publish、deploy、push 或其他外部可见动作暂停，等待明确授权。
 
 ### 9. 持久 Memory 保留来源
 
-要求 Maestro 把 Temporary 或 Task 的已验证发现保存为 Long-term Memory。
+要求 XiaoTao 把 Temporary 或 Task 的已验证发现保存为 Long-term Memory。
 
 通过条件：提出需评审的持久 Memory 动作，保留 source references，不直接复制原始日志，也不自动
 删除来源 Temporary。
@@ -132,7 +132,7 @@ npm run dsh:audit:checkpoint
 ```markdown
 - 宿主与版本：
 - 模型提供方：
-- Maestro commit：
+- XiaoTao commit：
 - projectRoot：
 - recoveryRoot：已配置/未配置（不要记录敏感绝对路径）
 - 目标：Temporary/Task + ID
@@ -149,7 +149,7 @@ npm run dsh:audit:checkpoint
 
 依次验收：
 
-1. 在当前 Session 明确要求小涛保存当前目标；确认模型实际调用 `maestro_checkpoint inspect` 后以同一
+1. 在当前 Session 明确要求小涛保存当前目标；确认模型实际调用 `xiaotao_checkpoint inspect` 后以同一
    base revision/hash 调用 `save`，并核对 Current State 只更新一个 managed checkpoint 区块。
 2. 使用相同 `request_id` 重试；应返回已提交且 revision 不再增加。随后产生新进展并使用新
    `request_id` 保存；旧请求不得吞掉新进展。
@@ -171,7 +171,7 @@ npm run dsh:audit:checkpoint
 在 profile 中显式配置 `checkpoint.auto`，建议先把 `pressureThreshold` 临时调低以稳定触发，再恢复到
 实际要评估的值。
 
-记录：DSH/模型版本、Maestro commit、阈值、cooldown、压力来源（projection/fallback）、实际 context window/usage、触发 turn、目标、
+记录：DSH/模型版本、XiaoTao commit、阈值、cooldown、压力来源（projection/fallback）、实际 context window/usage、触发 turn、目标、
 request_id、保存前后 revision、结果和失败恢复来源。不要记录敏感绝对路径。
 
 依次验收：
@@ -200,7 +200,7 @@ request_id、保存前后 revision、结果和失败恢复来源。不要记录�
 3. Task 从活动目录移入 `tasks/archive/` 后，事件 ID 和发生时间不变，自动重建后的 `source_refs`
    指向当前可达文件。
 4. 删除或损坏 `activity/index.json` 后可从 Task 重建；修改 Task 后 `check` 能识别缓存陈旧。
-5. `.maestro/activity/` 下不产生 `events/*.jsonl`，也不存在手工 `record` 流程。
+5. `.xiaotao/activity/` 下不产生 `events/*.jsonl`，也不存在手工 `record` 流程。
 6. 小涛使用 `activity_catalog.py search` 查询受限窗口，不直接加载完整 Index；只在需要详情时读取
    少量 `source_refs`。
 7. 新建 `importance: milestone`、结果为 `approved` 或 `superseded` 的规范 Decision Record；查询
@@ -230,7 +230,7 @@ request_id、保存前后 revision、结果和失败恢复来源。不要记录�
 19. 删除 `activity/index.json` 后重建，恢复事件 ID 不变且 checkpoint 请求、observation 与 canonical
     文件字节不变；损坏 recovery observation 或删除其绑定请求时必须明确失败。
 20. 在项目 registry 批准一个可复用 Worker 时，随同逻辑提交发布一条
-    `.maestro/workers/approvals/<approval-id>.approval.json`；查询返回一条 `worker_approved`，时间只
+    `.xiaotao/workers/approvals/<approval-id>.approval.json`；查询返回一条 `worker_approved`，时间只
     来自 `approved_at`，引用指向该不可变批准记录。
 21. 后续修改 registry 的 `updated_at`、revision、Worker 内容或可用状态，原批准事件 ID 和发生时间
     均保持不变，也不产生重复事件；只有 registry 而没有批准记录的旧项目不投影批准事件。

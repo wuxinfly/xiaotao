@@ -1,0 +1,7 @@
+{
+  "status": "completed",
+  "summary": "Missing the required result path.",
+  "worker_state_path": "xiaotao/references/scenarios/validator-fixtures/files/current-state.md",
+  "needs_user_input": false,
+  "recommended_next": []
+}

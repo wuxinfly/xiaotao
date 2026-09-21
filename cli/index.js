@@ -7,17 +7,17 @@ import { doctorInstallation, installHosts, updateHosts } from './install.js';
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, '..');
 
-const HELP = `Maestro multi-host installer
+const HELP = `XiaoTao multi-host installer
 
 Usage:
-  maestro init [path] [--tools <list>] [--force] [--json]
-  maestro update [path] [--json]
-  maestro doctor [path] [--json]
-  maestro --version
+  xiaotao init [path] [--tools <list>] [--force] [--json]
+  xiaotao update [path] [--json]
+  xiaotao doctor [path] [--json]
+  xiaotao --version
 
 Options:
   --tools <list>  Comma-separated tools: codex, claude, opencode, all, or none
-  --force         Adopt a non-empty destination not previously managed by Maestro
+  --force         Adopt a non-empty destination not previously managed by XiaoTao
   --json          Print machine-readable JSON
   --help, -h      Show help
   --version, -V   Show version
@@ -58,12 +58,12 @@ function parseArgs(argv) {
       continue;
     }
     if (argument === '--force') {
-      if (command !== 'init') throw new UsageError('--force is only valid with maestro init');
+      if (command !== 'init') throw new UsageError('--force is only valid with xiaotao init');
       options.force = true;
       continue;
     }
     if (argument === '--tools') {
-      if (command !== 'init') throw new UsageError('--tools is only valid with maestro init');
+      if (command !== 'init') throw new UsageError('--tools is only valid with xiaotao init');
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) throw new UsageError('--tools requires a value');
       options.tools = value;
@@ -138,7 +138,7 @@ export async function run(argv, io = {}) {
       } else if (input.isTTY && output.isTTY) {
         toolIds = await chooseTools(projectRoot, input, output);
       } else {
-        throw new UsageError('Pass --tools <list> when maestro init is not running interactively.');
+        throw new UsageError('Pass --tools <list> when xiaotao init is not running interactively.');
       }
       const metadata = await installHosts({
         projectRoot,
@@ -149,10 +149,10 @@ export async function run(argv, io = {}) {
       if (parsed.json) {
         writeJson(output, { ok: true, action: 'init', ...metadata });
       } else if (toolIds.length === 0) {
-        output.write('Initialized Maestro without an AI host integration.\n');
+        output.write('Initialized XiaoTao without an AI host integration.\n');
       } else {
         for (const toolId of toolIds) {
-          output.write(`Installed Maestro for ${HOSTS[toolId].name} at ${HOSTS[toolId].skillDir}\n`);
+          output.write(`Installed XiaoTao for ${HOSTS[toolId].name} at ${HOSTS[toolId].skillDir}\n`);
         }
       }
       return 0;
@@ -161,7 +161,7 @@ export async function run(argv, io = {}) {
     if (parsed.command === 'update') {
       const metadata = await updateHosts({ projectRoot, packageRoot: PACKAGE_ROOT });
       if (parsed.json) writeJson(output, { ok: true, action: 'update', ...metadata });
-      else output.write(`Updated Maestro for ${metadata.tools.length} AI tool(s).\n`);
+      else output.write(`Updated XiaoTao for ${metadata.tools.length} AI tool(s).\n`);
       return 0;
     }
 

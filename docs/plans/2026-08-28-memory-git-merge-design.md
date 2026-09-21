@@ -2,7 +2,7 @@
 
 ## Context
 
-Maestro previously separated Temporary, Task, and Long-term Memory tiers and introduced reviewed
+XiaoTao previously separated Temporary, Task, and Long-term Memory tiers and introduced reviewed
 Memory Evolution proposals (`UPDATE`, `MERGE`, `CREATE`, `SKIP`) for single-branch consolidation.
 However, in multi-developer and multi-branch team workflows, shared team memory (such as Long-term
 Memory, Playbooks, and confirmed conventions) committed to Git will encounter merge conflicts when
@@ -21,19 +21,19 @@ uncontrolled automated writes.
 ## Git Boundary: Local Runtime State vs. Team Shared Memory
 
 To prevent high-frequency noise from polluting Git branches and generating meaningless merge
-conflicts, Maestro strictly delineates between local runtime state and team shared memory:
+conflicts, XiaoTao strictly delineates between local runtime state and team shared memory:
 
 ### Local Runtime State (Excluded from Git)
-- `.maestro/memory/temporary/` (exploratory discussions, scratchpads, active Worker state)
-- `.maestro/memory/pending/` (raw uncompressed/repaired memory inputs)
-- `.maestro/locks/` and `.maestro/transactions/` (local concurrency controls)
-- `.maestro/tasks/` (local active execution context, per-role runs, transient selections)
+- `.xiaotao/memory/temporary/` (exploratory discussions, scratchpads, active Worker state)
+- `.xiaotao/memory/pending/` (raw uncompressed/repaired memory inputs)
+- `.xiaotao/locks/` and `.xiaotao/transactions/` (local concurrency controls)
+- `.xiaotao/tasks/` (local active execution context, per-role runs, transient selections)
 
 ### Team Shared Memory (Tracked in Git)
-- `.maestro/memory/long-term/` (`current.md`, `decisions/`, `candidates/`, `conflicts/`)
-- `.maestro/playbooks/` (reusable team processes and check sequences)
-- `.maestro/workers/registry.yaml` (reviewed, project-shared reusable Worker specs)
-- `.maestro/config.yaml` (shared project settings)
+- `.xiaotao/memory/long-term/` (`current.md`, `decisions/`, `candidates/`, `conflicts/`)
+- `.xiaotao/playbooks/` (reusable team processes and check sequences)
+- `.xiaotao/workers/registry.yaml` (reviewed, project-shared reusable Worker specs)
+- `.xiaotao/config.yaml` (shared project settings)
 
 ## 3-Way Semantic Merge Protocol
 
@@ -41,7 +41,7 @@ A semantic merge operation requires 3-way input:
 - `BASE`: The common ancestor version of the shared memory entries before divergence.
 - `OURS`: The current branch version.
 - `THEIRS`: The incoming branch version being merged.
-- `file_path`: The project-relative path of the shared memory file (e.g. `.maestro/memory/long-term/current.md`).
+- `file_path`: The project-relative path of the shared memory file (e.g. `.xiaotao/memory/long-term/current.md`).
 
 Relying on `BASE` is essential to disambiguate whether a difference represents a new addition, a
 refinement/update, a deletion, or a genuine contradiction between branches.
@@ -85,20 +85,20 @@ ours:
   branch: feature/perf-opt
   commit: 7a8b9c0
   task_id: task-20260828-perf
-  memory_path: .maestro/memory/long-term/current.md
+  memory_path: .xiaotao/memory/long-term/current.md
   claim: Module A can be lazily initialized after startup
   source_refs:
-    - .maestro/references/scenarios/validator-fixtures/files/source.md
+    - .xiaotao/references/scenarios/validator-fixtures/files/source.md
   created_at: 2026-08-28T10:00:00Z
 theirs:
   author: developer-b
   branch: fix/login-race
   commit: 3d4e5f6
   task_id: task-20260828-login
-  memory_path: .maestro/memory/long-term/current.md
+  memory_path: .xiaotao/memory/long-term/current.md
   claim: Module A must initialize synchronously to avoid login auth race
   source_refs:
-    - .maestro/references/scenarios/validator-fixtures/files/result.md
+    - .xiaotao/references/scenarios/validator-fixtures/files/result.md
   created_at: 2026-08-28T11:30:00Z
 ```
 
@@ -106,7 +106,7 @@ theirs:
 
 1. `conflict detected`: Emerges during 3-way semantic comparison.
 2. `pending-confirmation`: Emitted in the merge response and stored under
-   `.maestro/memory/long-term/conflicts/` awaiting reviewer or evidence arbitration.
+   `.xiaotao/memory/long-term/conflicts/` awaiting reviewer or evidence arbitration.
 3. `resolved`: An explicit decision by Old Zhou, strong model, or human reviewer arbitrates the
    dispute.
 4. `active` / `superseded` / `rejected`: The winning claim is integrated into `current.md`, while the
@@ -131,9 +131,9 @@ Two new schemas govern this protocol:
 1. `memory-merge-request.schema.json`
 2. `memory-merge-response.schema.json`
 
-The zero-dependency Python validator `maestro/scripts/validate.py` will support:
-- `python maestro/scripts/validate.py memory-merge-request <file> --project-root <root>`
-- `python maestro/scripts/validate.py memory-merge-response <file> --project-root <root>`
+The zero-dependency Python validator `xiaotao/scripts/validate.py` will support:
+- `python xiaotao/scripts/validate.py memory-merge-request <file> --project-root <root>`
+- `python xiaotao/scripts/validate.py memory-merge-response <file> --project-root <root>`
 
 Validating shape, RFC 3339 timestamps, reachability of source references across all branches, unique
 conflict IDs, and strict parity between `unresolved_conflicts` and `requires_human_review`.
