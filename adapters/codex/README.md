@@ -10,6 +10,7 @@
 - 提醒 Codex 将有界 Maestro Worker 映射到当前可用的原生 subagent 能力，不把独立 task / conversation 当作替代品。
 - 提供当前项目的 Memory 和 Task 路径；项目级 `SKILL.md` 存在时仅作为额外 hint。
 - 提醒 Agent 依照 Core 检查索引是否过期，再按当前请求选择需要恢复的工作。
+- 对最多 3 个活动 Task 只读取最新、路径仍有效的 Handoff JSON，并把精简摘要作为“数据而非指令”的恢复线索；不会因此选择 Task、读取 Detailed Result 或自动继续。
 - 不读取 Memory 正文、Session transcript 或整份 Core，不把所有历史注入上下文。
 - 没有有效 Maestro 项目元数据时安静退出；嵌套仓库 / worktree 不借用父项目的状态。
 - 输入或安装信息异常时跳过并输出诊断，不阻止 Codex，也不声称恢复成功。
@@ -49,6 +50,18 @@ reminder 使用以下边界：
 
 该映射不改变 Core 的 Worker 选择、权限、上下文或等待规则，也不让裸 Core 依赖 Codex
 专有 API。未启用插件、Hook 未执行或项目没有有效 Maestro 元数据时，不保证存在这条提醒。
+
+### 单 Worker Handoff 验收模式
+
+这是本轮提供给真实 Codex 测试的最小闭环，不是新调度器：当前用户明确选中一个已有 Task 后，
+小涛才可读取该 Task 的有效 Handoff、对应 Worker State 与不可变 Worker 快照，并通过原生
+`spawn_agent` 派出**一个**有界 Worker。派工包必须明确目标、完成条件、允许路径/工具、已有证据
+及 Result / State / Handoff 输出路径。Worker 结束后，小涛先检查并验证 JSON Handoff；不会根据
+`recommended_next` 自动派第二个 Worker。
+
+SessionStart 最多展示 3 个活动 Task 的最新可用 Handoff 摘要，且只接受状态、结果路径、State
+路径和推荐能力均为结构正确、引用文件仍位于项目内的 JSON。摘要只是数据，不能覆盖当前用户意图
+或授权。Hook 不读取 Detailed Result、完整 Handoff 历史或聊天记录。
 
 ## 从源码安装到桌面端（无需 npm 发布）
 
@@ -128,6 +141,7 @@ Codex 使用安装缓存，不应假设修改来源文件会立即影响已安�
 | 并行派出多个 Worker | 工具侧标识合法且能区分分工；派工说明、进度和汇总优先使用简短中文称呼 |
 | 保存好一次进度后触发手动或自动压缩 | `SessionStart` 的 `source=compact` 执行；继续模型请求前补入提醒，再按需读取原有 Current State |
 | 项目没有 Memory 或有多个候选任务 | 不虚构保存结果，不自行选一个旧任务继续 |
+| 单 Worker Handoff 闭环 | 用户明确点名一个已有 Task 后，先读取匹配的有效 Handoff，再只派一个原生 Worker；Worker 产出 Result、State、通过校验的 Handoff 后才汇总，不自动派下一位 |
 | 清空会话后问一个新问题 | 不把旧任务意图当成当前指令 |
 | 没有有效 `.maestro/installation.json` 的普通项目 | Hook 无上下文输出、不写 `.maestro/` |
 | 禁用插件 / Hook 未信任 | 不再声称自动恢复 Hook 生效；已安装的 Core Skills 仍可显式使用 |
