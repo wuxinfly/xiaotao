@@ -14,7 +14,7 @@ The user has authorized execution in this session; proceed locally without deleg
 
 - Read `adapters/deepseek-harness/src/{index,detect,hooks,storage,validate}.ts`.
 - Inspect installed `@deepseek-ai/dsh-{agent,session,system-prompt}` declarations and package versions.
-- Separate declaration evidence from runtime availability, persistence durability and Maestro activation.
+- Separate declaration evidence from runtime availability, persistence durability and XiaoTao activation.
 
 ### Task 2: Make the evidence repeatable
 

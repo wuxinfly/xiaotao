@@ -13,10 +13,10 @@
 ### Task 1: Define the approval record contract
 
 **Files:**
-- Create: `maestro/references/schemas/worker-approval.schema.json`
-- Create: `maestro/references/scenarios/schema-fixtures/worker-approval-valid.json`
-- Create: `maestro/references/scenarios/schema-fixtures/worker-approval-invalid.json`
-- Modify: `maestro/scripts/validate.py`
+- Create: `xiaotao/references/schemas/worker-approval.schema.json`
+- Create: `xiaotao/references/scenarios/schema-fixtures/worker-approval-valid.json`
+- Create: `xiaotao/references/scenarios/schema-fixtures/worker-approval-invalid.json`
+- Modify: `xiaotao/scripts/validate.py`
 - Modify: `scripts/verify-contracts.ps1`
 
 1. Add failing schema and native-validator fixture tests.
@@ -28,10 +28,10 @@
 ### Task 2: Derive Worker approval Activity events
 
 **Files:**
-- Modify: `maestro/references/schemas/activity-event.schema.json`
-- Modify: `maestro/scripts/activity_catalog.py`
+- Modify: `xiaotao/references/schemas/activity-event.schema.json`
+- Modify: `xiaotao/scripts/activity_catalog.py`
 - Modify: `test/activity-catalog.test.js`
-- Create: `maestro/references/scenarios/validator-fixtures/activity-event-worker-approved-valid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/activity-event-worker-approved-valid.json`
 
 1. Add failing tests for valid projection, stable rebuild, and historical registries without approvals.
 2. Add failing tests for malformed records and filename/ID duplication.
@@ -43,9 +43,9 @@
 ### Task 3: Document the publication and compatibility protocol
 
 **Files:**
-- Modify: `maestro/references/workers.md`
-- Modify: `maestro/references/activity.md`
-- Modify: `maestro/references/storage.md`
+- Modify: `xiaotao/references/workers.md`
+- Modify: `xiaotao/references/activity.md`
+- Modify: `xiaotao/references/storage.md`
 
 1. Document the immutable approval path and canonical Worker digest.
 2. State that approval publication preserves existing authorization and uses atomic create.

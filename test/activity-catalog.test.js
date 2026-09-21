@@ -10,7 +10,7 @@ import test from 'node:test';
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(import.meta.dirname, '..');
 const python = process.platform === 'win32' ? 'python' : 'python3';
-const activityScript = path.join(repositoryRoot, 'maestro', 'scripts', 'activity_catalog.py');
+const activityScript = path.join(repositoryRoot, 'xiaotao', 'scripts', 'activity_catalog.py');
 
 function runActivity(projectRoot, args) {
   return execFileAsync(python, [activityScript, '--project-root', projectRoot, ...args], {
@@ -24,17 +24,17 @@ test('immutable Worker approval records become stable Activity events', async (t
   await seedWorkerApproval(projectRoot);
 
   await runActivity(projectRoot, ['build', '--now', '2026-09-12T03:00:00Z']);
-  const first = JSON.parse(await readFile(path.join(projectRoot, '.maestro/activity/index.json'), 'utf8'));
+  const first = JSON.parse(await readFile(path.join(projectRoot, '.xiaotao/activity/index.json'), 'utf8'));
   assert.equal(first.events.length, 1);
   assert.equal(first.events[0].event_type, 'worker_approved');
   assert.equal(first.events[0].occurred_at, '2026-09-12T02:00:00Z');
   assert.equal(first.events[0].title, '小林（运行时排查）');
   assert.deepEqual(first.events[0].source_refs, [
-    '.maestro/workers/approvals/approve-runtime-investigator-r3.approval.json',
+    '.xiaotao/workers/approvals/approve-runtime-investigator-r3.approval.json',
   ]);
 
   await runActivity(projectRoot, ['build', '--now', '2026-09-12T04:00:00Z']);
-  const rebuilt = JSON.parse(await readFile(path.join(projectRoot, '.maestro/activity/index.json'), 'utf8'));
+  const rebuilt = JSON.parse(await readFile(path.join(projectRoot, '.xiaotao/activity/index.json'), 'utf8'));
   assert.equal(rebuilt.events[0].event_id, first.events[0].event_id);
   const searched = parseJson(await runActivity(projectRoot, [
     'search', '--year', '2026', '--event-type', 'worker_approved',
@@ -44,7 +44,7 @@ test('immutable Worker approval records become stable Activity events', async (t
 
 test('projects without Worker approval records do not guess approval events', async (t) => {
   const projectRoot = await createProject(t);
-  await writeProjectFile(projectRoot, '.maestro/workers/registry.yaml', [
+  await writeProjectFile(projectRoot, '.xiaotao/workers/registry.yaml', [
     'schema_version: 1', 'id: project-workers', 'source: project', 'revision: 9',
     'updated_at: 2026-09-12T00:00:00Z', 'updated_by: old-zhou/test',
     'workers: []', 'aliases: {}', '',
@@ -59,7 +59,7 @@ test('invalid Worker approval authorities fail Activity rebuilding', async (t) =
   const filenameError = await rejectedCommand(runActivity(projectRoot, ['build']));
   assert.match(filenameError.stderr, /filename must match approval_id/);
 
-  await rm(path.join(projectRoot, '.maestro', 'workers'), { recursive: true, force: true });
+  await rm(path.join(projectRoot, '.xiaotao', 'workers'), { recursive: true, force: true });
   await seedWorkerApproval(projectRoot, { approvedAt: 'not-a-time' });
   const schemaError = await rejectedCommand(runActivity(projectRoot, ['build']));
   assert.match(schemaError.stderr, /invalid Worker approval/);
@@ -86,7 +86,7 @@ async function writeProjectFile(projectRoot, relativePath, content) {
 }
 
 async function createProject(t) {
-  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'maestro-activity-'));
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-activity-'));
   t.after(() => rm(projectRoot, { recursive: true, force: true }));
   return projectRoot;
 }
@@ -119,7 +119,7 @@ function taskYaml({
   return `${lines.join('\n')}\n`;
 }
 
-async function seedTask(projectRoot, options = {}, root = '.maestro/tasks') {
+async function seedTask(projectRoot, options = {}, root = '.xiaotao/tasks') {
   const id = options.id ?? 'task-a';
   return writeProjectFile(projectRoot, `${root}/${id}/task.yaml`, taskYaml(options));
 }
@@ -144,26 +144,26 @@ function decisionRecord({
     decided_by: 'old-zhou/test',
     reason,
     target_ids: targetIds,
-    source_refs: ['.maestro/evidence/decision.md'],
+    source_refs: ['.xiaotao/evidence/decision.md'],
   };
   if (supersededBy !== undefined) record.superseded_by = supersededBy;
   return `${JSON.stringify(record, null, 2)}\n`;
 }
 
 async function seedDecision(projectRoot, options, fileId = options.id) {
-  await writeProjectFile(projectRoot, '.maestro/evidence/decision.md', 'decision evidence\n');
+  await writeProjectFile(projectRoot, '.xiaotao/evidence/decision.md', 'decision evidence\n');
   return writeProjectFile(
     projectRoot,
-    `.maestro/memory/long-term/decisions/${fileId}.decision.json`,
+    `.xiaotao/memory/long-term/decisions/${fileId}.decision.json`,
     decisionRecord(options),
   );
 }
 
 async function seedPlaybookDecision(projectRoot, options, fileId = options.id) {
-  await writeProjectFile(projectRoot, '.maestro/evidence/decision.md', 'decision evidence\n');
+  await writeProjectFile(projectRoot, '.xiaotao/evidence/decision.md', 'decision evidence\n');
   return writeProjectFile(
     projectRoot,
-    `.maestro/playbooks/decisions/${fileId}.decision.json`,
+    `.xiaotao/playbooks/decisions/${fileId}.decision.json`,
     decisionRecord({ targetIds: ['pb-20260829t000000z-a1b2'], ...options }),
   );
 }
@@ -191,7 +191,7 @@ function workerApproval({
 async function seedWorkerApproval(projectRoot, options = {}, fileId = options.id ?? 'approve-runtime-investigator-r3') {
   return writeProjectFile(
     projectRoot,
-    `.maestro/workers/approvals/${fileId}.approval.json`,
+    `.xiaotao/workers/approvals/${fileId}.approval.json`,
     workerApproval(options),
   );
 }
@@ -205,14 +205,14 @@ async function seedCheckpointObservation(projectRoot, {
   let root;
   if (kind === 'task') {
     root = lifecycle === 'archive'
-      ? `.maestro/tasks/archive/${targetId}`
-      : `.maestro/tasks/${targetId}`;
+      ? `.xiaotao/tasks/archive/${targetId}`
+      : `.xiaotao/tasks/${targetId}`;
     await seedTask(projectRoot, {
       id: targetId, objective: 'Checkpoint target', status: lifecycle === 'archive' ? 'archive' : 'active',
       completedAt: null,
-    }, lifecycle === 'archive' ? '.maestro/tasks/archive' : '.maestro/tasks');
+    }, lifecycle === 'archive' ? '.xiaotao/tasks/archive' : '.xiaotao/tasks');
   } else {
-    root = `.maestro/memory/temporary/${lifecycle}/${targetId}`;
+    root = `.xiaotao/memory/temporary/${lifecycle}/${targetId}`;
     await writeProjectFile(projectRoot, `${root}/meta.yaml`, [
       `id: ${targetId}`, 'topic: Checkpoint target', `status: ${lifecycle === 'archive' ? 'archive' : 'active'}`,
       'created_at: 2026-09-01T00:00:00Z', 'updated_at: 2026-09-01T00:00:00Z',
@@ -249,7 +249,7 @@ test('explicit retry completion becomes one deterministic checkpoint recovery ev
   assert.equal(first.events[0].title, '恢复 checkpoint：恢复关键工作');
   assert.deepEqual(first.events[0].source_refs, [observationPath]);
 
-  await rm(path.join(projectRoot, '.maestro', 'activity'), { recursive: true, force: true });
+  await rm(path.join(projectRoot, '.xiaotao', 'activity'), { recursive: true, force: true });
   const rebuilt = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
   assert.equal(rebuilt.events[0].event_id, first.events[0].event_id);
 });
@@ -287,7 +287,7 @@ test('Temporary metadata without checkpoints is not parsed as recovery authority
   const projectRoot = await createProject(t);
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/temporary/active/unrelated/meta.yaml',
+    '.xiaotao/memory/temporary/active/unrelated/meta.yaml',
     'topic: unrelated malformed metadata\n',
   );
   const result = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
@@ -316,8 +316,8 @@ test('completed Task automatically becomes a UTC Activity event without an event
   assert.equal(result.total, 1);
   assert.equal(result.events[0].event_type, 'task_completed');
   assert.equal(result.events[0].occurred_at, '2026-09-01T02:30:00Z');
-  assert.deepEqual(result.events[0].source_refs, ['.maestro/tasks/task-a/task.yaml']);
-  await assert.rejects(access(path.join(projectRoot, '.maestro', 'activity', 'events')));
+  assert.deepEqual(result.events[0].source_refs, ['.xiaotao/tasks/task-a/task.yaml']);
+  await assert.rejects(access(path.join(projectRoot, '.xiaotao', 'activity', 'events')));
 });
 
 test('active and legacy completed Tasks are omitted instead of guessing timestamps', async (t) => {
@@ -337,12 +337,12 @@ test('Task metadata files below artifacts or references are ignored', async (t) 
   await seedTask(projectRoot);
   await writeProjectFile(
     projectRoot,
-    '.maestro/tasks/task-a/artifacts/task.yaml',
+    '.xiaotao/tasks/task-a/artifacts/task.yaml',
     taskYaml({ id: 'task-a', objective: '不应进入时间线' }),
   );
   await writeProjectFile(
     projectRoot,
-    '.maestro/tasks/task-a/references/task.yaml',
+    '.xiaotao/tasks/task-a/references/task.yaml',
     '这不是 Task 元数据，也不应让构建失败\n',
   );
 
@@ -356,15 +356,15 @@ test('moving a Task to archive keeps the event and refreshes its source referenc
   await seedTask(projectRoot);
   const before = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
 
-  const activeDir = path.join(projectRoot, '.maestro', 'tasks', 'task-a');
-  const archiveDir = path.join(projectRoot, '.maestro', 'tasks', 'archive', 'task-a');
+  const activeDir = path.join(projectRoot, '.xiaotao', 'tasks', 'task-a');
+  const archiveDir = path.join(projectRoot, '.xiaotao', 'tasks', 'archive', 'task-a');
   await mkdir(path.dirname(archiveDir), { recursive: true });
   await rename(activeDir, archiveDir);
 
   const after = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
   assert.equal(after.catalog_refreshed, true);
   assert.equal(after.events[0].event_id, before.events[0].event_id);
-  assert.deepEqual(after.events[0].source_refs, ['.maestro/tasks/archive/task-a/task.yaml']);
+  assert.deepEqual(after.events[0].source_refs, ['.xiaotao/tasks/archive/task-a/task.yaml']);
   await access(path.join(projectRoot, ...after.events[0].source_refs[0].split('/')));
 });
 
@@ -392,7 +392,7 @@ test('a promoted Task becomes a promotion event at its promotion time', async (t
   );
   assert.equal(event.title, '优化登录流程');
   assert.match(event.summary, /20260831-登录流程梳理/);
-  assert.deepEqual(event.source_refs, ['.maestro/tasks/promoted/task.yaml']);
+  assert.deepEqual(event.source_refs, ['.xiaotao/tasks/promoted/task.yaml']);
 
   const filtered = parseJson(await runActivity(projectRoot, [
     'search', '--year', '2026', '--event-type', 'temporary_promoted',
@@ -515,8 +515,8 @@ test('moving a promoted Task to archive keeps its promotion event stable', async
   });
   const before = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
 
-  const activeDir = path.join(projectRoot, '.maestro', 'tasks', 'promoted');
-  const archiveDir = path.join(projectRoot, '.maestro', 'tasks', 'archive', 'promoted');
+  const activeDir = path.join(projectRoot, '.xiaotao', 'tasks', 'promoted');
+  const archiveDir = path.join(projectRoot, '.xiaotao', 'tasks', 'archive', 'promoted');
   await mkdir(path.dirname(archiveDir), { recursive: true });
   await rename(activeDir, archiveDir);
 
@@ -525,7 +525,7 @@ test('moving a promoted Task to archive keeps its promotion event stable', async
   assert.equal(after.events[0].event_id, before.events[0].event_id);
   assert.equal(after.events[0].event_type, 'temporary_promoted');
   assert.equal(after.events[0].occurred_at, '2026-08-31T12:00:15Z');
-  assert.deepEqual(after.events[0].source_refs, ['.maestro/tasks/archive/promoted/task.yaml']);
+  assert.deepEqual(after.events[0].source_refs, ['.xiaotao/tasks/archive/promoted/task.yaml']);
 });
 
 test('approved and superseded Decision Records become Activity events', async (t) => {
@@ -556,7 +556,7 @@ test('approved and superseded Decision Records become Activity events', async (t
   routine.importance = 'routine';
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/long-term/decisions/decision-routine.decision.json',
+    '.xiaotao/memory/long-term/decisions/decision-routine.decision.json',
     `${JSON.stringify(routine)}\n`,
   );
 
@@ -568,7 +568,7 @@ test('approved and superseded Decision Records become Activity events', async (t
   );
   assert.equal(result.events[0].occurred_at, '2026-09-04T02:00:00Z');
   assert.deepEqual(result.events[0].source_refs, [
-    '.maestro/memory/long-term/decisions/decision-approve.decision.json',
+    '.xiaotao/memory/long-term/decisions/decision-approve.decision.json',
   ]);
 
   const approved = parseJson(await runActivity(projectRoot, [
@@ -587,12 +587,12 @@ test('legacy and nested Decision files are ignored', async (t) => {
   });
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/long-term/decisions/legacy.json',
+    '.xiaotao/memory/long-term/decisions/legacy.json',
     '{old unstructured record',
   );
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/long-term/decisions/archive/nested.decision.json',
+    '.xiaotao/memory/long-term/decisions/archive/nested.decision.json',
     '{broken nested record',
   );
 
@@ -608,7 +608,7 @@ test('missing historical Decision evidence does not block Activity rebuild', asy
     title: '依赖本地 Task 证据的决定',
     decidedAt: '2026-09-04T02:00:00Z',
   });
-  await rm(path.join(projectRoot, '.maestro', 'evidence', 'decision.md'));
+  await rm(path.join(projectRoot, '.xiaotao', 'evidence', 'decision.md'));
 
   const result = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
   assert.equal(result.total, 1);
@@ -625,7 +625,7 @@ test('unsafe Decision evidence paths still block Activity rebuild', async (t) =>
   unsafe.source_refs = ['../outside.md'];
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/long-term/decisions/decision-unsafe-ref.decision.json',
+    '.xiaotao/memory/long-term/decisions/decision-unsafe-ref.decision.json',
     `${JSON.stringify(unsafe)}\n`,
   );
 
@@ -635,7 +635,7 @@ test('unsafe Decision evidence paths still block Activity rebuild', async (t) =>
 
 test('invalid canonical Decision Records fail instead of inventing an event', async (t) => {
   const projectRoot = await createProject(t);
-  await writeProjectFile(projectRoot, '.maestro/evidence/decision.md', 'decision evidence\n');
+  await writeProjectFile(projectRoot, '.xiaotao/evidence/decision.md', 'decision evidence\n');
   const invalid = JSON.parse(decisionRecord({
     id: 'decision-invalid',
     title: '缺少可靠时间',
@@ -644,7 +644,7 @@ test('invalid canonical Decision Records fail instead of inventing an event', as
   delete invalid.decided_at;
   await writeProjectFile(
     projectRoot,
-    '.maestro/memory/long-term/decisions/decision-invalid.decision.json',
+    '.xiaotao/memory/long-term/decisions/decision-invalid.decision.json',
     `${JSON.stringify(invalid)}\n`,
   );
 
@@ -698,7 +698,7 @@ test('approved and superseded Playbook Decision Records become Activity events',
   routine.importance = 'routine';
   await writeProjectFile(
     projectRoot,
-    '.maestro/playbooks/decisions/playbook-routine.decision.json',
+    '.xiaotao/playbooks/decisions/playbook-routine.decision.json',
     `${JSON.stringify(routine)}\n`,
   );
 
@@ -711,7 +711,7 @@ test('approved and superseded Playbook Decision Records become Activity events',
   assert.equal(result.events[0].occurred_at, '2026-09-08T02:00:00Z');
   assert.equal(result.events[0].summary, '批准 Playbook：已有证据支持该决定。');
   assert.deepEqual(result.events[0].source_refs, [
-    '.maestro/playbooks/decisions/playbook-approve.decision.json',
+    '.xiaotao/playbooks/decisions/playbook-approve.decision.json',
   ]);
 
   const approved = parseJson(await runActivity(projectRoot, [
@@ -730,11 +730,11 @@ test('Playbook candidates and canonical Playbook files never become events', asy
   const projectRoot = await createProject(t);
   await writeProjectFile(
     projectRoot,
-    '.maestro/playbooks/performance-diagnosis.md',
+    '.xiaotao/playbooks/performance-diagnosis.md',
     [
       '---',
       'playbook_id: pb-20260829t000000z-a1b2',
-      'file_path: .maestro/playbooks/performance-diagnosis.md',
+      'file_path: .xiaotao/playbooks/performance-diagnosis.md',
       'title: 证据优先的性能诊断',
       'status: active',
       'revision: 3',
@@ -748,7 +748,7 @@ test('Playbook candidates and canonical Playbook files never become events', asy
   );
   await writeProjectFile(
     projectRoot,
-    '.maestro/playbooks/candidates/pb-candidate.md',
+    '.xiaotao/playbooks/candidates/pb-candidate.md',
     '---\ncandidate_id: pb-candidate\nstatus: candidate\nupdated_at: 2026-09-06T00:00:00Z\n---\n\n候选。\n',
   );
 
@@ -774,7 +774,7 @@ test('a Playbook Decision Record filename must match decision_id', async (t) => 
 
 test('invalid Playbook Decision Records fail instead of inventing events', async (t) => {
   const projectRoot = await createProject(t);
-  await writeProjectFile(projectRoot, '.maestro/evidence/decision.md', 'decision evidence\n');
+  await writeProjectFile(projectRoot, '.xiaotao/evidence/decision.md', 'decision evidence\n');
   const invalid = JSON.parse(decisionRecord({
     id: 'playbook-invalid',
     title: '缺少可靠时间',
@@ -783,7 +783,7 @@ test('invalid Playbook Decision Records fail instead of inventing events', async
   delete invalid.decided_at;
   await writeProjectFile(
     projectRoot,
-    '.maestro/playbooks/decisions/playbook-invalid.decision.json',
+    '.xiaotao/playbooks/decisions/playbook-invalid.decision.json',
     `${JSON.stringify(invalid)}\n`,
   );
 
@@ -801,7 +801,7 @@ test('unsafe Playbook evidence paths still block Activity rebuild', async (t) =>
   unsafe.source_refs = ['../outside.md'];
   await writeProjectFile(
     projectRoot,
-    '.maestro/playbooks/decisions/playbook-unsafe-ref.decision.json',
+    '.xiaotao/playbooks/decisions/playbook-unsafe-ref.decision.json',
     `${JSON.stringify(unsafe)}\n`,
   );
 
@@ -854,7 +854,7 @@ test('missing and corrupt indexes rebuild from authoritative Tasks', async (t) =
   const first = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
   assert.equal(first.catalog_refreshed, true);
 
-  const indexPath = path.join(projectRoot, '.maestro', 'activity', 'index.json');
+  const indexPath = path.join(projectRoot, '.xiaotao', 'activity', 'index.json');
   await writeFile(indexPath, '{broken', 'utf8');
   const second = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));
   assert.equal(second.catalog_refreshed, true);
@@ -876,13 +876,13 @@ test('check reports stale after an authoritative Task lifecycle change', async (
 
 test('malformed Task YAML and duplicate Task IDs fail instead of being skipped', async (t) => {
   const malformedRoot = await createProject(t);
-  await writeProjectFile(malformedRoot, '.maestro/tasks/broken/task.yaml', 'id: [broken\n');
+  await writeProjectFile(malformedRoot, '.xiaotao/tasks/broken/task.yaml', 'id: [broken\n');
   const malformed = await rejectedCommand(runActivity(malformedRoot, ['build']));
   assert.match(malformed.stderr, /activity catalog error/);
 
   const duplicateRoot = await createProject(t);
   await seedTask(duplicateRoot, { id: 'same' });
-  await seedTask(duplicateRoot, { id: 'same' }, '.maestro/tasks/archive');
+  await seedTask(duplicateRoot, { id: 'same' }, '.xiaotao/tasks/archive');
   const duplicate = await rejectedCommand(runActivity(duplicateRoot, ['build']));
   assert.match(duplicate.stderr, /duplicate Task id 'same'/);
 });
@@ -892,14 +892,14 @@ test('rejecting a new Playbook candidate preserves audit without blocking Activi
   const projectRoot = await createProject(t);
   await seedTask(projectRoot);
   await runActivity(projectRoot, ['build']);
-  const candidatePath = '.maestro/playbooks/candidates/new.json';
+  const candidatePath = '.xiaotao/playbooks/candidates/new.json';
   await writeProjectFile(projectRoot, candidatePath, '{"candidate_id":"new","action":"CREATE"}\n');
   const record = JSON.parse(decisionRecord({
     id: 'reject-new', title: '拒绝全新流程', outcome: 'rejected',
     decidedAt: '2026-09-08T02:00:00Z', targetIds: [],
   }));
   record.source_refs = [candidatePath];
-  await writeProjectFile(projectRoot, '.maestro/playbooks/decisions/reject-new.decision.json', JSON.stringify(record));
+  await writeProjectFile(projectRoot, '.xiaotao/playbooks/decisions/reject-new.decision.json', JSON.stringify(record));
   const stale = await rejectedCommand(runActivity(projectRoot, ['check']));
   assert.match(stale.stderr, /stale/);
   const result = parseJson(await runActivity(projectRoot, ['search', '--year', '2026']));

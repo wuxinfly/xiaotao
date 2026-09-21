@@ -13,21 +13,21 @@
 ### Task 1: Add protocol fixtures and failing contract cases
 
 **Files:**
-- Create: `maestro/references/scenarios/validator-fixtures/*`
+- Create: `xiaotao/references/scenarios/validator-fixtures/*`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Step 1:** Add valid Handoff, Memory request, and Memory response artifacts with real referenced files.
 
 **Step 2:** Add invalid JSON, schema-invalid, missing-reference, and traversal fixtures.
 
-**Step 3:** Add a PowerShell helper that invokes `python maestro/scripts/validate.py` and asserts exit codes.
+**Step 3:** Add a PowerShell helper that invokes `python xiaotao/scripts/validate.py` and asserts exit codes.
 
 **Step 4:** Run `pwsh -File scripts/verify-contracts.ps1` and confirm it fails because the CLI does not exist.
 
 ### Task 2: Implement the validator CLI
 
 **Files:**
-- Create: `maestro/scripts/validate.py`
+- Create: `xiaotao/scripts/validate.py`
 
 **Step 1:** Add reusable diagnostics, strict JSON type checks, object property checks, and array checks.
 
@@ -44,15 +44,15 @@
 ### Task 3: Integrate the persistence contract
 
 **Files:**
-- Modify: `maestro/references/handoffs.md`
-- Modify: `maestro/references/memory.md`
+- Modify: `xiaotao/references/handoffs.md`
+- Modify: `xiaotao/references/memory.md`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Step 1:** Require validator success immediately before persisting formal artifacts.
 
 **Step 2:** Document one repair attempt and invalid raw-result preservation as orchestrator behavior.
 
-**Step 3:** State explicitly that validation cannot create or transition Maestro workflow state.
+**Step 3:** State explicitly that validation cannot create or transition XiaoTao workflow state.
 
 **Step 4:** Add stable documentation contract assertions.
 
@@ -61,22 +61,22 @@
 **Files:**
 - Verify all modified files.
 
-**Step 1:** Run Python syntax compilation for `maestro/scripts/validate.py`.
+**Step 1:** Run Python syntax compilation for `xiaotao/scripts/validate.py`.
 
 **Step 2:** Run targeted CLI fixtures in text and JSON modes.
 
-**Step 3:** Run `pwsh -File scripts/verify-contracts.ps1` and expect `All Maestro contract checks passed.`
+**Step 3:** Run `pwsh -File scripts/verify-contracts.ps1` and expect `All XiaoTao contract checks passed.`
 
 **Step 4:** Inspect `git diff --check`, `git status --short`, and the final diff.
 
 ### Task 5: Harden untrusted-input handling after review
 
 **Files:**
-- Modify: `maestro/scripts/validate.py`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-nan-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-infinity-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-negative-infinity-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/handoff-control-character-invalid.json`
+- Modify: `xiaotao/scripts/validate.py`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-nan-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-infinity-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-negative-infinity-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/handoff-control-character-invalid.json`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Step 1:** Add failing cases for every non-standard JSON constant and a control character in a

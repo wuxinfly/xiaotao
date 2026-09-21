@@ -3,8 +3,8 @@
 ## Decision
 
 Worker registry approval is represented by one immutable JSON record per approval under
-`.maestro/workers/approvals/<approval-id>.approval.json`. The mutable
-`.maestro/workers/registry.yaml` remains the authority for which reusable Workers are currently
+`.xiaotao/workers/approvals/<approval-id>.approval.json`. The mutable
+`.xiaotao/workers/registry.yaml` remains the authority for which reusable Workers are currently
 available; an approval record is the authority for when a particular registry revision first made
 one Worker available. Activity reads these records but never creates them and therefore does not
 change the existing approval boundary.

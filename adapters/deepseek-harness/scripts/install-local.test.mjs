@@ -37,32 +37,32 @@ test('legacy manual insert is removed without changing unrelated plugins', () =>
 - insert:
     - id: devtools
       name: mcp-electron-devtools
-    - id: maestro-adapter
-      name: '@maestro-ai/dsh-adapter'
+    - id: xiaotao-adapter
+      name: '@xiaotao-ai/dsh-adapter'
       inject: [skills]
 `
   const result = removeLegacyProfileInsert(original, yaml)
   const value = yaml.parse(result.content)
   const insertions = value.flatMap((operation) => operation.insert ?? [])
   assert.equal(result.changed, true)
-  assert.equal(insertions.some((item) => item.id === 'maestro-adapter'), false)
+  assert.equal(insertions.some((item) => item.id === 'xiaotao-adapter'), false)
   assert.equal(insertions.some((item) => item.id === 'devtools'), true)
   assert.match(result.content, /# existing profile patch/)
 })
 
 test('legacy coreDir is reported while the manual insert is removed', () => {
   const original = `- insert:
-    - id: maestro-adapter
-      name: '@maestro-ai/dsh-adapter'
+    - id: xiaotao-adapter
+      name: '@xiaotao-ai/dsh-adapter'
       config:
-        coreDir: D:/code/maestro-workflow/maestro
+        coreDir: D:/code/xiaotao/xiaotao
 `
   const result = removeLegacyProfileInsert(original, yaml)
-  assert.deepEqual(result.removedCoreDirs, ['D:/code/maestro-workflow/maestro'])
+  assert.deepEqual(result.removedCoreDirs, ['D:/code/xiaotao/xiaotao'])
   assert.deepEqual(yaml.parse(result.content), [])
 })
 
-test('profile patch is untouched when it has no legacy Maestro insert', () => {
+test('profile patch is untouched when it has no legacy XiaoTao insert', () => {
   const original = '# keep exact formatting\n- insert: [{ id: devtools, name: tools }]\n'
   const result = removeLegacyProfileInsert(original, yaml)
   assert.equal(result.changed, false)

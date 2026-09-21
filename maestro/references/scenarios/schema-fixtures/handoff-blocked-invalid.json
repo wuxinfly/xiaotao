@@ -1,8 +1,0 @@
-{
-  "status": "blocked",
-  "summary": "A user decision is required.",
-  "result_path": ".maestro/tasks/example/workers/design-reviewer/runs/result.md",
-  "worker_state_path": ".maestro/tasks/example/workers/design-reviewer/current-state.md",
-  "needs_user_input": true,
-  "recommended_next": []
-}

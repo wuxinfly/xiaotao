@@ -1,0 +1,228 @@
+{
+  "status": "completed",
+  "request_file": "memory-request-valid.json",
+  "current": { "content": {} },
+  "references": [
+    {
+      "title": "Fixture evidence",
+      "content": "Evidence retained for later use.",
+      "source_refs": ["files/source.md"]
+    }
+  ],
+  "long_term_candidates": [
+    {
+      "candidate_id": "candidate-create",
+      "title": "Stable fixture decision",
+      "memory_kind": "decision",
+      "action": "CREATE",
+      "match": { "classification": "novel", "entry_ids": [] },
+      "conflict_status": "none",
+      "content": "The validator fixture must retain a reachable source.",
+      "decision_context": {
+        "reason": "The source makes the decision auditable across Sessions.",
+        "rejected_alternatives": []
+      },
+      "rationale": "No current Long-term entry covers this verified fact.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "workspace_id": "workspace-fixture",
+        "created_at": "2026-08-28T00:00:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    },
+    {
+      "candidate_id": "candidate-update",
+      "title": "Expanded fixture experience",
+      "memory_kind": "experience",
+      "action": "UPDATE",
+      "match": { "classification": "overlap", "entry_ids": ["lt-fixture-validation"] },
+      "conflict_status": "none",
+      "content": "Validate reachable evidence before promoting durable experience.",
+      "rationale": "The new evidence expands one existing validation entry.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "created_at": "2026-08-28T00:01:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    },
+    {
+      "candidate_id": "candidate-merge",
+      "title": "Consolidated fixture principle",
+      "memory_kind": "principle",
+      "action": "MERGE",
+      "match": {
+        "classification": "overlap",
+        "entry_ids": ["lt-fixture-sources", "lt-fixture-validation"]
+      },
+      "conflict_status": "none",
+      "content": "Durable claims require both reachable sources and protocol validation.",
+      "rationale": "Two overlapping entries form one reusable principle.",
+      "source": {
+        "type": "temporary",
+        "id": "temporary-fixture",
+        "created_at": "2026-08-28T00:02:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    },
+    {
+      "candidate_id": "candidate-duplicate",
+      "title": "Existing fixture fact",
+      "memory_kind": "fact",
+      "action": "SKIP",
+      "match": { "classification": "duplicate", "entry_ids": ["lt-fixture-validation"] },
+      "conflict_status": "none",
+      "content": "The validator fixture has a reachable source.",
+      "rationale": "The current Long-term entry already contains the same claim.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "created_at": "2026-08-28T00:03:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    },
+    {
+      "candidate_id": "candidate-low-value",
+      "title": "One-off fixture output",
+      "memory_kind": "other",
+      "action": "SKIP",
+      "match": { "classification": "low-value", "entry_ids": [] },
+      "conflict_status": "none",
+      "content": "A one-off command emitted routine output.",
+      "rationale": "Routine output is not useful across future Tasks.",
+      "source": {
+        "type": "temporary",
+        "id": "temporary-fixture",
+        "created_at": "2026-08-28T00:04:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    },
+    {
+      "candidate_id": "candidate-conflict",
+      "title": "Corrected fixture constraint",
+      "memory_kind": "constraint",
+      "action": "UPDATE",
+      "match": { "classification": "conflict", "entry_ids": ["lt-fixture-runtime"] },
+      "conflict_status": "pending-confirmation",
+      "content": "Current runtime evidence contradicts the stored constraint.",
+      "rationale": "The contradiction requires review before supersession.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "created_at": "2026-08-28T00:05:00Z"
+      },
+      "source_refs": ["files/source.md"]
+    }
+  ],
+  "playbook_candidates": [
+    {
+      "candidate_id": "playbook-candidate-create",
+      "title": "Evidence-first performance diagnosis",
+      "trigger": "A user asks to diagnose a runtime performance regression.",
+      "steps": [
+        "Capture runtime evidence before proposing a cause.",
+        "Run a reversible experiment against the strongest hypothesis.",
+        "Recommend a permanent change only after the experiment confirms the cause."
+      ],
+      "checks": [
+        "The evidence is reachable from the source Task.",
+        "The experiment does not require a permanent change."
+      ],
+      "action": "CREATE",
+      "match": { "classification": "novel", "playbook_ids": [] },
+      "rationale": "The executed method is reusable and no current Playbook covers it.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "workspace_id": "workspace-fixture",
+        "created_at": "2026-08-29T00:00:00Z"
+      },
+      "source_refs": [
+        "files/source.md"
+      ],
+      "evidence_refs": [
+        "files/result.md"
+      ],
+      "status": "candidate"
+    },
+    {
+      "candidate_id": "playbook-candidate-update",
+      "title": "Validate protocol artifacts",
+      "trigger": "A formal XiaoTao protocol artifact is about to be persisted.",
+      "steps": [
+        "Run the matching artifact-triggered protocol guard.",
+        "Repair an invalid artifact once and validate it again.",
+        "Persist the canonical artifact only after validation succeeds."
+      ],
+      "checks": ["A second invalid result is retained with an invalid suffix."],
+      "action": "UPDATE",
+      "match": {
+        "classification": "overlap",
+        "playbook_ids": ["pb-fixture-validation"]
+      },
+      "rationale": "Executed evidence adds a repair step to one current Playbook.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "created_at": "2026-08-29T00:01:00Z"
+      },
+      "source_refs": [
+        "files/source.md"
+      ],
+      "evidence_refs": [
+        "files/result.md"
+      ],
+      "status": "candidate"
+    },
+    {
+      "candidate_id": "playbook-candidate-merge",
+      "title": "Validate and preserve protocol evidence",
+      "trigger": "A formal protocol artifact and its evidence are about to be persisted.",
+      "steps": [
+        "Retain reachable source evidence.",
+        "Run the matching artifact-triggered protocol guard.",
+        "Persist the canonical artifact only after validation succeeds."
+      ],
+      "checks": ["Every referenced source exists under the project root."],
+      "action": "MERGE",
+      "match": {
+        "classification": "overlap",
+        "playbook_ids": ["pb-fixture-sources", "pb-fixture-validation"]
+      },
+      "rationale": "The two current Playbooks form one coherent validated procedure.",
+      "source": {
+        "type": "task",
+        "id": "task-fixture",
+        "created_at": "2026-08-29T00:01:30Z"
+      },
+      "source_refs": [
+        "files/source.md"
+      ],
+      "evidence_refs": [
+        "files/result.md"
+      ],
+      "status": "candidate"
+    },
+    {
+      "candidate_id": "playbook-candidate-low-value",
+      "title": "Run a one-off fixture command",
+      "trigger": "The exact disposable fixture needs local inspection.",
+      "steps": ["Run the one-off command used by this Task."],
+      "checks": [],
+      "action": "SKIP",
+      "match": { "classification": "low-value", "playbook_ids": [] },
+      "rationale": "The command and path are Task-specific and have no reusable workflow value.",
+      "source": {
+        "type": "temporary",
+        "id": "temporary-fixture",
+        "created_at": "2026-08-29T00:02:00Z"
+      },
+      "source_refs": [
+        "files/source.md"
+      ],
+      "evidence_refs": [],
+      "status": "candidate"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ Long-term Memory 回答“项目现在知道什么”，不会保存完整工作
 可删除、可重建的本地查询缓存：
 
 ```text
-.maestro/activity/
+.xiaotao/activity/
   index.json  # 从权威记录确定性派生，不纳入 Git
 ```
 
@@ -31,7 +31,7 @@ Long-term Memory 回答“项目现在知道什么”，不会保存完整工作
   "event_type": "task_completed",
   "title": "完成老周单入口重构",
   "summary": "完成 Task：完成老周单入口重构",
-  "source_refs": [".maestro/tasks/archive/20260910-老周单入口/task.yaml"],
+  "source_refs": [".xiaotao/tasks/archive/20260910-老周单入口/task.yaml"],
   "status": "completed"
 }
 ```
@@ -55,7 +55,7 @@ Long-term Memory 回答“项目现在知道什么”，不会保存完整工作
   "event_type": "temporary_promoted",
   "title": "优化登录流程",
   "summary": "由 Temporary 20260831-登录流程梳理 晋升为 Task：优化登录流程",
-  "source_refs": [".maestro/tasks/20260831-优化登录流程/task.yaml"],
+  "source_refs": [".xiaotao/tasks/20260831-优化登录流程/task.yaml"],
   "status": "completed"
 }
 ```
@@ -75,7 +75,7 @@ Long-term Memory 回答“项目现在知道什么”，不会保存完整工作
 Decision 使用独立的不可变权威记录：
 
 ```text
-.maestro/memory/long-term/decisions/<decision-id>.decision.json
+.xiaotao/memory/long-term/decisions/<decision-id>.decision.json
 ```
 
 记录显式保存 `decided_at`、`outcome` 和 `importance`。Activity 只投影 `importance: milestone` 的
@@ -94,7 +94,7 @@ Decision 发布时严格验证记录内的证据引用可达；Activity 重建�
 Playbook 的批准、拒绝和取代同样发布不可变评审记录：
 
 ```text
-.maestro/playbooks/decisions/<decision-id>.decision.json
+.xiaotao/playbooks/decisions/<decision-id>.decision.json
 ```
 
 记录复用同一份 `decision-record.schema.json`，`target_ids` 指向受影响的 `playbook_id`。Activity
@@ -116,7 +116,7 @@ Playbook ID。回归测试覆盖缓存失效后自动重建、历史候选缺失
 
 构建器对所有规范 Task、Decision 与 Playbook 评审记录来源的相对路径及文件内容计算 SHA-256
 `source_digest`。因此 Task 状态变化、移入 archive，以及 Decision 或 Playbook 评审记录新增或变更
-都会使旧 Index 失效。构建结果原子写入 `.maestro/activity/index.json`；缺失或损坏时查询自动重建。
+都会使旧 Index 失效。构建结果原子写入 `.xiaotao/activity/index.json`；缺失或损坏时查询自动重建。
 
 ## 查询协议
 

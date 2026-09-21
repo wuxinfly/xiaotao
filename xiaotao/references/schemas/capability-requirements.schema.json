@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/capability-requirements.schema.json",
+  "title": "XiaoTao Capability Requirements",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "objective",
+    "required_capabilities",
+    "optional_capabilities",
+    "available_tools",
+    "context",
+    "permission_ceiling",
+    "constraints"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "objective": { "type": "string", "minLength": 1 },
+    "required_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "optional_capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "available_tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "context": { "$ref": "#/$defs/context" },
+    "permission_ceiling": { "$ref": "#/$defs/permissions" },
+    "constraints": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*\\\\)(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "context": {
+      "type": "object",
+      "required": ["read_paths", "write_paths"],
+      "properties": {
+        "read_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/path" }
+        },
+        "write_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/path" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "autonomous-action": {
+      "enum": [
+        "inspect-project",
+        "run-nondestructive-checks",
+        "write-xiaotao-state",
+        "write-work-artifacts"
+      ]
+    },
+    "conditional-action": {
+      "enum": [
+        "edit-project-files",
+        "external-action",
+        "destructive-action",
+        "secrets-operation",
+        "permissions-change",
+        "scope-expansion"
+      ]
+    },
+    "permissions": {
+      "type": "object",
+      "required": ["autonomous", "conditional"],
+      "properties": {
+        "autonomous": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/autonomous-action" }
+        },
+        "conditional": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/conditional-action" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

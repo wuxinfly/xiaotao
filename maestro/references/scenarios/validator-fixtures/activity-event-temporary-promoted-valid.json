@@ -1,9 +1,0 @@
-{
-  "event_id": "activity-20260831-4d1f0a2b9c3e",
-  "occurred_at": "2026-08-31T12:00:15Z",
-  "event_type": "temporary_promoted",
-  "title": "优化登录流程",
-  "summary": "由 Temporary 20260831-登录流程梳理 晋升为 Task：优化登录流程",
-  "source_refs": ["maestro/references/scenarios/validator-fixtures/files/source.md"],
-  "status": "completed"
-}

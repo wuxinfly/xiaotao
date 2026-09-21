@@ -13,10 +13,10 @@
 ### Task 1: Add failing evolution fixtures
 
 **Files:**
-- Modify: `maestro/references/scenarios/validator-fixtures/memory-response-valid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-action-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-conflict-invalid.json`
-- Create: `maestro/references/scenarios/validator-fixtures/memory-response-duplicate-id-invalid.json`
+- Modify: `xiaotao/references/scenarios/validator-fixtures/memory-response-valid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-action-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-conflict-invalid.json`
+- Create: `xiaotao/references/scenarios/validator-fixtures/memory-response-duplicate-id-invalid.json`
 - Modify: `scripts/verify-contracts.ps1`
 
 **Step 1:** Expand the valid response with CREATE, UPDATE, MERGE, and SKIP examples.
@@ -30,8 +30,8 @@
 ### Task 2: Implement the response contract
 
 **Files:**
-- Modify: `maestro/references/schemas/memory-worker-response.schema.json`
-- Modify: `maestro/scripts/validate.py`
+- Modify: `xiaotao/references/schemas/memory-worker-response.schema.json`
+- Modify: `xiaotao/scripts/validate.py`
 
 **Step 1:** Add reusable JSON Schema definitions for source, match, and Long-term candidate proposals.
 
@@ -46,9 +46,9 @@
 ### Task 3: Document promotion and review behavior
 
 **Files:**
-- Modify: `maestro/references/memory.md`
-- Modify: `maestro/references/storage.md`
-- Modify: `maestro/references/coordination.md`
+- Modify: `xiaotao/references/memory.md`
+- Modify: `xiaotao/references/storage.md`
+- Modify: `xiaotao/references/coordination.md`
 - Modify: `README.md`
 
 **Step 1:** Document extraction, comparison, proposal ordering, and forbidden direct copies.

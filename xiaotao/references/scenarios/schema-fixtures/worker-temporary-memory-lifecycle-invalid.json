@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "id": "frontend-performance",
+  "name": "Frontend Performance Worker",
+  "source": "temporary",
+  "status": "active",
+  "capabilities": ["react-performance"],
+  "scope": ["homepage-startup"],
+  "responsibility": "Profile homepage startup.",
+  "inputs": ["homepage trace"],
+  "outputs": ["profile evidence"],
+  "instructions": { "required": ["contract:handoff", "policy:safety-boundary"], "optional": [] },
+  "tools": [],
+  "context": { "read_paths": ["src/"], "write_paths": [".xiaotao/memory/temporary/"] },
+  "permissions": { "autonomous": ["inspect-project"], "conditional": [] },
+  "lifecycle": { "scope": "temporary", "expires_at": "temporary-archive" }
+}

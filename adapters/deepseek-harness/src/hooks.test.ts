@@ -40,7 +40,7 @@ function makeCtx() {
 const payload: TurnStopPayload = { agent: {} as never, turn: 1, signal: new AbortController().signal }
 
 function buildCatalog(projectRoot: string): void {
-  const script = path.resolve(process.cwd(), '../../maestro/scripts/memory_catalog.py')
+  const script = path.resolve(process.cwd(), '../../xiaotao/scripts/memory_catalog.py')
   const candidates = process.platform === 'win32' ? ['python', 'py', 'python3'] : ['python3', 'python']
   for (const python of candidates) {
     const result = spawnSync(python, [script, '--project-root', projectRoot, 'build'], {
@@ -165,7 +165,7 @@ test('automatic checkpoint triggers from measured pressure and records a bounded
     signal: new AbortController().signal })
   assert.equal(decision, 'triggered')
   assert.equal(f.steered.length, 1)
-  assert.equal(f.steered[0].source.plugin, 'maestro-auto-checkpoint/turn-3')
+  assert.equal(f.steered[0].source.plugin, 'xiaotao-auto-checkpoint/turn-3')
   assert.match(f.steered[0].content[0].text, /不是 pre-compaction/)
   assert.match(f.steered[0].content[0].text, /先 inspect/)
 })
@@ -206,7 +206,7 @@ test('automatic checkpoint deduplicates a trigger and observes cooldown after co
     signal: new AbortController().signal }), 'no-new-progress')
 
   f.events.push({ seq: f.events.length, type: 'tool/call', data: { turn: 3, callId: 'checkpoint-1',
-    name: 'maestro_checkpoint', arguments: JSON.stringify({ operation: 'save' }) } })
+    name: 'xiaotao_checkpoint', arguments: JSON.stringify({ operation: 'save' }) } })
   f.events.push({ seq: f.events.length, type: 'tool/result', data: { message: { content: [{
     type: 'tool-result', toolCallId: 'checkpoint-1', content: [{ type: 'text', text: '{"status":"committed"}' }],
   }] } } })
@@ -240,8 +240,8 @@ test('loadBoundedRuntimeContext returns null when no active work exists', async 
   assert.equal(await loadBoundedRuntimeContext(tmp), null)
 
   // Empty entries
-  await mkdir(path.join(tmp, '.maestro/memory'), { recursive: true })
-  await writeFile(path.join(tmp, '.maestro/memory/index.json'), JSON.stringify({
+  await mkdir(path.join(tmp, '.xiaotao/memory'), { recursive: true })
+  await writeFile(path.join(tmp, '.xiaotao/memory/index.json'), JSON.stringify({
     schema_version: 1,
     entries: [],
     pending_followups: [],
@@ -249,7 +249,7 @@ test('loadBoundedRuntimeContext returns null when no active work exists', async 
   assert.equal(await loadBoundedRuntimeContext(tmp), null)
 
   // Orphaned index.json without any authoritative sources on disk
-  await writeFile(path.join(tmp, '.maestro/memory/index.json'), JSON.stringify({
+  await writeFile(path.join(tmp, '.xiaotao/memory/index.json'), JSON.stringify({
     schema_version: 1,
     entries: [
       { memory_id: 'task-orphan', title: 'Orphan task', record_type: 'task', status: 'active' },
@@ -263,13 +263,13 @@ test('loadBoundedRuntimeContext returns bounded runtime context when active work
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-active-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const task1 = path.join(tmp, '.maestro/tasks/task-1')
-  const task2 = path.join(tmp, '.maestro/tasks/task-2')
-  const task3 = path.join(tmp, '.maestro/tasks/task-3')
-  const task4 = path.join(tmp, '.maestro/tasks/task-4')
-  const temp1 = path.join(tmp, '.maestro/memory/temporary/active/temp-1')
-  const ltDir = path.join(tmp, '.maestro/memory/long-term/entries')
-  const fuDir = path.join(tmp, '.maestro/memory/followups/pending')
+  const task1 = path.join(tmp, '.xiaotao/tasks/task-1')
+  const task2 = path.join(tmp, '.xiaotao/tasks/task-2')
+  const task3 = path.join(tmp, '.xiaotao/tasks/task-3')
+  const task4 = path.join(tmp, '.xiaotao/tasks/task-4')
+  const temp1 = path.join(tmp, '.xiaotao/memory/temporary/active/temp-1')
+  const ltDir = path.join(tmp, '.xiaotao/memory/long-term/entries')
+  const fuDir = path.join(tmp, '.xiaotao/memory/followups/pending')
 
   await mkdir(task1, { recursive: true })
   await mkdir(task2, { recursive: true })
@@ -305,8 +305,8 @@ updated_at: 2026-09-12T10:00:00Z
 updated_by: old-zhou/test
 ---
 
-\`\`\`maestro-memory-entry
-{"entry_id":"lt-1","title":"Long-term 1","memory_kind":"principle","content":"Rule","source_refs":[".maestro/tasks/task-1/task.yaml"],"status":"active"}
+\`\`\`xiaotao-memory-entry
+{"entry_id":"lt-1","title":"Long-term 1","memory_kind":"principle","content":"Rule","source_refs":[".xiaotao/tasks/task-1/task.yaml"],"status":"active"}
 \`\`\`
 `)
   await writeFile(path.join(fuDir, 'f-1.yaml'), `followup_id: f-1
@@ -314,7 +314,7 @@ title: Follow-up 1
 status: pending
 created_at: 2026-09-12T10:00:00Z
 source_refs:
-  - .maestro/tasks/task-1/task.yaml
+  - .xiaotao/tasks/task-1/task.yaml
 `)
   buildCatalog(tmp)
 
@@ -336,7 +336,7 @@ test('injectSessionRuntimeContext queues non-waking bounded context on session s
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-inject-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const taskDir = path.join(tmp, '.maestro/tasks/task-active')
+  const taskDir = path.join(tmp, '.xiaotao/tasks/task-active')
   await mkdir(taskDir, { recursive: true })
   await writeFile(path.join(taskDir, 'task.yaml'), `id: task-active
 objective: Work in progress
@@ -356,13 +356,13 @@ revision: 1
   assert.equal(f.injected.length, 1)
   const injectedMsg = f.injected[0]
   assert.equal(injectedMsg.source?.kind, 'plugin')
-  assert.equal(injectedMsg.source?.plugin, 'maestro-runtime-context')
+  assert.equal(injectedMsg.source?.plugin, 'xiaotao-runtime-context')
   assert.match(injectedMsg.content[0].text, /task-active/)
   assert.match(injectedMsg.content[0].text, /Work in progress/)
-  assert.match(injectedMsg.content[0].text, /## Maestro 工作规则/)
+  assert.match(injectedMsg.content[0].text, /## XiaoTao 工作规则/)
   assert.match(injectedMsg.content[0].text, /唯一身份是“小涛”/)
-  assert.match(injectedMsg.content[0].text, /不要自称执行者、Worker、Agent 或 Maestro 工作流/)
-  assert.match(injectedMsg.content[0].text, /必须先加载 Maestro Skill/)
+  assert.match(injectedMsg.content[0].text, /不要自称执行者、Worker、Agent 或 XiaoTao 工作流/)
+  assert.match(injectedMsg.content[0].text, /必须先加载 XiaoTao Skill/)
   assert.match(injectedMsg.content[0].text, /不得因为可以搜索代码而跳过记忆搜索/)
   assert.match(injectedMsg.content[0].text, /最多 `show` 3 条相关记忆/)
 })
@@ -374,7 +374,7 @@ test('injectSessionRuntimeContext binds each session to its own project cwd', as
   t.after(() => rm(hostRoot, { recursive: true, force: true }))
 
   for (const [root, id] of [[projectA, 'task-a'], [projectB, 'task-b']] as const) {
-    const taskDir = path.join(root, '.maestro/tasks', id)
+    const taskDir = path.join(root, '.xiaotao/tasks', id)
     await mkdir(taskDir, { recursive: true })
     await writeFile(path.join(taskDir, 'task.yaml'), `id: ${id}\nobjective: ${id}\nstatus: active\ncreated_at: 2026-09-14T00:00:00Z\nupdated_at: 2026-09-14T00:00:00Z\nupdated_by: old-zhou/test\nrevision: 1\n`)
     buildCatalog(root)
@@ -402,17 +402,17 @@ test('injectSessionRuntimeContext does not fall back to the DSH launch cwd', asy
   assert.equal(f.injected.length, 0)
 })
 
-test('injectSessionRuntimeContext still injects memory-first routing when Maestro has no active work', async (t) => {
+test('injectSessionRuntimeContext still injects memory-first routing when XiaoTao has no active work', async (t) => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-routing-only-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
-  await mkdir(path.join(tmp, '.maestro'), { recursive: true })
+  await mkdir(path.join(tmp, '.xiaotao'), { recursive: true })
 
   const f = autoFixture()
   ;(f.agent as unknown as { session: { header: { cwd: string } } }).session.header.cwd = tmp
   assert.equal(await injectSessionRuntimeContext({ agent: f.agent }), true)
   assert.equal(f.steered.length, 0)
   assert.equal(f.injected.length, 1)
-  assert.match(f.injected[0].content[0].text, /## Maestro 工作规则/)
+  assert.match(f.injected[0].content[0].text, /## XiaoTao 工作规则/)
   assert.match(f.injected[0].content[0].text, /唯一身份是“小涛”/)
   assert.doesNotMatch(f.injected[0].content[0].text, /# Memory Overview/)
 })
@@ -421,7 +421,7 @@ test('loadBoundedRuntimeContext discovers recoverable checkpoint and returns con
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-checkpoint-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  // Checkpoint file under .maestro/tasks/task-chk/references/checkpoints/req-chk-1.json
+  // Checkpoint file under .xiaotao/tasks/task-chk/references/checkpoints/req-chk-1.json
   const checkpointPayload = {
     schema_version: 1,
     request_id: 'req-chk-1',
@@ -442,10 +442,10 @@ test('loadBoundedRuntimeContext discovers recoverable checkpoint and returns con
       in_progress: ['step 2'],
       next: ['step 3'],
       open_questions: [],
-      source_refs: ['.maestro/tasks/task-chk/progress.md'],
+      source_refs: ['.xiaotao/tasks/task-chk/progress.md'],
     },
   }
-  const chkDir = path.join(tmp, '.maestro/tasks/task-chk/references/checkpoints')
+  const chkDir = path.join(tmp, '.xiaotao/tasks/task-chk/references/checkpoints')
   await mkdir(chkDir, { recursive: true })
   await writeFile(path.join(chkDir, 'req-chk-1.json'), JSON.stringify(checkpointPayload, null, 2))
 
@@ -479,7 +479,7 @@ test('loadBoundedRuntimeContext does not rebuild a missing index during session 
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-rebuild-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const taskDir = path.join(tmp, '.maestro/tasks/task-live')
+  const taskDir = path.join(tmp, '.xiaotao/tasks/task-live')
   await mkdir(taskDir, { recursive: true })
   await writeFile(path.join(taskDir, 'task.yaml'), `id: task-live
 objective: Live active task
@@ -498,7 +498,7 @@ revision: 1
   assert.match(result, /## Active Tasks \(0\)/)
 
   // SessionStart must not create the derived index.
-  const indexPath = path.join(tmp, '.maestro/memory/index.json')
+  const indexPath = path.join(tmp, '.xiaotao/memory/index.json')
   await assert.rejects(readFile(indexPath, 'utf8'), /ENOENT/)
 })
 
@@ -506,7 +506,7 @@ test('loadBoundedRuntimeContext uses a valid cached snapshot without scanning ne
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-stale-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const oldTaskDir = path.join(tmp, '.maestro/tasks/task-cached')
+  const oldTaskDir = path.join(tmp, '.xiaotao/tasks/task-cached')
   await mkdir(oldTaskDir, { recursive: true })
   await writeFile(path.join(oldTaskDir, 'task.yaml'), `id: task-cached
 objective: Cached active task
@@ -518,7 +518,7 @@ revision: 1
 `)
   buildCatalog(tmp)
 
-  const newTaskDir = path.join(tmp, '.maestro/tasks/task-live-new')
+  const newTaskDir = path.join(tmp, '.xiaotao/tasks/task-live-new')
   await mkdir(newTaskDir, { recursive: true })
   await writeFile(path.join(newTaskDir, 'task.yaml'), `id: task-live-new
 objective: Brand new active task
@@ -535,7 +535,7 @@ revision: 1
   assert.match(result, /task-cached/)
   assert.doesNotMatch(result, /task-live-new/)
 
-  const cached = JSON.parse(await readFile(path.join(tmp, '.maestro/memory/index.json'), 'utf8'))
+  const cached = JSON.parse(await readFile(path.join(tmp, '.xiaotao/memory/index.json'), 'utf8'))
   assert.ok(cached.entries.some((e: any) => e.memory_id === 'task-cached'))
   assert.ok(!cached.entries.some((e: any) => e.memory_id === 'task-live-new'))
 })
@@ -544,7 +544,7 @@ test('loadBoundedRuntimeContext with fs still avoids rebuilding during session s
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-fs-rebuild-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const taskDir = path.join(tmp, '.maestro/tasks/task-with-fs')
+  const taskDir = path.join(tmp, '.xiaotao/tasks/task-with-fs')
   await mkdir(taskDir, { recursive: true })
   await writeFile(path.join(taskDir, 'task.yaml'), `id: task-with-fs
 objective: Active task tested with fs parameter
@@ -570,7 +570,7 @@ revision: 1
   assert.match(result, /启动时没有可用的 Catalog 快照/)
 
   // The optional fs service does not permit startup to create the index.
-  const indexPath = path.join(tmp, '.maestro/memory/index.json')
+  const indexPath = path.join(tmp, '.xiaotao/memory/index.json')
   await assert.rejects(readFile(indexPath, 'utf8'), /ENOENT/)
 })
 
@@ -578,7 +578,7 @@ test('loadBoundedRuntimeContext does not consume stale index when refresh/rebuil
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'dsh-runtime-context-fail-deg-'))
   t.after(() => rm(tmp, { recursive: true, force: true }))
 
-  const taskDir = path.join(tmp, '.maestro/tasks/task-dsh-current')
+  const taskDir = path.join(tmp, '.xiaotao/tasks/task-dsh-current')
   await mkdir(taskDir, { recursive: true })
   await writeFile(path.join(taskDir, 'task.yaml'), `id: task-dsh-current
 objective: Real current DSH task
@@ -590,8 +590,8 @@ revision: 1
 `)
 
   // Stale index containing obsolete task
-  await mkdir(path.join(tmp, '.maestro/memory'), { recursive: true })
-  await writeFile(path.join(tmp, '.maestro/memory/index.json'), JSON.stringify({
+  await mkdir(path.join(tmp, '.xiaotao/memory'), { recursive: true })
+  await writeFile(path.join(tmp, '.xiaotao/memory/index.json'), JSON.stringify({
     schema_version: 1,
     generated_at: '2026-09-01T00:00:00Z',
     source_digest: 'obsolete',
@@ -610,8 +610,8 @@ revision: 1
   }))
 
   // Force Python overview/rebuild to fail
-  process.env.MAESTRO_FORCE_PYTHON_FAIL = '1'
-  t.after(() => { delete process.env.MAESTRO_FORCE_PYTHON_FAIL })
+  process.env.XIAOTAO_FORCE_PYTHON_FAIL = '1'
+  t.after(() => { delete process.env.XIAOTAO_FORCE_PYTHON_FAIL })
 
   const result = await loadBoundedRuntimeContext(tmp)
   assert.ok(result)
@@ -621,7 +621,7 @@ revision: 1
   assert.doesNotMatch(result, /Stale task that must not be consumed/)
 
   // Explicit degraded warning MUST be output
-  assert.match(result, /警告：检测到项目存在 Maestro 权威工作源，但启动时没有可用的 Catalog 快照/)
+  assert.match(result, /警告：检测到项目存在 XiaoTao 权威工作源，但启动时没有可用的 Catalog 快照/)
 
   // Authoritative checkpoint MUST still be presented
   assert.match(result, /## Recoverable Checkpoint/)

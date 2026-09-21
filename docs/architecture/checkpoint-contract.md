@@ -1,8 +1,8 @@
 # Recoverable checkpoint: snapshot writer and DSH evidence
 
 Status: **opt-in snapshot tool implemented; live model/backend acceptance remains open**.
-Scope: second increment for [#26](https://github.com/IHongTaoI/maestro-workflow/issues/26),
-within [#14](https://github.com/IHongTaoI/maestro-workflow/issues/14).
+Scope: second increment for [#26](https://github.com/IHongTaoI/xiaotao/issues/26),
+within [#14](https://github.com/IHongTaoI/xiaotao/issues/14).
 Updated 2026-09-10. Core owns target selection and saved facts; Adapter owns validation,
 write-ahead records, locks, CAS and recovery. M1 does not depend on automatic triggers and adds no
 Memory layer. The opt-in M2 pressure trigger reuses this writer; see
@@ -53,9 +53,9 @@ are the operator's responsibility. A separate path can still share a disk/backen
   it does not regenerate a summary or invent newer coverage.
 
 Temporary targets use memory/temporary/active/<id>/current.md; Task targets use
-tasks/<id>/progress.md, both under .maestro/. Metadata must identify that same active target.
+tasks/<id>/progress.md, both under .xiaotao/. Metadata must identify that same active target.
 Worker targets, promoted Tasks and transaction overlays are unsupported. Until overlay
-resolution lands, any nonempty .maestro/transactions directory blocks the operation
+resolution lands, any nonempty .xiaotao/transactions directory blocks the operation
 conservatively, including completed bundles. Do not delete evidence to bypass the check.
 
 The seven snapshot fields are objective, confirmed, rejected, in_progress, next,
@@ -80,7 +80,7 @@ embeds those bytes in ONE exclusive JSON request, eliminating orphan preparation
   <request-id>.json                 # optional identical write-ahead copy
 ```
 
-The request follows [checkpoint.schema.json](../../maestro/references/schemas/checkpoint.schema.json).
+The request follows [checkpoint.schema.json](../../xiaotao/references/schemas/checkpoint.schema.json).
 It contains project/target/Session binding, input hash, base Core revision/hash, bounded source
 facts/hash and exact proposal/hash. Recovery rereads and validates the schema, hashes, binding,
 revision and receipt. Hashes detect mismatch/corruption; they are not signatures or extra authority.
@@ -98,7 +98,7 @@ No Long-term entries, task lifecycle metadata or multi-file business state chang
 Hold metadata and state locks in lexical path order, recheck active lifecycle and base revision/hash,
 and use host FsVersion CAS. FsVersion and Core revision are distinct. Re-read the committed
 bytes before publishing the immutable committed observation. New observations follow
-[checkpoint-observation.schema.json](../../maestro/references/schemas/checkpoint-observation.schema.json)
+[checkpoint-observation.schema.json](../../xiaotao/references/schemas/checkpoint-observation.schema.json)
 and contain request hash, proposal hash, revision, `completion` (`save` or `recovery`) and the
 first-publication `committed_at`; legacy four-field observations remain readable. Only the explicit
 `retry` entry point writes `completion: recovery`; a repeated `save` remains `completion: save`.
@@ -142,7 +142,7 @@ If project writes fail it tries the configured secondary directory. failure_reco
 whether that diagnostic was confirmed. It does not replace the request or prove the summary
 was committed. Cancellation stops new diagnostic writes; status and inspect never write them.
 
-The [Memory](../../maestro/references/memory.md) and [storage](../../maestro/references/storage.md)
+The [Memory](../../xiaotao/references/memory.md) and [storage](../../xiaotao/references/storage.md)
 references describe optional checkpoint recovery. Read the selected target's managed snapshot
 alongside its user-authored context; refresh the Memory catalog after successful formal writes.
 Catalog failure does not roll back the committed checkpoint. Bare Core remains usable.

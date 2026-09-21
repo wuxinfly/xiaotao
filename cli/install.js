@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import { HOSTS } from './hosts.js';
 
-const CONFIG_PATH = '.maestro/installation.json';
-const MARKER_NAME = '.maestro-managed.json';
-const MANAGED_PACKAGE = 'maestro-ai-workflow';
+const CONFIG_PATH = '.xiaotao/installation.json';
+const MARKER_NAME = '.xiaotao-managed.json';
+const MANAGED_PACKAGE = 'xiaotao-ai-workflow';
 
 function toPortablePath(value) {
   return value.split(path.sep).join('/');
@@ -49,11 +49,11 @@ async function isManaged(target) {
 async function packageInfo(packageRoot) {
   const manifest = await readJson(path.join(packageRoot, 'package.json'));
   if (manifest.name !== MANAGED_PACKAGE || typeof manifest.version !== 'string') {
-    throw new Error(`Invalid Maestro package metadata at ${packageRoot}`);
+    throw new Error(`Invalid XiaoTao package metadata at ${packageRoot}`);
   }
-  const skillSource = path.join(packageRoot, 'maestro');
+  const skillSource = path.join(packageRoot, 'xiaotao');
   if (!(await pathExists(path.join(skillSource, 'SKILL.md')))) {
-    throw new Error(`Maestro Skill source is missing: ${path.join(skillSource, 'SKILL.md')}`);
+    throw new Error(`XiaoTao Skill source is missing: ${path.join(skillSource, 'SKILL.md')}`);
   }
   return { version: manifest.version, skillSource };
 }
@@ -83,7 +83,7 @@ export async function installHosts({
 
   for (const { target } of targets) {
     if ((await isNonEmpty(target)) && !(await isManaged(target)) && !force) {
-      throw new Error(`Destination is not managed by Maestro: ${target}. Re-run with --force to adopt it.`);
+      throw new Error(`Destination is not managed by XiaoTao: ${target}. Re-run with --force to adopt it.`);
     }
   }
 
@@ -124,7 +124,7 @@ export async function installHosts({
 export async function updateHosts({ projectRoot, packageRoot }) {
   const metadata = await readInstallation(projectRoot);
   if (!Array.isArray(metadata.tools)) {
-    throw new Error(`Invalid Maestro installation metadata: tools must be an array`);
+    throw new Error(`Invalid XiaoTao installation metadata: tools must be an array`);
   }
   return installHosts({ projectRoot, packageRoot, toolIds: metadata.tools });
 }
@@ -141,7 +141,7 @@ export async function doctorInstallation(projectRoot) {
       code: 'config_missing',
       ok: false,
       path: toPortablePath(CONFIG_PATH),
-      message: error.code === 'ENOENT' ? 'Run maestro init first.' : error.message,
+      message: error.code === 'ENOENT' ? 'Run xiaotao init first.' : error.message,
     });
     return { ok: false, checks };
   }

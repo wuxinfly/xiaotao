@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "resolved_at": "2026-08-27T14:00:00Z",
+  "requirements": {
+    "schema_version": 1,
+    "objective": "Investigate the current runtime behavior",
+    "required_capabilities": ["codebase-investigation", "runtime-analysis"],
+    "optional_capabilities": ["evidence-collection"],
+    "available_tools": [],
+    "context": { "read_paths": ["."], "write_paths": [".xiaotao/tasks/example/"] },
+    "permission_ceiling": {
+      "autonomous": ["inspect-project", "run-nondestructive-checks", "write-xiaotao-state", "write-work-artifacts"],
+      "conditional": []
+    },
+    "constraints": ["Do not edit project files"]
+  },
+  "registry_versions": [{ "registry_id": "project-workers", "version": "revision:3" }],
+  "resolution": "exact",
+  "selected_workers": [
+    { "id": "runtime-investigator", "snapshot_path": ".xiaotao/tasks/example/workers/runtime-investigator/spec.yaml" }
+  ],
+  "rationale": "The project runtime investigator covers every required and optional capability within the permission ceiling."
+}

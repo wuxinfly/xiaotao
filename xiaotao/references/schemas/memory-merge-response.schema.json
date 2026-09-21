@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/memory-merge-response.schema.json",
+  "title": "XiaoTao Memory Merge Response",
+  "type": "object",
+  "required": [
+    "status",
+    "merged_entries",
+    "resolved",
+    "unresolved_conflicts",
+    "requires_human_review"
+  ],
+  "properties": {
+    "status": { "const": "completed" },
+    "merged_entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mergedLongTermEntry" }
+    },
+    "resolved": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "unresolved_conflicts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conflictRecord" }
+    },
+    "requires_human_review": { "type": "boolean" },
+    "notes": {}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "unresolved_conflicts": {
+            "type": "array",
+            "minItems": 1
+          }
+        },
+        "required": ["unresolved_conflicts"]
+      },
+      "then": {
+        "properties": {
+          "requires_human_review": { "const": true }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "storageId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "与 Temporary/Task 目录名一致且文件系统安全的 ID。可以包含 CJK 和其他非 ASCII Unicode；拒绝路径分隔符、空白、控制字符、shell 元字符、文件系统不安全标点，以及开头或结尾的点。",
+      "pattern": "^(?!\\.)(?!.*[.]$)[\\p{L}\\p{N}._-]+$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!.*\\\\)(?!/)(?![A-Za-z]:)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "provenance": {
+      "type": "object",
+      "required": [
+        "author",
+        "branch",
+        "commit",
+        "task_id",
+        "memory_path",
+        "claim",
+        "source_refs",
+        "created_at"
+      ],
+      "properties": {
+        "author": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "minLength": 1 },
+        "task_id": { "$ref": "#/$defs/storageId" },
+        "memory_path": { "$ref": "#/$defs/path" },
+        "claim": { "type": "string", "minLength": 1 },
+        "source_refs": { "$ref": "#/$defs/sourceRefs" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "conflictRecord": {
+      "type": "object",
+      "required": [
+        "conflict_id",
+        "topic",
+        "status",
+        "reason",
+        "ours",
+        "theirs"
+      ],
+      "properties": {
+        "conflict_id": { "$ref": "#/$defs/stableId" },
+        "topic": { "type": "string", "minLength": 1 },
+        "status": {
+          "enum": ["pending-confirmation", "resolved"]
+        },
+        "reason": { "type": "string", "minLength": 1 },
+        "ours": { "$ref": "#/$defs/provenance" },
+        "theirs": { "$ref": "#/$defs/provenance" },
+        "resolution": {
+          "type": "object",
+          "required": ["strategy", "resolved_by", "resolved_at"],
+          "properties": {
+            "strategy": { "type": "string", "minLength": 1 },
+            "resolved_by": { "type": "string", "minLength": 1 },
+            "resolved_at": { "type": "string", "format": "date-time" },
+            "notes": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "mergedLongTermEntry": {
+      "type": "object",
+      "required": [
+        "entry_id",
+        "title",
+        "memory_kind",
+        "content",
+        "source_refs",
+        "action_taken"
+      ],
+      "properties": {
+        "entry_id": { "$ref": "#/$defs/stableId" },
+        "title": { "type": "string", "minLength": 1 },
+        "memory_kind": {
+          "enum": ["fact", "experience", "principle", "decision", "constraint", "other"]
+        },
+        "content": { "type": "string", "minLength": 1 },
+        "decision_context": { "$ref": "#/$defs/decisionContext" },
+        "source_refs": { "$ref": "#/$defs/sourceRefs" },
+        "status": {
+          "enum": ["active", "superseded", "rejected"]
+        },
+        "action_taken": {
+          "enum": ["kept_ours", "kept_theirs", "merged", "novel_ours", "novel_theirs"]
+        },
+        "superseded_entry_ids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stableId" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "memory_kind": { "not": { "const": "decision" } } },
+            "required": ["memory_kind"]
+          },
+          "then": { "properties": { "decision_context": false } }
+        }
+      ]
+    },
+    "decisionContext": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "rejected_alternatives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["alternative", "reason"],
+            "properties": {
+              "alternative": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

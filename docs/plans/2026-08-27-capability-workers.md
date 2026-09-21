@@ -13,10 +13,10 @@
 ### Task 1: Define Worker and resolver contracts
 
 **Files:**
-- Create: `maestro/references/workers.md`
-- Modify: `maestro/SKILL.md`
-- Modify: `maestro/references/coordination.md`
-- Modify: `maestro/references/storage.md`
+- Create: `xiaotao/references/workers.md`
+- Modify: `xiaotao/SKILL.md`
+- Modify: `xiaotao/references/coordination.md`
+- Modify: `xiaotao/references/storage.md`
 
 1. Define canonical capability requirements and stable-role versus Worker boundaries.
 2. Define deterministic exact, compatible, composed, and generated resolution.
@@ -26,8 +26,8 @@
 ### Task 2: Make built-in roles capability-addressable
 
 **Files:**
-- Create: `maestro/references/workers/builtin-registry.json`
-- Modify: `maestro/references/roles/*.md`
+- Create: `xiaotao/references/workers/builtin-registry.json`
+- Modify: `xiaotao/references/roles/*.md`
 
 1. Add a minimal canonical capability list to every existing role.
 2. Add matching Worker entries to the immutable built-in registry.
@@ -36,12 +36,12 @@
 ### Task 3: Add machine-checkable contracts
 
 **Files:**
-- Create: `maestro/references/schemas/capability-requirements.schema.json`
-- Create: `maestro/references/schemas/worker.schema.json`
-- Create: `maestro/references/schemas/worker-registry.schema.json`
-- Create: `maestro/references/schemas/worker-selection.schema.json`
-- Modify: `maestro/references/schemas/handoff.schema.json`
-- Modify: `maestro/references/handoffs.md`
+- Create: `xiaotao/references/schemas/capability-requirements.schema.json`
+- Create: `xiaotao/references/schemas/worker.schema.json`
+- Create: `xiaotao/references/schemas/worker-registry.schema.json`
+- Create: `xiaotao/references/schemas/worker-selection.schema.json`
+- Modify: `xiaotao/references/schemas/handoff.schema.json`
+- Modify: `xiaotao/references/handoffs.md`
 
 1. Validate capability IDs, Worker scope, context, tools, requested actions, and lifecycle.
 2. Validate resolver outcomes and immutable snapshot paths.
@@ -51,8 +51,8 @@
 ### Task 4: Add regression scenarios and CI coverage
 
 **Files:**
-- Create: `maestro/references/scenarios/capability-workers.md`
-- Create: `maestro/references/scenarios/schema-fixtures/*worker*.json`
+- Create: `xiaotao/references/scenarios/capability-workers.md`
+- Create: `xiaotao/references/scenarios/schema-fixtures/*worker*.json`
 - Modify: `scripts/verify-contracts.ps1`
 - Modify: `README.md`
 

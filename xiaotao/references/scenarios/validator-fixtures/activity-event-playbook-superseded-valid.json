@@ -1,0 +1,9 @@
+{
+  "event_id": "activity-20260909-9f8e7d6c5b4a",
+  "occurred_at": "2026-09-09T03:00:00Z",
+  "event_type": "playbook_superseded",
+  "title": "旧版诊断流程",
+  "summary": "取代 Playbook：新流程覆盖了旧步骤。",
+  "source_refs": ["xiaotao/references/playbooks.md"],
+  "status": "completed"
+}

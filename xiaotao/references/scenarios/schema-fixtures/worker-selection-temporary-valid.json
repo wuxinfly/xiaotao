@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "resolved_at": "2026-08-27T14:12:00Z",
+  "requirements": {
+    "schema_version": 1,
+    "objective": "Explore React startup and bundle cost without starting implementation",
+    "required_capabilities": ["react-performance", "runtime-profiling"],
+    "optional_capabilities": ["bundle-analysis"],
+    "available_tools": ["browser-trace", "bundle-inspector"],
+    "context": {
+      "read_paths": ["src/", "dist/stats.json"],
+      "write_paths": [".xiaotao/memory/temporary/active/performance-example/workers/frontend-performance/"]
+    },
+    "permission_ceiling": {
+      "autonomous": ["inspect-project", "run-nondestructive-checks", "write-work-artifacts"],
+      "conditional": []
+    },
+    "constraints": ["Remain exploratory"]
+  },
+  "registry_versions": [{ "registry_id": "xiaotao-builtins", "version": "sha256:example" }],
+  "resolution": "generated",
+  "selected_workers": [
+    {
+      "id": "frontend-performance",
+      "snapshot_path": ".xiaotao/memory/temporary/active/performance-example/workers/frontend-performance/spec.yaml"
+    }
+  ],
+  "rationale": "No reusable Worker covers the required capabilities; preserve the exploratory Worker with its Temporary."
+}

@@ -1,11 +1,11 @@
 # Protocol Validator Design
 
-Maestro needs a deterministic guard at the point where an Agent is about to persist a formal
+XiaoTao needs a deterministic guard at the point where an Agent is about to persist a formal
 Handoff or Memory Worker payload. The guard is artifact-triggered: invoking it validates one
-existing JSON file and returns a result. It never creates Maestro state, selects a role or Worker,
+existing JSON file and returns a result. It never creates XiaoTao state, selects a role or Worker,
 starts a Workflow, delegates work, or advances a phase.
 
-The first version is a single zero-dependency Python CLI at `maestro/scripts/validate.py`. It
+The first version is a single zero-dependency Python CLI at `xiaotao/scripts/validate.py`. It
 accepts one of `handoff`, `memory-request`, or `memory-response`, followed by the JSON file to
 validate. A project root defaults to the current working directory and can be supplied explicitly
 with `--project-root`. The implementation mirrors the three repository schemas directly with

@@ -4,12 +4,12 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SOURCE = fileURLToPath(new URL('./maestro-codex/', import.meta.url));
-const NAME = 'maestro-codex';
-const OWNER = 'maestro-ai-workflow/codex-adapter';
+const SOURCE = fileURLToPath(new URL('./xiaotao-codex/', import.meta.url));
+const NAME = 'xiaotao-codex';
+const OWNER = 'xiaotao-ai-workflow/codex-adapter';
 const FILES = ['.codex-plugin/plugin.json', 'hooks/hooks.json', 'scripts/session-start.mjs'];
 const ENTRY_PATH = `./.codex/plugins/${NAME}`;
-const MARKER = '.maestro-source.json';
+const MARKER = '.xiaotao-source.json';
 
 async function optionalText(file) {
   try { return await readFile(file, 'utf8'); }
@@ -59,7 +59,7 @@ export async function installLocal({ homeDir = homedir(), sourceDir = SOURCE } =
   for (const dir of [homeDir, path.join(homeDir, '.agents'), path.dirname(marketplace)]) {
     await directory(dir);
   }
-  const lockPath = path.join(path.dirname(marketplace), '.maestro-codex-install.lock');
+  const lockPath = path.join(path.dirname(marketplace), '.xiaotao-codex-install.lock');
   const lock = await open(lockPath, 'wx');
   try {
     const catalogStat = await optionalStat(marketplace);
@@ -75,7 +75,7 @@ export async function installLocal({ homeDir = homedir(), sourceDir = SOURCE } =
     const matches = catalog.plugins.filter(entry => entry?.name === NAME);
     if (matches.length > 1 || (matches.length === 1
       && (matches[0].source?.source !== 'local' || matches[0].source?.path !== ENTRY_PATH))) {
-      throw new Error('Existing maestro-codex marketplace entry points elsewhere; left unchanged');
+      throw new Error('Existing xiaotao-codex marketplace entry points elsewhere; left unchanged');
     }
     await directory(codexDir);
     await directory(pluginRoot);
@@ -83,7 +83,7 @@ export async function installLocal({ homeDir = homedir(), sourceDir = SOURCE } =
     if (targetStat) {
       if (!targetStat.isDirectory() || targetStat.isSymbolicLink()) throw new Error('Invalid plugin destination');
       const marker = JSON.parse(await optionalText(path.join(pluginDir, MARKER)) || 'null');
-      if (marker?.owner !== OWNER) throw new Error('Plugin destination is not managed by Maestro');
+      if (marker?.owner !== OWNER) throw new Error('Plugin destination is not managed by XiaoTao');
     }
     await directory(pluginDir);
     for (const dir of ['.codex-plugin', 'hooks', 'scripts']) await directory(path.join(pluginDir, dir));
@@ -110,10 +110,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   try {
     if (process.argv.length !== 2) throw new Error('Usage: node adapters/codex/install-local.mjs');
     const result = await installLocal();
-    console.log(`Prepared Maestro Codex ${result.version}\nSource: ${result.pluginDir}\nMarketplace: ${result.marketplace}`);
-    console.log('Refresh the desktop app and install/reinstall maestro-codex from your personal marketplace.');
+    console.log(`Prepared XiaoTao Codex ${result.version}\nSource: ${result.pluginDir}\nMarketplace: ${result.marketplace}`);
+    console.log('Refresh the desktop app and install/reinstall xiaotao-codex from your personal marketplace.');
     console.log('Review and trust its SessionStart hook in Codex, then start a new conversation.');
-    console.log('Projects must separately have Maestro installed with: node ./bin/maestro.js init <project> --tools codex');
+    console.log('Projects must separately have XiaoTao installed with: node ./bin/xiaotao.js init <project> --tools codex');
     console.log('This command does not activate the plugin, grant hook trust, or enable automatic checkpoints.');
-  } catch (error) { console.error(`Maestro Codex: ${error.message}`); process.exitCode = 1; }
+  } catch (error) { console.error(`XiaoTao Codex: ${error.message}`); process.exitCode = 1; }
 }

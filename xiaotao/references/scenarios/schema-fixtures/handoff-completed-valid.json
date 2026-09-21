@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "summary": "The investigation completed without a blocking question.",
+  "result_path": ".xiaotao/tasks/example/workers/runtime-investigator/runs/result.md",
+  "worker_state_path": ".xiaotao/tasks/example/workers/runtime-investigator/current-state.md",
+  "needs_user_input": false,
+  "questions": [],
+  "recommended_next": []
+}

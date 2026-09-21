@@ -1,0 +1,16 @@
+{
+  "file_path": ".xiaotao/memory/long-term/current.md",
+  "base_entries": [],
+  "ours_entries": [
+    {
+      "entry_id": "lt-missing-ref",
+      "title": "Missing reference fixture",
+      "memory_kind": "fact",
+      "content": "This entry references a missing file.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/nonexistent.md"
+      ]
+    }
+  ],
+  "theirs_entries": []
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "worker_id": "bounded-investigator",
+  "worker_snapshot_path": ".xiaotao/tasks/example/workers/bounded-investigator/spec.yaml",
+  "objective": "Investigate startup behavior.",
+  "completion_condition": "Return evidence-backed findings and a standard Handoff.",
+  "instructions": {
+    "required_refs": ["contract:handoff", "policy:safety-boundary"],
+    "optional_refs": ["practice:delivery"],
+    "resolved": [
+      {
+        "ref": "contract:handoff",
+        "source_scope": "core",
+        "source_paths": ["references/handoffs.md"],
+        "sha256": "fee6f99345414bbcf8534cf7875e2533e65f15d4cd1155b280dce6d5d079ae6f"
+      },
+      {
+        "ref": "policy:safety-boundary",
+        "source_scope": "core",
+        "source_paths": ["references/workers.md", "references/coordination.md"],
+        "sha256": "068751e781b88434bea9f2c31a091d2f4fadd9d3ad2a5d5baeebfe016d440fb7"
+      }
+    ]
+  },
+  "context_refs": [{ "kind": "current-task", "path": ".xiaotao/tasks/example/context.md" }],
+  "tools": ["shell"],
+  "permissions": { "autonomous": ["inspect-project"], "conditional": [] },
+  "host_adapter": { "id": "incorrect-host", "status": "supported", "unsupported_requirements": [] },
+  "result_path": ".xiaotao/tasks/example/workers/bounded-investigator/runs/run-10/result.md",
+  "handoff_path": ".xiaotao/tasks/example/handoffs/bounded-investigator-run-10.json"
+}

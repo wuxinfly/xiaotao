@@ -1,7 +1,7 @@
 {
-  "name": "@maestro-ai/dsh-adapter",
+  "name": "@xiaotao-ai/dsh-adapter",
   "version": "0.1.0",
-  "description": "Maestro 的 DeepSeek Harness（dsh）Adapter：把可移植 Maestro Core 注册为 dsh Skill，并基于 ctx.fs 提供确定性状态协议辅助能力。",
+  "description": "XiaoTao 的 DeepSeek Harness（dsh）Adapter：把可移植 XiaoTao Core 注册为 dsh Skill，并基于 ctx.fs 提供确定性状态协议辅助能力。",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -25,7 +25,7 @@
     "test:package": "npm run build && node scripts/check-package.mjs"
   },
   "keywords": [
-    "maestro",
+    "xiaotao",
     "deepseek",
     "harness",
     "dsh",

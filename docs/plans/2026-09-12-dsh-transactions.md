@@ -4,7 +4,7 @@
 
 **Goal:** Implement a restart-recoverable DSH transaction service for multi-file create/replace operations with commit-marker logical visibility.
 
-**Architecture:** Persist immutable before/staged snapshots and intent under `.maestro/transactions/<id>`, publish exactly one terminal marker as the logical commit point, then materialize members with per-file CAS and immutable applied observations. Register the engine as an internal Cordis service; do not expose a generic model-facing tool or claim lifecycle move support without a DSH delete/rename seam.
+**Architecture:** Persist immutable before/staged snapshots and intent under `.xiaotao/transactions/<id>`, publish exactly one terminal marker as the logical commit point, then materialize members with per-file CAS and immutable applied observations. Register the engine as an internal Cordis service; do not expose a generic model-facing tool or claim lifecycle move support without a DSH delete/rename seam.
 
 **Tech Stack:** TypeScript, `@deepseek-ai/dsh-fs`, Cordis services, Node test runner, YAML.
 

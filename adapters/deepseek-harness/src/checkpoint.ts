@@ -1,15 +1,15 @@
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { parseDocument, stringify } from 'yaml'
-import { acquireLock, MaestroStateStore, type StateFileSystem } from './storage'
-import { MaestroSchemaValidator } from './validate'
+import { acquireLock, XiaoTaoStateStore, type StateFileSystem } from './storage'
+import { XiaoTaoSchemaValidator } from './validate'
 import type { FsDirEntry, FsTarget } from '@deepseek-ai/dsh-fs'
 
-const SCHEMA = 'https://maestro.local/schemas/checkpoint.schema.json'
-const OBSERVATION_SCHEMA = 'https://maestro.local/schemas/checkpoint-observation.schema.json'
+const SCHEMA = 'https://xiaotao.local/schemas/checkpoint.schema.json'
+const OBSERVATION_SCHEMA = 'https://xiaotao.local/schemas/checkpoint-observation.schema.json'
 const LIMIT = 128 * 1024
-const START = '<!-- maestro-checkpoint:start -->'
-const END = '<!-- maestro-checkpoint:end -->'
+const START = '<!-- xiaotao-checkpoint:start -->'
+const END = '<!-- xiaotao-checkpoint:end -->'
 export const hash = (text: string): string => createHash('sha256').update(text).digest('hex')
 const json = (value: unknown): string => JSON.stringify(value)
 
@@ -80,7 +80,7 @@ function target(kind: string, id: string) {
     && id.length <= 128 && id === id.normalize('NFC')
     && /^(?!\.)(?!.*[.]$)[\p{L}\p{N}._-]+$/u.test(id)
     && !/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(id), 'invalid_target')
-  const root = kind === 'temporary' ? `.maestro/memory/temporary/active/${id}` : `.maestro/tasks/${id}`
+  const root = kind === 'temporary' ? `.xiaotao/memory/temporary/active/${id}` : `.xiaotao/tasks/${id}`
   return { root, state: `${root}/${kind === 'temporary' ? 'current.md' : 'progress.md'}`,
     meta: `${root}/${kind === 'temporary' ? 'meta.yaml' : 'task.yaml'}` }
 }
@@ -109,8 +109,8 @@ export function scopedFs(fs: StateFileSystem, cwd: string, signal?: AbortSignal)
 
 /** One invocation; no background work or process-local source of recovery truth. */
 export class CheckpointWriter {
-  private readonly store: MaestroStateStore
-  private readonly locks: MaestroStateStore
+  private readonly store: XiaoTaoStateStore
+  private readonly locks: XiaoTaoStateStore
   private project = ''
   private backup?: string
   private backupKey?: string
@@ -118,12 +118,12 @@ export class CheckpointWriter {
   private failureStage: 'validation' | 'secondary_write' | 'project_request' | 'canonical_write' | 'observation_write' = 'validation'
   private lastRecord?: RecordData
 
-  constructor(private readonly fs: CheckpointFs, private readonly validator: MaestroSchemaValidator,
+  constructor(private readonly fs: CheckpointFs, private readonly validator: XiaoTaoSchemaValidator,
     private readonly config: CheckpointConfig, private readonly sessionId: string,
     private readonly signal: AbortSignal) {
-    this.store = new MaestroStateStore(scopedFs(fs, config.projectRoot, signal))
+    this.store = new XiaoTaoStateStore(scopedFs(fs, config.projectRoot, signal))
     // Cleanup cannot inherit an aborted signal. Contention is nonblocking, never force-reclaimed.
-    this.locks = new MaestroStateStore(scopedFs(fs, config.projectRoot))
+    this.locks = new XiaoTaoStateStore(scopedFs(fs, config.projectRoot))
   }
 
   async initialize(callerCwd: string): Promise<void> {
@@ -146,7 +146,7 @@ export class CheckpointWriter {
     await this.boundTarget(kind, id)
     // Until overlay resolution is implemented, do not operate in a project with
     // transaction bundles (even completed ones). Empty scaffolding is allowed.
-    const tx = await this.store.resolve('.maestro/transactions')
+    const tx = await this.store.resolve('.xiaotao/transactions')
     if (await this.fs.stat(tx, this.signal)) {
       requireThat((await this.fs.listDir(tx, this.signal)).length === 0, 'transaction_overlay_unsupported')
     }
@@ -154,7 +154,7 @@ export class CheckpointWriter {
     requireThat(state, 'target_not_found')
     const meta = yamlObject(state.content)
     const schema = kind === 'task' ? 'task' : 'temporary-meta'
-    requireThat(this.validator.validate(`https://maestro.local/schemas/${schema}.schema.json`, meta).ok,
+    requireThat(this.validator.validate(`https://xiaotao.local/schemas/${schema}.schema.json`, meta).ok,
       'invalid_target_metadata')
     requireThat(meta.id === id && meta.status === 'active', 'target_not_active')
     requireThat(['created_at', 'updated_at'].every((key) => typeof meta[key] === 'string'

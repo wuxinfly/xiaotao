@@ -12,17 +12,17 @@ import {
 } from '../cli/install.js';
 
 async function fixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'maestro-install-test-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-install-test-'));
   const packageRoot = path.join(root, 'package');
   const projectRoot = path.join(root, 'project');
-  await mkdir(path.join(packageRoot, 'maestro', 'references'), { recursive: true });
+  await mkdir(path.join(packageRoot, 'xiaotao', 'references'), { recursive: true });
   await mkdir(projectRoot, { recursive: true });
   await writeFile(
     path.join(packageRoot, 'package.json'),
-    JSON.stringify({ name: 'maestro-ai-workflow', version: '0.1.0' }),
+    JSON.stringify({ name: 'xiaotao-ai-workflow', version: '0.1.0' }),
   );
-  await writeFile(path.join(packageRoot, 'maestro', 'SKILL.md'), '# Maestro\n');
-  await writeFile(path.join(packageRoot, 'maestro', 'references', 'memory.md'), '# Memory\n');
+  await writeFile(path.join(packageRoot, 'xiaotao', 'SKILL.md'), '# XiaoTao\n');
+  await writeFile(path.join(packageRoot, 'xiaotao', 'references', 'memory.md'), '# Memory\n');
   return { root, packageRoot, projectRoot };
 }
 
@@ -38,15 +38,15 @@ test('installs the portable skill for every MVP host and records ownership', asy
 
   assert.deepEqual(result.tools, ['codex', 'claude', 'opencode']);
   for (const relativeDir of [
-    '.agents/skills/maestro',
-    '.claude/skills/maestro',
-    '.opencode/skills/maestro',
+    '.agents/skills/xiaotao',
+    '.claude/skills/xiaotao',
+    '.opencode/skills/xiaotao',
   ]) {
-    assert.equal(await readFile(path.join(context.projectRoot, relativeDir, 'SKILL.md'), 'utf8'), '# Maestro\n');
+    assert.equal(await readFile(path.join(context.projectRoot, relativeDir, 'SKILL.md'), 'utf8'), '# XiaoTao\n');
     const marker = JSON.parse(
-      await readFile(path.join(context.projectRoot, relativeDir, '.maestro-managed.json'), 'utf8'),
+      await readFile(path.join(context.projectRoot, relativeDir, '.xiaotao-managed.json'), 'utf8'),
     );
-    assert.equal(marker.package, 'maestro-ai-workflow');
+    assert.equal(marker.package, 'xiaotao-ai-workflow');
     assert.equal(marker.version, '0.1.0');
   }
 
@@ -64,20 +64,20 @@ test('update refreshes managed files and preserves user-authored files', async (
     packageRoot: context.packageRoot,
     toolIds: ['claude'],
   });
-  const target = path.join(context.projectRoot, '.claude', 'skills', 'maestro');
+  const target = path.join(context.projectRoot, '.claude', 'skills', 'xiaotao');
   await writeFile(path.join(target, 'notes.md'), 'keep me\n');
-  await writeFile(path.join(context.packageRoot, 'maestro', 'SKILL.md'), '# Maestro updated\n');
+  await writeFile(path.join(context.packageRoot, 'xiaotao', 'SKILL.md'), '# XiaoTao updated\n');
 
   await updateHosts({ projectRoot: context.projectRoot, packageRoot: context.packageRoot });
 
-  assert.equal(await readFile(path.join(target, 'SKILL.md'), 'utf8'), '# Maestro updated\n');
+  assert.equal(await readFile(path.join(target, 'SKILL.md'), 'utf8'), '# XiaoTao updated\n');
   assert.equal(await readFile(path.join(target, 'notes.md'), 'utf8'), 'keep me\n');
 });
 
 test('refuses to overwrite an unmanaged destination without force', async (t) => {
   const context = await fixture();
   t.after(() => rm(context.root, { recursive: true, force: true }));
-  const target = path.join(context.projectRoot, '.agents', 'skills', 'maestro');
+  const target = path.join(context.projectRoot, '.agents', 'skills', 'xiaotao');
   await mkdir(target, { recursive: true });
   await writeFile(path.join(target, 'SKILL.md'), '# User skill\n');
 
@@ -87,7 +87,7 @@ test('refuses to overwrite an unmanaged destination without force', async (t) =>
       packageRoot: context.packageRoot,
       toolIds: ['codex'],
     }),
-    /not managed by Maestro/,
+    /not managed by XiaoTao/,
   );
   assert.equal(await readFile(path.join(target, 'SKILL.md'), 'utf8'), '# User skill\n');
 });
@@ -102,7 +102,7 @@ test('doctor reports healthy installs and missing managed files', async (t) => {
   });
 
   assert.equal((await doctorInstallation(context.projectRoot)).ok, true);
-  await rm(path.join(context.projectRoot, '.opencode', 'skills', 'maestro', 'SKILL.md'));
+  await rm(path.join(context.projectRoot, '.opencode', 'skills', 'xiaotao', 'SKILL.md'));
   const diagnosis = await doctorInstallation(context.projectRoot);
   assert.equal(diagnosis.ok, false);
   assert.ok(diagnosis.checks.some((check) => check.code === 'skill_missing' && !check.ok));

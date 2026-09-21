@@ -2,7 +2,7 @@
 
 ## Context
 
-Maestro already separates Temporary, Task, and Long-term Memory and lets the Memory Worker propose
+XiaoTao already separates Temporary, Task, and Long-term Memory and lets the Memory Worker propose
 reviewed Long-term changes. That flow answers "what do we now know?" but does not preserve a
 separate, reviewable answer to "how should a similar task be handled next time?"
 
@@ -71,8 +71,8 @@ no execution evidence.
 ## Authority and lifecycle
 
 The Memory Worker may extract and compare candidates, but cannot approve or write a Playbook.
-Canonical candidate artifacts live under `.maestro/playbooks/candidates/`; immutable approval,
-rejection, and supersession records live under `.maestro/playbooks/decisions/`. The first version
+Canonical candidate artifacts live under `.xiaotao/playbooks/candidates/`; immutable approval,
+rejection, and supersession records live under `.xiaotao/playbooks/decisions/`. The first version
 supports explicit user approval only. Repeated success can add evidence to a candidate but cannot
 promote it automatically.
 
@@ -89,7 +89,7 @@ top-level fields. Existing unstructured files require one explicitly approved mi
 are persisted once and never regenerated. UPDATE changes one revision, while MERGE transactionally
 updates a chosen survivor and marks the other target files superseded.
 
-The current Playbook index may reference only canonical files under `.maestro/playbooks/`, excluding
+The current Playbook index may reference only canonical files under `.xiaotao/playbooks/`, excluding
 candidate and decision records. Request validation reads each canonical file and confirms its stored
 identity, path, revision, and status match the index so an arbitrary existing project file cannot be
 treated as active guidance.

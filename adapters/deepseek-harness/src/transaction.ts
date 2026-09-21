@@ -14,12 +14,12 @@ import type { FsDirEntry, FsTarget } from '@deepseek-ai/dsh-fs'
 import { parse, stringify } from 'yaml'
 import {
   acquireLock,
-  MaestroStateStore,
+  XiaoTaoStateStore,
   type AcquireLockOptions,
   type StateFileSystem,
 } from './storage'
 
-const TX_ROOT = '.maestro/transactions'
+const TX_ROOT = '.xiaotao/transactions'
 const MAX_MEMBERS = 32
 const MAX_MEMBER_BYTES = 128 * 1024
 const MAX_TRANSACTION_BYTES = 512 * 1024
@@ -163,8 +163,8 @@ function safeText(value: unknown, max: number): value is string {
 function normalizeStatePath(value: unknown): string {
   fail(typeof value === 'string', 'invalid_member_path')
   const normalized = value.replaceAll('\\', '/').replace(/^\.\//, '')
-  fail(normalized.startsWith('.maestro/'), 'invalid_member_path')
-  fail(!normalized.startsWith(`${TX_ROOT}/`) && !normalized.startsWith('.maestro/locks/'), 'reserved_member_path')
+  fail(normalized.startsWith('.xiaotao/'), 'invalid_member_path')
+  fail(!normalized.startsWith(`${TX_ROOT}/`) && !normalized.startsWith('.xiaotao/locks/'), 'reserved_member_path')
   fail(!normalized.split('/').some((part) => part === '' || part === '.' || part === '..'), 'invalid_member_path')
   fail(!/^[A-Za-z]:/.test(normalized) && !normalized.startsWith('/'), 'invalid_member_path')
   return normalized
@@ -250,11 +250,11 @@ function validateInput(input: TransactionInput): TransactionInput {
 }
 
 /** Internal transaction mechanism. It is not a model-facing tool. */
-export class MaestroTransactionStore {
-  private readonly store: MaestroStateStore
+export class XiaoTaoTransactionStore {
+  private readonly store: XiaoTaoStateStore
 
   constructor(private readonly fs: TransactionFileSystem) {
-    this.store = new MaestroStateStore(fs)
+    this.store = new XiaoTaoStateStore(fs)
   }
 
   private async immutable(path: string, content: string, signal?: AbortSignal): Promise<void> {

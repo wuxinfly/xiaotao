@@ -3,7 +3,7 @@ import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import path from 'node:path'
 import os from 'node:os'
 import { CheckpointError, CheckpointWriter, type CheckpointConfig, type CheckpointFs, type CheckpointInput } from './checkpoint'
-import { MaestroSchemaValidator } from './validate'
+import { XiaoTaoSchemaValidator } from './validate'
 
 export interface CheckpointToolConfig {
   /** Omit to bind to the trusted calling session on every invocation. */
@@ -13,11 +13,11 @@ export interface CheckpointToolConfig {
 }
 
 /** Native ToolDefinition: execution stays inside DSH's approval/cancellation pipeline. */
-export function checkpointTool(fs: CheckpointFs, validator: MaestroSchemaValidator,
+export function checkpointTool(fs: CheckpointFs, validator: XiaoTaoSchemaValidator,
   config: CheckpointToolConfig = {}): ToolDefinition {
   return {
-    name: 'maestro_checkpoint',
-    description: '用户明确要求 Maestro 保存/交接，或已启用的可信 Adapter 发出 maestro-auto-checkpoint 生命周期提醒时：先 inspect 一个现有的活动 Temporary/Task，再使用其 revision/hash 保存有界事实快照。save 必须包含 request_id、base_revision、base_hash、snapshot。snapshot 的数组可以为空，source_refs 必须是项目内相对路径。出错后使用相同 request_id 执行 status/retry，不要随意换 ID 重复 save。快照不是 transcript 备份。不得自动创建 Task，也不得继承历史授权。',
+    name: 'xiaotao_checkpoint',
+    description: '用户明确要求 XiaoTao 保存/交接，或已启用的可信 Adapter 发出 xiaotao-auto-checkpoint 生命周期提醒时：先 inspect 一个现有的活动 Temporary/Task，再使用其 revision/hash 保存有界事实快照。save 必须包含 request_id、base_revision、base_hash、snapshot。snapshot 的数组可以为空，source_refs 必须是项目内相对路径。出错后使用相同 request_id 执行 status/retry，不要随意换 ID 重复 save。快照不是 transcript 备份。不得自动创建 Task，也不得继承历史授权。',
     parameters: {
       type: 'object', additionalProperties: false, required: ['operation', 'kind', 'target_id'],
       properties: {
@@ -56,7 +56,7 @@ export function checkpointTool(fs: CheckpointFs, validator: MaestroSchemaValidat
           resolved = { projectRoot: config.projectRoot, recoveryRoot: config.recoveryRoot }
         } else {
           const root = await fs.resolve(cwd, { signal: exec.signal })
-          const base = config.recoveryRoot ?? path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'maestro-recovery')
+          const base = config.recoveryRoot ?? path.join(process.env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'xiaotao-recovery')
           if (!path.isAbsolute(base)) throw new CheckpointError('absolute_recovery_root_required')
           const baseTarget = await fs.resolve(base, { signal: exec.signal })
           if (fs.contains(root, baseTarget) || fs.contains(baseTarget, root)) {

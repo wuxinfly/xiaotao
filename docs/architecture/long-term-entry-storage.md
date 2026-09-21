@@ -6,13 +6,13 @@
 
 | 状态 | 路径 | 规则 |
 | --- | --- | --- |
-| active / disputed | `.maestro/memory/long-term/entries/<entry-id>.md` | 一个文件一个 entry，文件名等于 entry ID |
-| superseded / rejected | `.maestro/memory/long-term/history/<entry-id>.md` | 保留失效 snapshot，常规搜索不可见 |
-| 旧格式 | `.maestro/memory/long-term/current.md` | 多 entry 聚合仍可读，不再写入新 entry |
-| 新格式说明 | `.maestro/memory/long-term/current.md` | 固定指引，不保存 entry 内容 |
+| active / disputed | `.xiaotao/memory/long-term/entries/<entry-id>.md` | 一个文件一个 entry，文件名等于 entry ID |
+| superseded / rejected | `.xiaotao/memory/long-term/history/<entry-id>.md` | 保留失效 snapshot，常规搜索不可见 |
+| 旧格式 | `.xiaotao/memory/long-term/current.md` | 多 entry 聚合仍可读，不再写入新 entry |
+| 新格式说明 | `.xiaotao/memory/long-term/current.md` | 固定指引，不保存 entry 内容 |
 
 每个 entry 文件包含独立 `revision`、`updated_at`、`updated_by` front matter 和且仅一个
-`maestro-memory-entry` JSON block。Catalog 同时扫描三类来源；同一 ID 重复时失败。
+`xiaotao-memory-entry` JSON block。Catalog 同时扫描三类来源；同一 ID 重复时失败。
 
 ## 写入边界
 

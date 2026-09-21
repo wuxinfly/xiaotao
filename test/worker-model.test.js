@@ -5,10 +5,10 @@ import { access, readFile } from 'node:fs/promises';
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 
 test('new work has no built-in execution Workers and uses capability practices', async () => {
-  const builtinWorkers = await json('maestro/references/workers/builtin-registry.json');
-  const instructions = await json('maestro/references/instructions/builtin-registry.json');
+  const builtinWorkers = await json('xiaotao/references/workers/builtin-registry.json');
+  const instructions = await json('xiaotao/references/instructions/builtin-registry.json');
   const projectWorkers = await json(
-    'maestro/references/scenarios/schema-fixtures/worker-registry-valid.json',
+    'xiaotao/references/scenarios/schema-fixtures/worker-registry-valid.json',
   );
 
   assert.deepEqual(builtinWorkers.workers, []);
@@ -27,7 +27,7 @@ test('new work has no built-in execution Workers and uses capability practices',
 
   for (const instruction of instructions.instructions) {
     for (const source of instruction.source_paths) {
-      await access(`maestro/${source}`);
+      await access(`xiaotao/${source}`);
     }
   }
 });
@@ -38,39 +38,39 @@ test('generated Worker examples use task-specific Chinese display names', async 
     'worker-temporary-memory-valid.json',
     'worker-session-valid.json',
   ]) {
-    const worker = await json(`maestro/references/scenarios/schema-fixtures/${fixture}`);
+    const worker = await json(`xiaotao/references/scenarios/schema-fixtures/${fixture}`);
     assert.match(worker.name, /[\p{Script=Han}]/u);
     assert.match(worker.id, /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
     assert.ok(worker.instructions.required.some(ref => ref.startsWith('practice:')));
   }
 });
 
-test('Maestro entry point exposes only Xiao Tao and ships no fixed role files', async () => {
-  const skill = await readFile('maestro/SKILL.md', 'utf8');
+test('XiaoTao entry point exposes only Xiao Tao and ships no fixed role files', async () => {
+  const skill = await readFile('xiaotao/SKILL.md', 'utf8');
   assert.doesNotMatch(skill, /\]\(references\/roles\//);
   assert.match(skill, /小涛（Xiao Tao）.*唯一预置、直接面向用户的角色/);
-  await assert.rejects(access('maestro/references/roles'), { code: 'ENOENT' });
+  await assert.rejects(access('xiaotao/references/roles'), { code: 'ENOENT' });
 });
 
 test('active Core guidance is Chinese and has no legacy Role compatibility contract', async () => {
   for (const file of [
-    'maestro/SKILL.md',
-    'maestro/references/contract.md',
-    'maestro/references/coordination.md',
-    'maestro/references/guard.md',
-    'maestro/references/handoffs.md',
-    'maestro/references/memory.md',
-    'maestro/references/playbooks.md',
-    'maestro/references/storage.md',
-    'maestro/references/workers.md',
+    'xiaotao/SKILL.md',
+    'xiaotao/references/contract.md',
+    'xiaotao/references/coordination.md',
+    'xiaotao/references/guard.md',
+    'xiaotao/references/handoffs.md',
+    'xiaotao/references/memory.md',
+    'xiaotao/references/playbooks.md',
+    'xiaotao/references/storage.md',
+    'xiaotao/references/workers.md',
   ]) {
     assert.match(await readFile(file, 'utf8'), /[\p{Script=Han}]/u, `${file} must contain Chinese guidance`);
   }
 
   const combined = await Promise.all([
-    readFile('maestro/SKILL.md', 'utf8'),
-    readFile('maestro/references/workers.md', 'utf8'),
-    readFile('maestro/references/storage.md', 'utf8'),
+    readFile('xiaotao/SKILL.md', 'utf8'),
+    readFile('xiaotao/references/workers.md', 'utf8'),
+    readFile('xiaotao/references/storage.md', 'utf8'),
   ]);
   assert.doesNotMatch(combined.join('\n'), /role_state_path|role:\*|roles\/<|历史角色快照/);
 });

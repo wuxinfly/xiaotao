@@ -80,7 +80,7 @@ export function removeLegacyProfileInsert(raw, yaml) {
     for (let insertionIndex = insertions.items.length - 1; insertionIndex >= 0; insertionIndex -= 1) {
       const candidate = insertions.items[insertionIndex]
       if (!yaml.isMap(candidate)) continue
-      if (candidate.get('id') === 'maestro-adapter' || candidate.get('name') === '@maestro-ai/dsh-adapter') {
+      if (candidate.get('id') === 'xiaotao-adapter' || candidate.get('name') === '@xiaotao-ai/dsh-adapter') {
         const config = candidate.get('config', true)
         if (yaml.isMap(config) && typeof config.get('coreDir') === 'string') {
           removedCoreDirs.push(config.get('coreDir'))
@@ -144,7 +144,7 @@ async function install(options) {
   if (!archiveName) throw new Error(`npm pack did not return an archive name:\n${packed.stdout}`)
   const packedPath = path.join(packageCache, archiveName)
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
-  const archivePath = path.join(packageCache, `maestro-ai-dsh-adapter-local-${stamp}.tgz`)
+  const archivePath = path.join(packageCache, `xiaotao-ai-dsh-adapter-local-${stamp}.tgz`)
   await rename(packedPath, archivePath)
 
   process.stdout.write(`Installing package into DSH profile "${options.profile}"...\n`)
@@ -161,7 +161,7 @@ async function install(options) {
   const legacyPatch = removeLegacyProfileInsert(await readOptional(patchPath), yaml)
   if (legacyPatch.changed) {
     await writeFile(patchPath, legacyPatch.content, 'utf8')
-    process.stdout.write('Removed the legacy manual Maestro insert; DSH now activates the package bundle.\n')
+    process.stdout.write('Removed the legacy manual XiaoTao insert; DSH now activates the package bundle.\n')
     if (legacyPatch.removedCoreDirs.length > 0) {
       process.stdout.write(`Packaged Core replaced legacy coreDir: ${legacyPatch.removedCoreDirs.join(', ')}\n`)
     }
@@ -170,12 +170,12 @@ async function install(options) {
   if (options.verify) {
     process.stdout.write('Verifying installed package and DSH configuration...\n')
     const requireFromProfile = createRequire(path.join(profileRoot, 'package.json'))
-    const entryPath = requireFromProfile.resolve('@maestro-ai/dsh-adapter')
+    const entryPath = requireFromProfile.resolve('@xiaotao-ai/dsh-adapter')
     await import(pathToFileURL(entryPath).href)
     await access(path.join(path.dirname(entryPath), 'core', 'SKILL.md'))
     const profileManifest = JSON.parse(await readFile(path.join(profileRoot, 'package.json'), 'utf8'))
-    if (!profileManifest.dsh?.profile?.bundles?.includes('@maestro-ai/dsh-adapter')) {
-      throw new Error('DSH did not activate @maestro-ai/dsh-adapter as a profile bundle')
+    if (!profileManifest.dsh?.profile?.bundles?.includes('@xiaotao-ai/dsh-adapter')) {
+      throw new Error('DSH did not activate @xiaotao-ai/dsh-adapter as a profile bundle')
     }
     const dumped = run(
       'dsh',
@@ -183,14 +183,14 @@ async function install(options) {
       { capture: true, cwd: profileRoot, env: dshEnvironment },
     )
     const config = `${dumped.stdout}\n${dumped.stderr}`
-    if (!config.includes('maestro-adapter') && !config.includes('@maestro-ai/dsh-adapter')) {
-      throw new Error('DSH config dump does not contain the Maestro adapter')
+    if (!config.includes('xiaotao-adapter') && !config.includes('@xiaotao-ai/dsh-adapter')) {
+      throw new Error('DSH config dump does not contain the XiaoTao adapter')
     }
   }
 
-  process.stdout.write(`\nMaestro installed locally into DSH profile "${options.profile}".\n`)
+  process.stdout.write(`\nXiaoTao installed locally into DSH profile "${options.profile}".\n`)
   process.stdout.write(`Package: ${archivePath}\n`)
-  process.stdout.write('Activation: dsh.profile.bundles → @maestro-ai/dsh-adapter\n')
+  process.stdout.write('Activation: dsh.profile.bundles → @xiaotao-ai/dsh-adapter\n')
 }
 
 async function main() {

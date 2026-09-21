@@ -2,36 +2,36 @@
 
 ## Decision
 
-Maestro v0.1.0 will be distributed as an npm-installed command-line tool that installs the
-portable Maestro Skill into project-local directories understood by different AI coding hosts.
+XiaoTao v0.1.0 will be distributed as an npm-installed command-line tool that installs the
+portable XiaoTao Skill into project-local directories understood by different AI coding hosts.
 The CLI is a deterministic packaging and adapter layer; it does not schedule roles, execute a
-workflow, or interpret Memory. Those semantics remain in `maestro/SKILL.md` and its references.
+workflow, or interpret Memory. Those semantics remain in `xiaotao/SKILL.md` and its references.
 
-The first release supports three explicit targets: Codex through `.agents/skills/maestro/`, Claude
-Code through `.claude/skills/maestro/`, and OpenCode through
-`.opencode/skills/maestro/`. A user can select targets interactively or pass
+The first release supports three explicit targets: Codex through `.agents/skills/xiaotao/`, Claude
+Code through `.claude/skills/xiaotao/`, and OpenCode through
+`.opencode/skills/xiaotao/`. A user can select targets interactively or pass
 `--tools codex,claude,opencode` for automation. New hosts are added as data in a registry rather
 than by copying orchestration logic.
 
 ## Package and Commands
 
-The npm package contains the canonical `maestro/` Skill directory plus a zero-runtime-dependency
-Node.js CLI. `package.json` exposes `maestro` through the `bin` field. The initial command surface
+The npm package contains the canonical `xiaotao/` Skill directory plus a zero-runtime-dependency
+Node.js CLI. `package.json` exposes `xiaotao` through the `bin` field. The initial command surface
 is deliberately small:
 
-- `maestro init [path]`: select targets, install the Skill, and record local installation metadata.
-- `maestro update [path]`: refresh targets previously managed by the CLI.
-- `maestro doctor [path]`: verify metadata, managed markers, and required Skill files.
-- `maestro --version`: print the installed package version.
+- `xiaotao init [path]`: select targets, install the Skill, and record local installation metadata.
+- `xiaotao update [path]`: refresh targets previously managed by the CLI.
+- `xiaotao doctor [path]`: verify metadata, managed markers, and required Skill files.
+- `xiaotao --version`: print the installed package version.
 
 `init` refuses to overwrite a non-empty, unmanaged destination unless the user passes `--force`.
-Every installed target gets a `.maestro-managed.json` ownership marker. Project-local selection is
-stored in `.maestro/installation.json`, which is runtime configuration and remains excluded from
+Every installed target gets a `.xiaotao-managed.json` ownership marker. Project-local selection is
+stored in `.xiaotao/installation.json`, which is runtime configuration and remains excluded from
 Git by the existing `.gitignore` contract.
 
 ## Installation and Update Flow
 
-The packaged `maestro/` directory is the single source of generated Skill content. Installation
+The packaged `xiaotao/` directory is the single source of generated Skill content. Installation
 copies that directory into each selected host destination and adds only the ownership marker.
 Existing CLI-managed destinations can be refreshed idempotently; unknown files are preserved so an
 update cannot silently delete user-authored content. `update` reads the saved tool selection and
@@ -51,6 +51,6 @@ an npm pack smoke test to prove that the published tarball contains the CLI and 
 
 The MVP intentionally excludes a background service, global project registry, automatic npm
 publication, host APIs, slash-command generation, Memory execution, and migration of legacy
-Maestro runtimes. Those can be added only when a concrete host requires them. This preserves the
+XiaoTao runtimes. Those can be added only when a concrete host requires them. This preserves the
 Core/Adapter boundary: TypeScript or JavaScript performs reliable file operations, while the Skill
 continues to make all semantic collaboration decisions.

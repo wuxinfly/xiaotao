@@ -45,7 +45,7 @@ const skills = {
     logger: { info() {}, warn() {} },
   })
   assert.deepEqual(injectedDeps, [['fs'], ['agents']])
-assert.equal(registeredSkill.name, 'maestro')
+assert.equal(registeredSkill.name, 'xiaotao')
 assert.equal(registeredSkill.resourceBase.kind, 'directory')
 assert.equal(registeredSkill.resourceBase.path, path.join(adapterRoot, 'lib', 'core'))
 

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "project-workers",
+  "source": "project",
+  "revision": 1,
+  "updated_at": "2026-08-27T14:20:00Z",
+  "updated_by": "old-zhou/example",
+  "aliases": {},
+  "workers": [
+    {
+      "schema_version": 2,
+      "id": "misclassified-worker",
+      "name": "Misclassified Worker",
+      "source": "builtin",
+      "status": "active",
+      "capabilities": ["risk-analysis"],
+      "scope": ["selected-project"],
+      "responsibility": "Demonstrate a registry source mismatch.",
+      "inputs": ["project context"],
+      "outputs": ["review"],
+      "instructions": { "required": ["practice:design", "contract:handoff", "policy:safety-boundary"], "optional": [] },
+      "tools": [],
+      "context": { "read_paths": ["."], "write_paths": [".xiaotao/"] },
+      "permissions": { "autonomous": ["inspect-project"], "conditional": [] },
+      "lifecycle": { "scope": "reusable", "expires_at": "never" }
+    }
+  ]
+}

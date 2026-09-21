@@ -1,10 +1,10 @@
-# Maestro Reliability Contracts Implementation Plan
+# XiaoTao Reliability Contracts Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Harden Maestro's mutable state, Handoffs, Task promotion, authorization, and durable-memory behavior for issue #6.
+**Goal:** Harden XiaoTao's mutable state, Handoffs, Task promotion, authorization, and durable-memory behavior for issue #6.
 
-**Architecture:** Keep Maestro host-independent by expressing reliability as Markdown contracts, small JSON Schemas for parsed YAML/JSON records, and behavioral scenario fixtures. Prevent stale writes with an exclusive per-state lock plus an in-lock revision comparison and atomic replacement; do not add a Runtime or mandatory role sequence.
+**Architecture:** Keep XiaoTao host-independent by expressing reliability as Markdown contracts, small JSON Schemas for parsed YAML/JSON records, and behavioral scenario fixtures. Prevent stale writes with an exclusive per-state lock plus an in-lock revision comparison and atomic replacement; do not add a Runtime or mandatory role sequence.
 
 **Tech Stack:** Markdown Skill references, JSON Schema draft 2020-12, Ajv schema verification.
 
@@ -13,9 +13,9 @@
 ### Task 1: Define metadata and concurrent-write contracts
 
 **Files:**
-- Modify: `maestro/references/storage.md`
-- Create: `maestro/references/schemas/temporary-meta.schema.json`
-- Create: `maestro/references/schemas/task.schema.json`
+- Modify: `xiaotao/references/storage.md`
+- Create: `xiaotao/references/schemas/temporary-meta.schema.json`
+- Create: `xiaotao/references/schemas/task.schema.json`
 
 1. Add the per-state exclusive-lock and revision protocol, including contention, mismatch,
    reconciliation, abandoned-lock, and unsupported-host behavior.
@@ -26,8 +26,8 @@
 ### Task 2: Complete the Handoff user-input contract
 
 **Files:**
-- Modify: `maestro/references/handoffs.md`
-- Modify: `maestro/references/schemas/handoff.schema.json`
+- Modify: `xiaotao/references/handoffs.md`
+- Modify: `xiaotao/references/schemas/handoff.schema.json`
 
 1. Add structured `questions` with required `question` and `reason` fields.
 2. Require at least one question when `needs_user_input` is true and prohibit non-empty questions
@@ -37,8 +37,8 @@
 ### Task 3: Define promotion and authorization decisions
 
 **Files:**
-- Modify: `maestro/SKILL.md`
-- Modify: `maestro/references/coordination.md`
+- Modify: `xiaotao/SKILL.md`
+- Modify: `xiaotao/references/coordination.md`
 
 1. Separate exploration, evidence collection, and reversible experiments from formal execution.
 2. Define an ordered, recoverable Temporary-to-Task promotion transaction.
@@ -48,7 +48,7 @@
 ### Task 4: Define Long-term Memory supersession
 
 **Files:**
-- Modify: `maestro/references/memory.md`
+- Modify: `xiaotao/references/memory.md`
 
 1. Add evidence precedence.
 2. Define sourced approval, rejection, and supersession records.
@@ -57,7 +57,7 @@
 ### Task 5: Add behavioral regression scenarios
 
 **Files:**
-- Create: `maestro/references/scenarios/reliability.md`
+- Create: `xiaotao/references/scenarios/reliability.md`
 
 1. Add fixtures for read-only performance investigation, Temporary resume, Task promotion, direct
    role invocation, Session Handoff, dangerous action authorization, stale revision conflict, and
@@ -78,12 +78,12 @@
 
 **Files:**
 - Modify: `docs/plans/2026-08-27-reliability-contracts-design.md`
-- Modify: `maestro/references/storage.md`
-- Modify: `maestro/references/coordination.md`
-- Modify: `maestro/references/handoffs.md`
-- Modify: `maestro/references/schemas/handoff.schema.json`
-- Modify: `maestro/references/scenarios/reliability.md`
-- Create: `maestro/references/scenarios/schema-fixtures/handoff-completed-with-input-invalid.json`
+- Modify: `xiaotao/references/storage.md`
+- Modify: `xiaotao/references/coordination.md`
+- Modify: `xiaotao/references/handoffs.md`
+- Modify: `xiaotao/references/schemas/handoff.schema.json`
+- Modify: `xiaotao/references/scenarios/reliability.md`
+- Create: `xiaotao/references/scenarios/schema-fixtures/handoff-completed-with-input-invalid.json`
 
 1. Make the immutable transaction commit marker the logical visibility boundary.
 2. Require before snapshots, staged replacements, hashes, and per-file applied events so recovery

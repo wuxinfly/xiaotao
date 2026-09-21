@@ -1,0 +1,49 @@
+{
+  "status": "completed",
+  "merged_entries": [
+    {
+      "entry_id": "lt-missing-source-ref",
+      "title": "Entry with missing source",
+      "memory_kind": "fact",
+      "action_taken": "novel_ours",
+      "content": "This entry points to missing file.",
+      "source_refs": [
+        "xiaotao/references/scenarios/validator-fixtures/files/missing-ours.md"
+      ]
+    }
+  ],
+  "resolved": [],
+  "unresolved_conflicts": [
+    {
+      "conflict_id": "cnf-missing-ref",
+      "topic": "Conflict with missing evidence",
+      "status": "pending-confirmation",
+      "reason": "Missing evidence file",
+      "ours": {
+        "author": "dev-a",
+        "branch": "feat-a",
+        "commit": "111aaa",
+        "task_id": "task-a",
+        "memory_path": ".xiaotao/memory/long-term/current.md",
+        "claim": "Claim A",
+        "source_refs": [
+          "xiaotao/references/scenarios/validator-fixtures/files/source.md"
+        ],
+        "created_at": "2026-08-28T10:00:00Z"
+      },
+      "theirs": {
+        "author": "dev-b",
+        "branch": "feat-b",
+        "commit": "222bbb",
+        "task_id": "task-b",
+        "memory_path": ".xiaotao/memory/long-term/current.md",
+        "claim": "Claim B",
+        "source_refs": [
+          "xiaotao/references/scenarios/validator-fixtures/files/missing-theirs.md"
+        ],
+        "created_at": "2026-08-28T10:05:00Z"
+      }
+    }
+  ],
+  "requires_human_review": true
+}

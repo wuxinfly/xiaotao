@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "id": "unknown-instruction-investigator",
+  "name": "Unknown Instruction Investigator",
+  "source": "temporary",
+  "status": "active",
+  "capabilities": ["runtime-analysis"],
+  "scope": ["example-task", "read-only-investigation"],
+  "responsibility": "Record an unsupported delegation when a required instruction cannot be resolved.",
+  "inputs": ["task context"],
+  "outputs": ["unsupported delegation record"],
+  "preferred_model": null,
+  "instructions": {
+    "required": ["contract:unknown-required"],
+    "optional": []
+  },
+  "tools": [],
+  "context": {
+    "read_paths": [".xiaotao/tasks/example/"],
+    "write_paths": [".xiaotao/tasks/example/"]
+  },
+  "permissions": {
+    "autonomous": [],
+    "conditional": []
+  },
+  "lifecycle": {
+    "scope": "task",
+    "task_id": "example",
+    "expires_at": "task-completion"
+  }
+}

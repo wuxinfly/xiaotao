@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Teach the Maestro Codex recovery reminder to map bounded Workers to native subagents while preserving separate Codex task creation for explicit user requests.
+**Goal:** Teach the XiaoTao Codex recovery reminder to map bounded Workers to native subagents while preserving separate Codex task creation for explicit user requests.
 
-**Architecture:** Keep the portable Maestro Core unchanged and add one host-specific prompt contract to the existing `SessionStart` Hook. Document the Adapter-only guarantee and separate tool-safe identifiers from optional Chinese user-facing labels.
+**Architecture:** Keep the portable XiaoTao Core unchanged and add one host-specific prompt contract to the existing `SessionStart` Hook. Document the Adapter-only guarantee and separate tool-safe identifiers from optional Chinese user-facing labels.
 
 **Tech Stack:** Node.js ESM, `node:test`, Codex SessionStart Hook JSON, Markdown documentation.
 
@@ -15,7 +15,7 @@
 **Files:**
 - Test: `test/codex-adapter.test.js`
 
-1. Create a valid Maestro project fixture and call `recoveryContext`.
+1. Create a valid XiaoTao project fixture and call `recoveryContext`.
 2. Assert that the injected context maps a bounded Worker to an available Codex-native subagent.
 3. Assert that a separate user-owned task or conversation requires an explicit user request.
 4. Assert that tool-facing identifiers follow the visible schema and Chinese labels remain user-facing.
@@ -24,7 +24,7 @@
 ### Task 2: Implement the minimal Adapter reminder
 
 **Files:**
-- Modify: `adapters/codex/maestro-codex/scripts/session-start.mjs:68`
+- Modify: `adapters/codex/xiaotao-codex/scripts/session-start.mjs:68`
 
 1. Add one bounded reminder entry next to the existing delegation contract.
 2. Refer to the current `spawn_agent` name only as an example of a native subagent capability.
@@ -44,7 +44,7 @@
 ### Task 4: Verify the complete change
 
 **Files:**
-- Verify: `adapters/codex/maestro-codex/scripts/session-start.mjs`
+- Verify: `adapters/codex/xiaotao-codex/scripts/session-start.mjs`
 - Verify: `test/codex-adapter.test.js`
 - Verify: `adapters/codex/README.md`
 

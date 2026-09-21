@@ -1,0 +1,8 @@
+{
+  "status": "completed",
+  "summary": "Contains an unsafe control character in a path.",
+  "result_path": "abc\u0000def",
+  "worker_state_path": "xiaotao/references/scenarios/validator-fixtures/files/current-state.md",
+  "needs_user_input": false,
+  "recommended_next": []
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xiaotao.local/schemas/temporary-meta.schema.json",
+  "title": "XiaoTao Temporary Metadata",
+  "type": "object",
+  "required": [
+    "id",
+    "topic",
+    "status",
+    "created_at",
+    "updated_at",
+    "updated_by",
+    "revision"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "topic": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["active", "archive", "trash"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "updated_by": { "type": "string", "minLength": 1 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "last_session_id": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}
