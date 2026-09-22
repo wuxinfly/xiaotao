@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import { detectScenes, SCENES } from './scenes.js';
-import { doctorInstallation, globalUpdateNotice, installScenes, updateScenes } from './install.js';
+import { doctorInstallation, globalUpdateNotice, installScenes, requireCurrentInstallation, updateScenes } from './install.js';
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, '..');
 const HELP = `XiaoTao installer\n\nUsage:\n  xiaotao init [path] [--force]\n  xiaotao update [path] [--yes]\n  xiaotao doctor [path] [--json]\n\nRun init in a terminal. It detects available hosts and lets you choose.\n`;
@@ -19,7 +19,11 @@ function parseArgs(argv) {
     const value = argv[index];
     if (value === '--force' && options.command === 'init') { options.force = true; continue; }
     if (value === '--yes' && options.command === 'update') { options.yes = true; continue; }
-    if (value === '--json') { options.json = true; continue; }
+    if (value === '--json') {
+      if (options.command !== 'doctor') throw new UsageError('--json is only valid with xiaotao doctor');
+      options.json = true;
+      continue;
+    }
     if (value.startsWith('-')) throw new UsageError(`Unknown option: ${value}`);
     if (pathSeen) throw new UsageError(`Unexpected argument: ${value}`);
     options.projectPath = value;
@@ -53,7 +57,7 @@ async function chooseHosts(input, output, environment) {
 
 function printDiagnosis(output, diagnosis) {
   for (const check of diagnosis.checks) {
-    output.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.scene ?? 'project'}: ${check.code}${check.path ? ` (${check.path})` : ''}\n`);
+    output.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.scene ?? 'project'}: ${check.code}${check.path ? ` (${check.path})` : ''}${check.message ? ` — ${check.message}` : ''}\n`);
   }
 }
 
@@ -84,6 +88,7 @@ export async function run(argv, io = {}) {
       return result.checks.every((check) => check.ok) ? 0 : 1;
     }
     if (parsed.command === 'update') {
+      await requireCurrentInstallation(projectRoot);
       const notice = await globalUpdateNotice({ packageRoot: PACKAGE_ROOT, environment });
       if (notice && !parsed.yes && input.isTTY && output.isTTY && (await ask(input, output, `共享安装将从 ${notice.from} 更新到 ${notice.to}，继续？ [y/N]： `)).toLowerCase() !== 'y') {
         throw new Error('Update cancelled.');
