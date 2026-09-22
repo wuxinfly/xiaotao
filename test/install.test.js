@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { doctorInstallation, globalUpdateNotice, installScenes, readInstallation, updateScenes } from '../cli/install.js';
+import { doctorInstallation, globalUpdateNotice, installScenes, readGlobalInstallation, readInstallation, updateScenes } from '../cli/install.js';
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-install-test-'));
@@ -56,4 +56,32 @@ test('doctor reports a deleted global skill and version changes', async (t) => {
   assert.deepEqual(await globalUpdateNotice(context), { from: '0.3.0', to: '0.3.1' });
   await rm(path.join(context.environment.XIAOTAO_HOME, '.agents/skills/xiaotao/SKILL.md'));
   assert.equal((await doctorInstallation(context.projectRoot, context.environment)).ok, false);
+});
+
+test('none does not erase a previous shared installation record', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  await installScenes({ ...context, sceneIds: ['skills'] });
+  const before = await readGlobalInstallation(context.environment);
+  const secondProject = path.join(context.root, 'none-project'); await mkdir(secondProject);
+  await installScenes({ packageRoot: context.packageRoot, projectRoot: secondProject, sceneIds: [], environment: context.environment });
+  assert.deepEqual(await readGlobalInstallation(context.environment), before);
+});
+
+test('reads BOM metadata and gives old metadata a migration message', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const configDir = path.join(context.projectRoot, '.xiaotao'); await mkdir(configDir);
+  await writeFile(path.join(configDir, 'installation.json'), `\uFEFF${JSON.stringify({ schema_version: 1, tools: ['codex'] })}`);
+  const diagnosis = await doctorInstallation(context.projectRoot, context.environment);
+  assert.match(diagnosis.checks.at(-1).message, /Run xiaotao init again/);
+  await assert.rejects(updateScenes(context), /old XiaoTao installation metadata/);
+});
+
+test('installs and verifies DSH through an injected command runner', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const script = path.join(context.packageRoot, 'adapters/deepseek-harness/scripts'); await mkdir(script, { recursive: true }); await writeFile(path.join(script, 'install-local.mjs'), '');
+  const calls = [];
+  const command = async (name, args) => { calls.push([name, args]); return { stdout: name === 'dsh' ? '@xiaotao-ai/dsh-adapter' : '', stderr: '' }; };
+  const result = await installScenes({ ...context, sceneIds: ['dsh'], command });
+  assert.equal(result.checks.every((check) => check.ok), true);
+  assert.deepEqual(calls.map(([name]) => name), [process.execPath, 'dsh']);
 });
