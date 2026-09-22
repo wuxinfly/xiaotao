@@ -41,6 +41,8 @@ npm run xiaotao:doctor
 
 `update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
 
+当前本地验证阶段，`init` 必须在交互式终端中运行，不提供 `--tools` 或 CI 批量初始化参数。`--json` 仅支持 `doctor`。
+
 ## 安装位置
 
 | 选择 | 安装位置 |
@@ -56,6 +58,12 @@ npm run xiaotao:doctor
 ```bash
 npm run xiaotao:init -- --force
 ```
+
+## 旧项目升级
+
+早期版本会把 Skill 复制到项目内目录，并使用 schema v1 的 `.xiaotao/installation.json`。新版本不会自动删除或迁移这些文件。
+
+在旧项目目录执行一次 `npm run xiaotao:init`，重新选择宿主即可写入新的项目记录并安装用户级 Skill；旧项目内副本请在确认新安装可用后自行归档或删除。
 
 ## 在宿主中使用
 
