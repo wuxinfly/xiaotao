@@ -14,7 +14,9 @@ const MANAGED_PACKAGE = 'xiaotao-ai-workflow';
 async function pathExists(target) {
   try { await stat(target); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }
-async function readJson(target) { return JSON.parse(await readFile(target, 'utf8')); }
+async function readJson(target) {
+  return JSON.parse((await readFile(target, 'utf8')).replace(/^\uFEFF/, ''));
+}
 async function isNonEmpty(target) {
   try { const value = await stat(target); return !value.isDirectory() || (await readdir(target)).length > 0; }
   catch (error) { if (error.code === 'ENOENT') return false; throw error; }
@@ -35,6 +37,13 @@ function projectConfig(projectRoot) { return path.join(path.resolve(projectRoot)
 function globalConfig(environment) { return path.join(resolveUserHome(environment), GLOBAL_CONFIG); }
 
 export async function readInstallation(projectRoot) { return readJson(projectConfig(projectRoot)); }
+export async function requireCurrentInstallation(projectRoot) {
+  const metadata = await readInstallation(projectRoot);
+  if (metadata.schema_version !== 2 || !Array.isArray(metadata.scenes) || !metadata.targets) {
+    throw new Error('This project uses old XiaoTao installation metadata. Run xiaotao init again. Existing project-local Skill files are left unchanged.');
+  }
+  return metadata;
+}
 export async function readGlobalInstallation(environment = process.env) {
   try { return await readJson(globalConfig(environment)); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
@@ -45,23 +54,26 @@ export async function globalUpdateNotice({ packageRoot, environment = process.en
     ? { from: previous.package_version, to: current.version } : null;
 }
 
-async function installDsh({ packageRoot, target, environment }) {
+export async function installDsh({ packageRoot, target, environment, command = execFileAsync }) {
   const script = path.join(packageRoot, 'adapters', 'deepseek-harness', 'scripts', 'install-local.mjs');
   if (!(await pathExists(script))) throw new Error('DSH adapter installer is missing from this checkout');
-  await execFileAsync(process.execPath, [script, '--profile', target.profile, '--dsh-home', target.dsh_home], {
+  await command(process.execPath, [script, '--profile', target.profile, '--dsh-home', target.dsh_home], {
     cwd: packageRoot, env: { ...environment, DSH_HOME: target.dsh_home }, windowsHide: true,
   });
 }
-async function verifyDsh(target, environment) {
+export async function verifyDsh(target, environment, command = execFileAsync) {
   try {
-    const { stdout, stderr } = await execFileAsync('dsh', ['--profile', target.profile, '--dump-config'], {
+    const { stdout, stderr } = await command('dsh', ['--profile', target.profile, '--dump-config'], {
       cwd: path.join(target.dsh_home, 'profiles', target.profile), env: { ...environment, DSH_HOME: target.dsh_home }, windowsHide: true,
     });
-    return `${stdout}\n${stderr}`.includes('@xiaotao-ai/dsh-adapter') || `${stdout}\n${stderr}`.includes('xiaotao-adapter');
-  } catch { return false; }
+    const ok = `${stdout}\n${stderr}`.includes('@xiaotao-ai/dsh-adapter') || `${stdout}\n${stderr}`.includes('xiaotao-adapter');
+    return { ok, message: ok ? undefined : 'DSH config does not contain the XiaoTao adapter.' };
+  } catch (error) {
+    return { ok: false, message: error.code === 'ENOENT' ? 'dsh command was not found on PATH.' : `Could not inspect DSH: ${error.message}` };
+  }
 }
 
-export async function installScenes({ projectRoot, packageRoot, sceneIds, force = false, environment = process.env }) {
+export async function installScenes({ projectRoot, packageRoot, sceneIds, force = false, environment = process.env, command = execFileAsync }) {
   const resolvedPackage = path.resolve(packageRoot);
   const { version, skillSource } = await packageInfo(resolvedPackage);
   const scenes = [...new Set(sceneIds)];
@@ -76,7 +88,7 @@ export async function installScenes({ projectRoot, packageRoot, sceneIds, force 
   }
   for (const id of scenes) {
     const target = targets[id];
-    if (id === 'dsh') { await installDsh({ packageRoot: resolvedPackage, target, environment }); continue; }
+    if (id === 'dsh') { await installDsh({ packageRoot: resolvedPackage, target, environment, command }); continue; }
     await mkdir(target.path, { recursive: true });
     await cp(skillSource, target.path, { recursive: true, force: true });
     await writeFile(path.join(target.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: id, version }, null, 2)}\n`);
@@ -88,28 +100,31 @@ export async function installScenes({ projectRoot, packageRoot, sceneIds, force 
   const metadata = { schema_version: 2, package: MANAGED_PACKAGE, package_version: version, scenes, targets, installed_at: previous?.installed_at ?? now, updated_at: now };
   await mkdir(path.dirname(projectConfig(projectRoot)), { recursive: true });
   await writeFile(projectConfig(projectRoot), `${JSON.stringify(metadata, null, 2)}\n`);
-  const global = { schema_version: 1, package: MANAGED_PACKAGE, package_version: version, scenes, targets, updated_at: now };
-  await mkdir(path.dirname(globalConfig(environment)), { recursive: true });
-  await writeFile(globalConfig(environment), `${JSON.stringify(global, null, 2)}\n`);
-  return { ...metadata, checks: (await doctorInstallation(projectRoot, environment)).checks };
+  if (scenes.length > 0) {
+    const previousGlobal = await readGlobalInstallation(environment);
+    const globalScenes = [...new Set([...(previousGlobal?.scenes ?? []), ...scenes])];
+    const global = { schema_version: 1, package: MANAGED_PACKAGE, package_version: version, scenes: globalScenes, targets: { ...(previousGlobal?.targets ?? {}), ...targets }, updated_at: now };
+    await mkdir(path.dirname(globalConfig(environment)), { recursive: true });
+    await writeFile(globalConfig(environment), `${JSON.stringify(global, null, 2)}\n`);
+  }
+  return { ...metadata, checks: (await doctorInstallation(projectRoot, environment, command)).checks };
 }
 
-export async function updateScenes({ projectRoot, packageRoot, environment = process.env }) {
-  const metadata = await readInstallation(projectRoot);
-  if (metadata.schema_version !== 2 || !Array.isArray(metadata.scenes)) throw new Error('This project uses old XiaoTao installation metadata. Run xiaotao init again.');
-  return installScenes({ projectRoot, packageRoot, sceneIds: metadata.scenes, environment });
+export async function updateScenes({ projectRoot, packageRoot, environment = process.env, command = execFileAsync }) {
+  const metadata = await requireCurrentInstallation(projectRoot);
+  return installScenes({ projectRoot, packageRoot, sceneIds: metadata.scenes, environment, command });
 }
 
-export async function doctorInstallation(projectRoot, environment = process.env) {
+export async function doctorInstallation(projectRoot, environment = process.env, command = execFileAsync) {
   const checks = [];
   let metadata;
   try { metadata = await readInstallation(projectRoot); checks.push({ code: 'config_present', ok: true, path: CONFIG_PATH }); }
   catch (error) { return { ok: false, checks: [{ code: 'config_missing', ok: false, path: CONFIG_PATH, message: error.code === 'ENOENT' ? 'Run xiaotao init first.' : error.message }] }; }
-  if (metadata.schema_version !== 2 || !Array.isArray(metadata.scenes) || !metadata.targets) return { ok: false, checks: [...checks, { code: 'config_invalid', ok: false }] };
+  if (metadata.schema_version !== 2 || !Array.isArray(metadata.scenes) || !metadata.targets) return { ok: false, checks: [...checks, { code: 'config_invalid', ok: false, message: 'Old installation metadata. Run xiaotao init again; existing project-local Skill files are left unchanged.' }] };
   for (const id of metadata.scenes) {
     const target = metadata.targets[id];
     if (!SCENES[id] || !target) { checks.push({ code: 'scene_unknown', ok: false, scene: id }); continue; }
-    if (id === 'dsh') { const ok = await verifyDsh(target, environment); checks.push({ code: ok ? 'dsh_active' : 'dsh_inactive', ok, scene: id }); continue; }
+    if (id === 'dsh') { const result = await verifyDsh(target, environment, command); checks.push({ code: result.ok ? 'dsh_active' : 'dsh_inactive', ...result, scene: id }); continue; }
     const skill = path.join(target.path, 'SKILL.md');
     const skillOk = await pathExists(skill); const markerOk = await isManaged(target.path);
     checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });
