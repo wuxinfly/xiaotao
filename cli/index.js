@@ -1,183 +1,110 @@
-import { stat, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
-import { detectHosts, HOSTS, parseToolList } from './hosts.js';
-import { doctorInstallation, installHosts, updateHosts } from './install.js';
+import { detectScenes, SCENES } from './scenes.js';
+import { doctorInstallation, globalUpdateNotice, installScenes, requireCurrentInstallation, updateScenes } from './install.js';
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, '..');
-
-const HELP = `XiaoTao multi-host installer
-
-Usage:
-  xiaotao init [path] [--tools <list>] [--force] [--json]
-  xiaotao update [path] [--json]
-  xiaotao doctor [path] [--json]
-  xiaotao --version
-
-Options:
-  --tools <list>  Comma-separated tools: codex, claude, opencode, all, or none
-  --force         Adopt a non-empty destination not previously managed by XiaoTao
-  --json          Print machine-readable JSON
-  --help, -h      Show help
-  --version, -V   Show version
-`;
-
+const HELP = `XiaoTao installer\n\nUsage:\n  xiaotao init [path] [--force]\n  xiaotao update [path] [--yes]\n  xiaotao doctor [path] [--json]\n\nRun init in a terminal. It detects available hosts and lets you choose.\n`;
 class UsageError extends Error {}
 
-async function exists(target) {
-  try {
-    await stat(target);
-    return true;
-  } catch (error) {
-    if (error.code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
-async function packageVersion() {
-  return JSON.parse(await readFile(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')).version;
-}
-
 function parseArgs(argv) {
-  if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') return { kind: 'help' };
-  if (argv[0] === '--version' || argv[0] === '-V') return { kind: 'version' };
-
-  const command = argv[0];
-  if (!['init', 'update', 'doctor'].includes(command)) {
-    throw new UsageError(`Unknown command: ${command}`);
-  }
-
-  const options = { kind: 'command', command, projectPath: '.', json: false, force: false };
+  if (!argv.length || ['--help', '-h'].includes(argv[0])) return { kind: 'help' };
+  if (['--version', '-V'].includes(argv[0])) return { kind: 'version' };
+  if (!['init', 'update', 'doctor'].includes(argv[0])) throw new UsageError(`Unknown command: ${argv[0]}`);
+  const options = { kind: 'command', command: argv[0], projectPath: '.', force: false, json: false, yes: false };
   let pathSeen = false;
   for (let index = 1; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === '--help' || argument === '-h') return { kind: 'help' };
-    if (argument === '--json') {
+    const value = argv[index];
+    if (value === '--force' && options.command === 'init') { options.force = true; continue; }
+    if (value === '--yes' && options.command === 'update') { options.yes = true; continue; }
+    if (value === '--json') {
+      if (options.command !== 'doctor') throw new UsageError('--json is only valid with xiaotao doctor');
       options.json = true;
       continue;
     }
-    if (argument === '--force') {
-      if (command !== 'init') throw new UsageError('--force is only valid with xiaotao init');
-      options.force = true;
-      continue;
-    }
-    if (argument === '--tools') {
-      if (command !== 'init') throw new UsageError('--tools is only valid with xiaotao init');
-      const value = argv[index + 1];
-      if (!value || value.startsWith('--')) throw new UsageError('--tools requires a value');
-      options.tools = value;
-      index += 1;
-      continue;
-    }
-    if (argument.startsWith('-')) throw new UsageError(`Unknown option: ${argument}`);
-    if (pathSeen) throw new UsageError(`Unexpected argument: ${argument}`);
-    options.projectPath = argument;
+    if (value.startsWith('-')) throw new UsageError(`Unknown option: ${value}`);
+    if (pathSeen) throw new UsageError(`Unexpected argument: ${value}`);
+    options.projectPath = value;
     pathSeen = true;
   }
   return options;
 }
 
-async function chooseTools(projectRoot, input, output) {
-  const detected = await detectHosts((relativePath) => exists(path.join(projectRoot, relativePath)));
-  output.write('Select AI tools for this project:\n');
-  const hostIds = Object.keys(HOSTS);
-  hostIds.forEach((toolId, index) => {
-    const detectedLabel = detected.includes(toolId) ? ' (detected)' : '';
-    output.write(`  ${index + 1}. ${HOSTS[toolId].name}${detectedLabel}\n`);
-  });
-  const defaultText = detected.length > 0 ? detected.join(',') : 'none';
+async function ask(input, output, question) {
   const prompt = createInterface({ input, output });
-  try {
-    const answer = (await prompt.question(`Tools [${defaultText}]: `)).trim();
-    if (answer === '') return detected;
-    const selected = [];
-    for (const item of answer.split(',').map((value) => value.trim()).filter(Boolean)) {
-      if (/^\d+$/.test(item)) {
-        const toolId = hostIds[Number(item) - 1];
-        if (!toolId) throw new UsageError(`Unknown tool selection: ${item}`);
-        if (!selected.includes(toolId)) selected.push(toolId);
-      } else {
-        for (const toolId of parseToolList(item)) {
-          if (!selected.includes(toolId)) selected.push(toolId);
-        }
-      }
-    }
-    return selected;
-  } finally {
-    prompt.close();
-  }
+  try { return (await prompt.question(question)).trim(); } finally { prompt.close(); }
 }
 
-function writeJson(output, value) {
-  output.write(`${JSON.stringify(value, null, 2)}\n`);
+async function chooseHosts(input, output, environment) {
+  const detected = await detectScenes(environment);
+  const ids = Object.keys(SCENES);
+  output.write('检测到可用宿主：\n');
+  ids.forEach((id, index) => output.write(`  ${index + 1}. ${SCENES[id].name}${detected.includes(id) ? '（可用）' : '（未检测到）'}\n`));
+  const defaults = detected.length ? detected.join(',') : 'none';
+  const answer = await ask(input, output, `请选择要安装的宿主（可多选，如 1,2；回车使用 ${defaults}）： `);
+  if (!answer) return detected;
+  if (answer.toLowerCase() === 'none') return [];
+  const picked = [];
+  for (const item of answer.split(',').map((value) => value.trim()).filter(Boolean)) {
+    const id = /^\d+$/.test(item) ? ids[Number(item) - 1] : item.toLowerCase();
+    if (!SCENES[id]) throw new UsageError(`Unknown host selection: ${item}`);
+    if (!picked.includes(id)) picked.push(id);
+  }
+  return picked;
+}
+
+function printDiagnosis(output, diagnosis) {
+  for (const check of diagnosis.checks) {
+    output.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.scene ?? 'project'}: ${check.code}${check.path ? ` (${check.path})` : ''}${check.message ? ` — ${check.message}` : ''}\n`);
+  }
 }
 
 export async function run(argv, io = {}) {
   const input = io.input ?? process.stdin;
   const output = io.output ?? process.stdout;
   const errorOutput = io.error ?? process.stderr;
-
+  const environment = io.environment ?? process.env;
   let parsed;
   try {
     parsed = parseArgs(argv);
-    if (parsed.kind === 'help') {
-      output.write(HELP);
-      return 0;
-    }
+    if (parsed.kind === 'help') { output.write(HELP); return 0; }
     if (parsed.kind === 'version') {
-      output.write(`${await packageVersion()}\n`);
+      output.write(`${JSON.parse(await readFile(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')).version}\n`);
       return 0;
     }
-
     const projectRoot = path.resolve(parsed.projectPath);
     if (parsed.command === 'init') {
-      let toolIds;
-      if (parsed.tools !== undefined) {
-        toolIds = parseToolList(parsed.tools);
-      } else if (input.isTTY && output.isTTY) {
-        toolIds = await chooseTools(projectRoot, input, output);
-      } else {
-        throw new UsageError('Pass --tools <list> when xiaotao init is not running interactively.');
+      if (!input.isTTY || !output.isTTY) throw new UsageError('xiaotao init must run in an interactive terminal.');
+      const scenes = await chooseHosts(input, output, environment);
+      const notice = await globalUpdateNotice({ packageRoot: PACKAGE_ROOT, environment });
+      if (notice && (await ask(input, output, `共享安装将从 ${notice.from} 更新到 ${notice.to}，继续？ [y/N]： `)).toLowerCase() !== 'y') {
+        throw new Error('Installation cancelled.');
       }
-      const metadata = await installHosts({
-        projectRoot,
-        packageRoot: PACKAGE_ROOT,
-        toolIds,
-        force: parsed.force,
-      });
-      if (parsed.json) {
-        writeJson(output, { ok: true, action: 'init', ...metadata });
-      } else if (toolIds.length === 0) {
-        output.write('Initialized XiaoTao without an AI host integration.\n');
-      } else {
-        for (const toolId of toolIds) {
-          output.write(`Installed XiaoTao for ${HOSTS[toolId].name} at ${HOSTS[toolId].skillDir}\n`);
-        }
-      }
-      return 0;
+      const result = await installScenes({ projectRoot, packageRoot: PACKAGE_ROOT, sceneIds: scenes, force: parsed.force, environment });
+      printDiagnosis(output, { checks: result.checks });
+      output.write(`\nXiaoTao 已初始化。项目记录：${path.join(projectRoot, '.xiaotao', 'installation.json')}\n`);
+      return result.checks.every((check) => check.ok) ? 0 : 1;
     }
-
     if (parsed.command === 'update') {
-      const metadata = await updateHosts({ projectRoot, packageRoot: PACKAGE_ROOT });
-      if (parsed.json) writeJson(output, { ok: true, action: 'update', ...metadata });
-      else output.write(`Updated XiaoTao for ${metadata.tools.length} AI tool(s).\n`);
-      return 0;
-    }
-
-    const diagnosis = await doctorInstallation(projectRoot);
-    if (parsed.json) {
-      writeJson(output, diagnosis);
-    } else {
-      for (const check of diagnosis.checks) {
-        output.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.code}${check.tool ? ` (${check.tool})` : ''}${check.path ? `: ${check.path}` : ''}\n`);
+      await requireCurrentInstallation(projectRoot);
+      const notice = await globalUpdateNotice({ packageRoot: PACKAGE_ROOT, environment });
+      if (notice && !parsed.yes && input.isTTY && output.isTTY && (await ask(input, output, `共享安装将从 ${notice.from} 更新到 ${notice.to}，继续？ [y/N]： `)).toLowerCase() !== 'y') {
+        throw new Error('Update cancelled.');
       }
+      const result = await updateScenes({ projectRoot, packageRoot: PACKAGE_ROOT, environment });
+      printDiagnosis(output, { checks: result.checks });
+      return result.checks.every((check) => check.ok) ? 0 : 1;
     }
+    const diagnosis = await doctorInstallation(projectRoot, environment);
+    if (parsed.json) output.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
+    else printDiagnosis(output, diagnosis);
     return diagnosis.ok ? 0 : 1;
   } catch (error) {
-    const exitCode = error instanceof UsageError ? 2 : 1;
-    if (parsed?.json) writeJson(output, { ok: false, error: error.message });
+    const code = error instanceof UsageError ? 2 : 1;
+    if (parsed?.json) output.write(`${JSON.stringify({ ok: false, error: error.message })}\n`);
     else errorOutput.write(`Error: ${error.message}\n`);
-    return exitCode;
+    return code;
   }
 }

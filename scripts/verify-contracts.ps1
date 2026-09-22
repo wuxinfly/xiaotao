@@ -853,14 +853,14 @@ try {
         throw "The multi-host installer CLI must remain runtime-dependency free"
     }
 
-    $hostRegistryContracts = @(
-        "'.agents/skills/xiaotao'",
-        "'.claude/skills/xiaotao'",
-        "'.opencode/skills/xiaotao'"
+    $sceneRegistryContracts = @(
+        "'.agents', 'skills', 'xiaotao'",
+        "'.claude', 'skills', 'xiaotao'",
+        "dsh-profile"
     )
-    foreach ($hostContract in $hostRegistryContracts) {
-        if (-not (Select-String -LiteralPath "cli/hosts.js" -SimpleMatch $hostContract -Quiet)) {
-            throw "Missing host registry destination $hostContract"
+    foreach ($sceneContract in $sceneRegistryContracts) {
+        if (-not (Select-String -LiteralPath "cli/scenes.js" -SimpleMatch $sceneContract -Quiet)) {
+            throw "Missing scene registry contract $sceneContract"
         }
     }
 

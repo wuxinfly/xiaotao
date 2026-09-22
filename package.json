@@ -1,6 +1,6 @@
 {
   "name": "xiaotao-ai-workflow",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "面向结果的 AI 协作 Skill，支持动态 Worker 和多宿主安装 CLI",
   "type": "module",
   "bin": {
@@ -17,6 +17,9 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "test:contracts": "pwsh -File scripts/verify-contracts.ps1",
+    "xiaotao:init": "node bin/xiaotao.js init",
+    "xiaotao:update": "node bin/xiaotao.js update",
+    "xiaotao:doctor": "node bin/xiaotao.js doctor",
     "dsh:install:local": "node adapters/deepseek-harness/scripts/install-local.mjs",
     "dsh:audit:checkpoint": "node adapters/deepseek-harness/scripts/audit-checkpoint.mjs",
     "codex:install:local": "node adapters/codex/install-local.mjs",
@@ -27,11 +30,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/IHongTaoI/xiaotao.git"
+    "url": "git+https://github.com/wuxinfly/xiaotao.git"
   },
-  "homepage": "https://github.com/IHongTaoI/xiaotao#readme",
+  "homepage": "https://github.com/wuxinfly/xiaotao#readme",
   "bugs": {
-    "url": "https://github.com/IHongTaoI/xiaotao/issues"
+    "url": "https://github.com/wuxinfly/xiaotao/issues"
   },
   "keywords": [
     "ai",
