@@ -33,17 +33,17 @@ XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 
 ## 3. 当前宿主能力矩阵
 
-| 能力 | Bare Core | DeepSeek Harness Adapter | Codex Adapter |
-| --- | --- | --- | --- |
-| Core Skill 加载 | 宿主支持 Agent Skills 时可用；否则需要薄 Adapter | `ctx.skills` 注册已 `activated` | Core 由用户级或项目级 Skill 发现；插件不捆绑第二份 Core |
-| Core schema / 协议校验 | `validate.py` 可按需运行 | validator Cordis service 已 `activated`；只在有界 checkpoint 路径实际使用，不是任意写入工具 | 没有专用 validator 接线；按 Core / 宿主工具执行 |
-| 状态边界、锁与 CAS | 依赖宿主文件工具，确定性保证为 `degraded` | `ctx.fs` 上的 `.xiaotao/` containment、锁、租约、tombstone release 与 CAS 已 `activated` | 插件只读状态入口，不接管写入；写入保证为 `degraded` |
-| 有界模型 checkpoint | 由当前 Agent 按 Core 协议显式保存 | `fs + tools + schema` 就绪且 checkpoint 未禁用时，`xiaotao_checkpoint` 已进入 ToolRuntime；真实模型/后端链仍 `unverified` | `unsupported`；`SessionStart` 只能恢复已落盘入口 |
-| 自动 checkpoint | `unsupported` | 上下文压力触发为 opt-in `activated`；使用 awaited `turn-stopping` fallback，不是 pre-compaction / Session End；真实宿主验收 `unverified` | `PreCompact` 能力 `available`，但缺少稳定的有界事实与目标生成链，功能未激活 |
-| Session 恢复入口 / Runtime Context | 由新 Session 显式发现已保存状态 | `agents` 就绪时 SessionStart 有界 Runtime Context 已 `activated` | `SessionStart` 的 startup / resume / clear / compact reminder 已实现；以只读 Node.js 扫描权威元数据，不执行项目 Core、不刷新 Catalog；只有安装、启用、信任并真实运行后才算激活 |
-| 多文件 transaction / commit | Core 定义协议，执行依赖宿主 | create/replace 事务 service 已 `available`；model-facing 业务路径未激活，checkpoint 仍保守拒绝 overlay；delete/rename lifecycle move `unsupported` | `unsupported` |
-| 原生隔离 Worker / Delegation Packet | 取决于宿主能力；不能假设继承 | DSH preview 未提供可验证的原生隔离 subagent 运行时，使用 in-session fallback | 单持久 Worker 的 Session 绑定 Packet 注入已 `activated`；required instruction digest 与不可变 Worker 快照边界会复核，但宿主级工具/权限隔离仍为 `degraded`，并行与 ephemeral Packet 未接线 |
-| 完整分层验收 | 需要在具体宿主记录 | 自动化机制覆盖较多；真实模型、持久后端、重启恢复和故障路径仍 `unverified` | 有人工清单；真实桌面 Hook 与降级场景证据仍需记录 |
+| 能力 | Bare Core | DeepSeek Harness Adapter | Codex Adapter | Antigravity Adapter |
+| --- | --- | --- | --- | --- |
+| Core Skill 加载 | 宿主支持 Agent Skills 时可用；否则需要薄 Adapter | `ctx.skills` 注册已 `activated` | Core 由用户级或项目级 Skill 发现；插件不捆绑第二份 Core | 插件内 `skills/xiaotao/` 自动发现；已 `activated` |
+| Core schema / 协议校验 | `validate.py` 可按需运行 | validator Cordis service 已 `activated`；只在有界 checkpoint 路径实际使用，不是任意写入工具 | 没有专用 validator 接线；按 Core / 宿主工具执行 | 没有专用 validator 接线；按 Core / Python 脚本执行 |
+| 状态边界、锁与 CAS | 依赖宿主文件工具，确定性保证为 `degraded` | `ctx.fs` 上的 `.xiaotao/` containment、锁、租约、tombstone release 与 CAS 已 `activated` | 插件只读状态入口，不接管写入；写入保证为 `degraded` | 依赖宿主文件工具，确定性保证为 `degraded` |
+| 有界模型 checkpoint | 由当前 Agent 按 Core 协议显式保存 | `fs + tools + schema` 就绪且 checkpoint 未禁用时，`xiaotao_checkpoint` 已进入 ToolRuntime；真实模型/后端链仍 `unverified` | `unsupported`；`SessionStart` 只能恢复已落盘入口 | 由当前 Agent 按 Core 协议显式保存，保证为 `degraded` |
+| 自动 checkpoint | `unsupported` | 上下文压力触发为 opt-in `activated`；使用 awaited `turn-stopping` fallback，不是 pre-compaction / Session End；真实宿主验收 `unverified` | `PreCompact` 能力 `available`，但缺少稳定的有界事实与目标生成链，功能未激活 | 宿主暂无 pre-compaction 拦截 seam，为 `unsupported` |
+| Session 恢复入口 / Runtime Context | 由新 Session 显式发现已保存状态 | `agents` 就绪时 SessionStart 有界 Runtime Context 已 `activated` | `SessionStart` 的 startup / resume / clear / compact reminder 已实现；以只读 Node.js 扫描权威元数据，不执行项目 Core、不刷新 Catalog；只有安装、启用、信任并真实运行后才算激活 | `PreInvocation` Hook 首轮注入不超过 300 token 的 `ephemeralMessage` 运行时上下文与 Guard 已 `activated` |
+| 多文件 transaction / commit | Core 定义协议，执行依赖宿主 | create/replace 事务 service 已 `available`；model-facing 业务路径未激活，checkpoint 仍保守拒绝 overlay；delete/rename lifecycle move `unsupported` | `unsupported` | `unsupported` |
+| 原生隔离 Worker / Delegation Packet | 取决于宿主能力；不能假设继承 | DSH preview 未提供可验证的原生隔离 subagent 运行时，使用 in-session fallback | 单持久 Worker 的 Session 绑定 Packet 注入已 `activated`；required instruction digest 与不可变 Worker 快照边界会复核，但宿主级工具/权限隔离仍为 `degraded`，并行与 ephemeral Packet 未接线 | 映射至 `define_subagent` 与 `invoke_subagent`，只读 Worker 物理隔离（`enable_write_tools: false`）已 `activated` |
+| 完整分层验收 | 需要在具体宿主记录 | 自动化机制覆盖较多；真实模型、持久后端、重启恢复和故障路径仍 `unverified` | 有人工清单；真实桌面 Hook 与降级场景证据仍需记录 | 自动化机制测试完备；真实插件环境证据待记录 `unverified` |
 
 代码与证据入口：
 
@@ -52,6 +52,7 @@ XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 - Checkpoint 契约：[checkpoint-contract.md](checkpoint-contract.md)
 - 自动 checkpoint 能力矩阵：[automatic-checkpoint.md](automatic-checkpoint.md)
 - Codex 当前范围：[adapters/codex/README.md](../../adapters/codex/README.md)
+- Antigravity 插件与适配器：[adapters/antigravity/README.md](../../adapters/antigravity/README.md)
 - 真实宿主证据格式：[manual-acceptance.md](../manual-acceptance.md)
 
 ## 4. Model-facing 工具的边界

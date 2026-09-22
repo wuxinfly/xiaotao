@@ -22,8 +22,19 @@ async function isNonEmpty(target) {
   catch (error) { if (error.code === 'ENOENT') return false; throw error; }
 }
 async function isManaged(target) {
-  try { return (await readJson(path.join(target, MARKER_NAME))).package === MANAGED_PACKAGE; }
-  catch (error) { if (error.code === 'ENOENT' || error instanceof SyntaxError) return false; throw error; }
+  try {
+    const managed = await readJson(path.join(target, MARKER_NAME));
+    if (managed.package === MANAGED_PACKAGE) return true;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+  }
+  try {
+    const source = await readJson(path.join(target, '.xiaotao-source.json'));
+    if (source.owner && source.owner.startsWith('xiaotao-ai-workflow')) return true;
+  } catch (error) {
+    if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+  }
+  return false;
 }
 async function packageInfo(packageRoot) {
   const manifest = await readJson(path.join(packageRoot, 'package.json'));
@@ -73,6 +84,16 @@ export async function verifyDsh(target, environment, command = execFileAsync) {
   }
 }
 
+export async function installAntigravity({ packageRoot, target, skillSource, version }) {
+  const adapterSource = path.join(packageRoot, 'adapters', 'antigravity', 'xiaotao-antigravity');
+  await mkdir(target.path, { recursive: true });
+  await cp(adapterSource, target.path, { recursive: true, force: true });
+  const pluginSkillDir = path.join(target.path, 'skills', 'xiaotao');
+  await mkdir(pluginSkillDir, { recursive: true });
+  await cp(skillSource, pluginSkillDir, { recursive: true, force: true });
+  await writeFile(path.join(target.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'antigravity', version }, null, 2)}\n`);
+}
+
 export async function installScenes({ projectRoot, packageRoot, sceneIds, force = false, environment = process.env, command = execFileAsync }) {
   const resolvedPackage = path.resolve(packageRoot);
   const { version, skillSource } = await packageInfo(resolvedPackage);
@@ -89,6 +110,10 @@ export async function installScenes({ projectRoot, packageRoot, sceneIds, force 
   for (const id of scenes) {
     const target = targets[id];
     if (id === 'dsh') { await installDsh({ packageRoot: resolvedPackage, target, environment, command }); continue; }
+    if (id === 'antigravity') {
+      await installAntigravity({ packageRoot: resolvedPackage, target, skillSource, version });
+      continue;
+    }
     await mkdir(target.path, { recursive: true });
     await cp(skillSource, target.path, { recursive: true, force: true });
     await writeFile(path.join(target.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: id, version }, null, 2)}\n`);
@@ -125,6 +150,18 @@ export async function doctorInstallation(projectRoot, environment = process.env,
     const target = metadata.targets[id];
     if (!SCENES[id] || !target) { checks.push({ code: 'scene_unknown', ok: false, scene: id }); continue; }
     if (id === 'dsh') { const result = await verifyDsh(target, environment, command); checks.push({ code: result.ok ? 'dsh_active' : 'dsh_inactive', ...result, scene: id }); continue; }
+    if (id === 'antigravity') {
+      const pluginManifest = path.join(target.path, 'plugin.json');
+      const hooksJson = path.join(target.path, 'hooks.json');
+      const skill = path.join(target.path, 'skills', 'xiaotao', 'SKILL.md');
+      const pluginOk = (await pathExists(pluginManifest)) && (await pathExists(hooksJson));
+      const skillOk = await pathExists(skill);
+      const markerOk = await isManaged(target.path);
+      checks.push({ code: pluginOk ? 'plugin_present' : 'plugin_missing', ok: pluginOk, scene: id, path: target.path });
+      checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });
+      checks.push({ code: markerOk ? 'marker_present' : 'marker_missing', ok: markerOk, scene: id, path: path.join(target.path, MARKER_NAME) });
+      continue;
+    }
     const skill = path.join(target.path, 'SKILL.md');
     const skillOk = await pathExists(skill); const markerOk = await isManaged(target.path);
     checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });

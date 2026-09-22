@@ -8,5 +8,6 @@ test('resolves every user-level target from XIAOTAO_HOME', () => {
   assert.equal(resolveUserHome(environment), path.resolve('/tmp/xiaotao-home'));
   assert.equal(SCENES.skills.resolveTarget(environment).path, path.resolve('/tmp/xiaotao-home/.agents/skills/xiaotao'));
   assert.equal(SCENES.claude.resolveTarget(environment).path, path.resolve('/tmp/xiaotao-home/.claude/skills/xiaotao'));
+  assert.equal(SCENES.antigravity.resolveTarget(environment).path, path.resolve('/tmp/xiaotao-home/.gemini/config/plugins/xiaotao-antigravity'));
   assert.equal(resolveDshHome(environment), path.resolve('/tmp/xiaotao-home/.dsh'));
 });

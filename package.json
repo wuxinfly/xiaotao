@@ -23,6 +23,7 @@
     "dsh:install:local": "node adapters/deepseek-harness/scripts/install-local.mjs",
     "dsh:audit:checkpoint": "node adapters/deepseek-harness/scripts/audit-checkpoint.mjs",
     "codex:install:local": "node adapters/codex/install-local.mjs",
+    "antigravity:install:local": "node adapters/antigravity/install-local.mjs",
     "verify": "npm test && npm run test:contracts && npm pack --dry-run"
   },
   "engines": {

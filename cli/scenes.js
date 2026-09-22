@@ -33,6 +33,10 @@ async function hasDsh() {
   }
 }
 
+export function resolveGeminiConfig(environment = process.env) {
+  return path.resolve(environment.GEMINI_CONFIG_DIR || path.join(resolveUserHome(environment), '.gemini', 'config'));
+}
+
 export const SCENES = Object.freeze({
   dsh: Object.freeze({
     id: 'dsh',
@@ -54,6 +58,16 @@ export const SCENES = Object.freeze({
     description: '安装到用户级 .claude/skills',
     resolveTarget: (environment) => ({ kind: 'user-skills', path: path.join(resolveUserHome(environment), '.claude', 'skills', 'xiaotao') }),
     detect: async (environment) => exists(path.join(resolveUserHome(environment), '.claude')),
+  }),
+  antigravity: Object.freeze({
+    id: 'antigravity',
+    name: 'Antigravity',
+    description: '安装为 Antigravity 插件（含 PreInvocation 恢复 Hook）',
+    resolveTarget: (environment) => ({
+      kind: 'antigravity-plugin',
+      path: path.join(resolveGeminiConfig(environment), 'plugins', 'xiaotao-antigravity'),
+    }),
+    detect: async (environment) => exists(path.join(resolveUserHome(environment), '.gemini')),
   }),
 });
 
