@@ -1,14 +1,14 @@
 {
   "name": "xiaotao-codex",
-  "version": "0.1.0",
-  "description": "在 Codex Session 边界恢复 XiaoTao 规则和 Memory 入口。",
+  "version": "0.3.0",
+  "description": "恢复 XiaoTao 状态入口，并向单个 Codex subagent 注入有界 Delegation Packet。",
   "author": {
     "name": "IHongTaoI"
   },
   "interface": {
     "displayName": "XiaoTao Codex",
-    "shortDescription": "压缩后恢复 XiaoTao 上下文。",
-    "longDescription": "面向 XiaoTao 项目的只读 SessionStart Hook。提供共享项目 Memory 路径和可选的项目本地 Core 提示，不加载历史内容，也不选择 Task。",
+    "shortDescription": "恢复状态并注入有界 Worker Packet。",
+    "longDescription": "面向 XiaoTao 项目的 SessionStart 与 SubagentStart Hooks。只读恢复共享项目状态入口，并为会话绑定的单 Worker 注入经过验证的 Delegation Packet；不读取聊天记录，也不自动选择 Task。",
     "developerName": "IHongTaoI",
     "category": "Productivity",
     "capabilities": [],

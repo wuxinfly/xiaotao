@@ -1,13 +1,41 @@
 import { open, readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
-import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
+import { isValidHandoffShape } from './handoff-contract.mjs';
+
 const SOURCES = new Set(['startup', 'resume', 'clear', 'compact']);
 const CORE = '.agents/skills/xiaotao/SKILL.md';
 const CONFIG = '.xiaotao/installation.json';
+const MAX_DIRECTORY_ENTRIES = 128;
+const MAX_METADATA_BYTES = 16 * 1024;
+const MAX_TOTAL_BYTES = 128 * 1024;
+const MAX_ACTIVE_TASKS = 64;
+
+class ScanBudgetError extends Error {
+  constructor() { super('scan_budget_exceeded'); this.code = 'scan_budget_exceeded'; }
+}
+
+function scanBudget() { return { bytes: 0 }; }
+
+async function boundedEntries(directory) {
+  const entries = await readdir(directory);
+  if (entries.length > MAX_DIRECTORY_ENTRIES) throw new ScanBudgetError();
+  return entries;
+}
+
+async function boundedText(file, budget) {
+  const info = await stat(file);
+  if (!info.isFile() || info.size > MAX_METADATA_BYTES || budget.bytes + info.size > MAX_TOTAL_BYTES) {
+    throw new ScanBudgetError();
+  }
+  budget.bytes += info.size;
+  return readFile(file, 'utf8');
+}
+
+function yamlScalar(source, key) {
+  const match = new RegExp(`^${key}:\\s*["']?([^"'\\r\\n#]+)`, 'm').exec(source);
+  return match ? compactText(match[1], 120) : null;
+}
 
 function inside(root, target) {
   const relative = path.relative(root, target);
@@ -44,40 +72,40 @@ async function readConfig(file) {
 async function hasAuthoritativeSources(root) {
   try {
     const taskDir = path.join(root, '.xiaotao/tasks');
-    const entries = await readdir(taskDir);
+    const entries = await boundedEntries(taskDir);
     if (entries.some(e => e !== 'archive' && !e.startsWith('.'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     const tempDir = path.join(root, '.xiaotao/memory/temporary/active');
-    const entries = await readdir(tempDir);
+    const entries = await boundedEntries(tempDir);
     if (entries.some(e => !e.startsWith('.'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     const ltDir = path.join(root, '.xiaotao/memory/long-term/entries');
-    const entries = await readdir(ltDir);
+    const entries = await boundedEntries(ltDir);
     if (entries.some(e => e.endsWith('.md'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     if (await exists(path.join(root, '.xiaotao/memory/long-term/current.md'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     if (await exists(path.join(root, '.xiaotao/memory/legacy/memory.md'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     const fuDir = path.join(root, '.xiaotao/memory/followups/pending');
-    const entries = await readdir(fuDir);
+    const entries = await boundedEntries(fuDir);
     if (entries.some(e => e.endsWith('.yaml') || e.endsWith('.yml'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   try {
     const chkDir = path.join(root, '.xiaotao/checkpoints');
-    const entries = await readdir(chkDir);
+    const entries = await boundedEntries(chkDir);
     if (entries.some(e => e.endsWith('.json') && !e.includes('.failed-'))) return true;
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
   // NOTE: .xiaotao/memory/index.json is a DERIVED artifact and must NEVER be treated as an authoritative source!
   return false;
 }
 
-async function findRecoverableCheckpoint(root) {
+async function findRecoverableCheckpoint(root, budget = scanBudget()) {
   const candidates = [];
 
   const scanTargetCheckpoints = async (scope, binding, chkDir, receipt, receiptMtime) => {
@@ -86,23 +114,23 @@ async function findRecoverableCheckpoint(root) {
       committedMap.set(receipt.request_id, { revision: receipt.revision, mtime: receiptMtime });
     }
     try {
-      const files = await readdir(chkDir);
+      const files = await boundedEntries(chkDir);
       for (const f of files) {
         if (f.endsWith('.committed.json')) {
           const reqId = f.slice(0, -'.committed.json'.length);
           try {
-            const data = JSON.parse(await readFile(path.join(chkDir, f), 'utf8'));
+            const data = JSON.parse(await boundedText(path.join(chkDir, f), budget));
             const st = await stat(path.join(chkDir, f));
             const rev = data && typeof data === 'object' && data.revision !== undefined ? Number(data.revision) : 1;
             committedMap.set(reqId, { revision: rev, mtime: st.mtimeMs });
-          } catch {}
+          } catch (error) { if (error instanceof ScanBudgetError) throw error; }
         }
       }
       for (const f of files) {
         if (!f.endsWith('.json') || f.includes('.committed.') || f.includes('.failed-')) continue;
         const reqId = f.slice(0, -'.json'.length);
         try {
-          const data = JSON.parse(await readFile(path.join(chkDir, f), 'utf8'));
+          const data = JSON.parse(await boundedText(path.join(chkDir, f), budget));
           if (data && typeof data === 'object' && data.request_id) {
             const st = await stat(path.join(chkDir, f));
             const targetScope = data.kind || scope;
@@ -130,9 +158,9 @@ async function findRecoverableCheckpoint(root) {
               });
             }
           }
-        } catch {}
+        } catch (error) { if (error instanceof ScanBudgetError) throw error; }
       }
-    } catch {}
+    } catch (error) { if (error instanceof ScanBudgetError) throw error; }
 
     for (const [reqId, comm] of committedMap.entries()) {
       if (!candidates.some(c => c.request_id === reqId)) {
@@ -151,14 +179,15 @@ async function findRecoverableCheckpoint(root) {
   // 1. Task checkpoints
   try {
     const tasksDir = path.join(root, '.xiaotao/tasks');
-    const taskEntries = await readdir(tasksDir);
+    const taskEntries = await boundedEntries(tasksDir);
+    if (taskEntries.length > MAX_ACTIVE_TASKS) throw new ScanBudgetError();
     for (const t of taskEntries) {
       if (t === 'archive' || t.startsWith('.')) continue;
       const tDir = path.join(tasksDir, t);
       let receipt = null;
       let receiptMtime = 0;
       try {
-        const text = await readFile(path.join(tDir, 'progress.md'), 'utf8');
+        const text = await boundedText(path.join(tDir, 'progress.md'), budget);
         const reqMatch = /request_id:\s*['"]?([a-z0-9][a-z0-9_-]*)['"]?/i.exec(text);
         const revMatch = /revision:\s*(\d+)/.exec(text);
         if (reqMatch && revMatch) {
@@ -166,22 +195,22 @@ async function findRecoverableCheckpoint(root) {
           receipt = { request_id: reqMatch[1], revision: Number(revMatch[1]) };
           receiptMtime = st.mtimeMs;
         }
-      } catch {}
+      } catch (error) { if (error instanceof ScanBudgetError) throw error; }
       await scanTargetCheckpoints('task', t, path.join(tDir, 'references/checkpoints'), receipt, receiptMtime);
     }
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
 
   // 2. Temporary checkpoints
   try {
     const tempDir = path.join(root, '.xiaotao/memory/temporary/active');
-    const tempEntries = await readdir(tempDir);
+    const tempEntries = await boundedEntries(tempDir);
     for (const t of tempEntries) {
       if (t.startsWith('.')) continue;
       const tDir = path.join(tempDir, t);
       let receipt = null;
       let receiptMtime = 0;
       try {
-        const text = await readFile(path.join(tDir, 'current.md'), 'utf8');
+        const text = await boundedText(path.join(tDir, 'current.md'), budget);
         const reqMatch = /request_id:\s*['"]?([a-z0-9][a-z0-9_-]*)['"]?/i.exec(text);
         const revMatch = /revision:\s*(\d+)/.exec(text);
         if (reqMatch && revMatch) {
@@ -189,10 +218,10 @@ async function findRecoverableCheckpoint(root) {
           receipt = { request_id: reqMatch[1], revision: Number(revMatch[1]) };
           receiptMtime = st.mtimeMs;
         }
-      } catch {}
+      } catch (error) { if (error instanceof ScanBudgetError) throw error; }
       await scanTargetCheckpoints('temporary', t, path.join(tDir, 'references/checkpoints'), receipt, receiptMtime);
     }
-  } catch {}
+  } catch (error) { if (error instanceof ScanBudgetError) throw error; }
 
   // 3. Project checkpoints: .xiaotao/checkpoints/*.json
   await scanTargetCheckpoints('session', 'session', path.join(root, '.xiaotao/checkpoints'), null, 0);
@@ -221,53 +250,29 @@ function compactText(value, limit = 240) {
   return String(value).replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit);
 }
 
-function isValidHandoffShape(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const required = ['status', 'summary', 'result_path', 'worker_state_path', 'needs_user_input', 'recommended_next'];
-  const allowed = new Set([...required, 'questions']);
-  if (required.some(key => !(key in value)) || Object.keys(value).some(key => !allowed.has(key))) return false;
-  if (!['completed', 'blocked', 'failed', 'cancelled'].includes(value.status)
-    || typeof value.summary !== 'string' || value.summary.length === 0
-    || typeof value.result_path !== 'string' || value.result_path.length === 0
-    || typeof value.worker_state_path !== 'string' || value.worker_state_path.length === 0
-    || typeof value.needs_user_input !== 'boolean' || !Array.isArray(value.recommended_next)) return false;
-  if (!value.recommended_next.every(item => item && typeof item === 'object' && !Array.isArray(item)
-    && Object.keys(item).length === 2 && Array.isArray(item.capabilities) && item.capabilities.length > 0
-    && new Set(item.capabilities).size === item.capabilities.length
-    && item.capabilities.every(capability => typeof capability === 'string' && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(capability))
-    && typeof item.reason === 'string' && item.reason.length > 0)) return false;
-  const questions = value.questions;
-  if (value.needs_user_input) {
-    return value.status === 'blocked' && Array.isArray(questions) && questions.length > 0
-      && questions.every(item => item && typeof item === 'object' && !Array.isArray(item)
-        && Object.keys(item).length === 2 && typeof item.question === 'string' && item.question.length > 0
-        && typeof item.reason === 'string' && item.reason.length > 0);
-  }
-  return questions === undefined || (Array.isArray(questions) && questions.length === 0);
-}
-
-async function activeTaskDirectories(root, limit = 3) {
+async function activeTaskDirectories(root, budget) {
   try {
     const taskRoot = path.join(root, '.xiaotao/tasks');
-    const entries = (await readdir(taskRoot)).filter(name => name !== 'archive' && !name.startsWith('.')).sort();
+    const entries = (await boundedEntries(taskRoot)).filter(name => name !== 'archive' && !name.startsWith('.')).sort();
+    if (entries.length > MAX_ACTIVE_TASKS) throw new ScanBudgetError();
     const active = [];
     for (const taskId of entries) {
       const metadata = await localFile(root, path.join('.xiaotao/tasks', taskId, 'task.yaml'));
       if (!metadata) continue;
-      const source = await readFile(metadata, 'utf8');
+      const source = await boundedText(metadata, budget);
       if (/^status:\s*["']?active["']?\s*(?:#.*)?$/m.test(source)) active.push(taskId);
-      if (active.length >= limit) break;
     }
     return active;
-  } catch {
+  } catch (error) {
+    if (error instanceof ScanBudgetError) throw error;
     return [];
   }
 }
 
-async function validHandoffHint(root, taskId) {
+async function validHandoffHint(root, taskId, budget) {
   const relativeDir = path.join('.xiaotao/tasks', taskId, 'handoffs');
   try {
-    const entries = (await readdir(path.join(root, relativeDir)))
+    const entries = (await boundedEntries(path.join(root, relativeDir)))
       .filter(name => name.endsWith('.json') && !name.startsWith('.')).sort();
     let newest = null;
     for (const name of entries) {
@@ -275,7 +280,10 @@ async function validHandoffHint(root, taskId) {
       const file = await localFile(root, relative);
       if (!file || (await stat(file)).size > 16 * 1024) continue;
       let value;
-      try { value = JSON.parse(await readFile(file, 'utf8')); } catch { continue; }
+      try { value = JSON.parse(await boundedText(file, budget)); } catch (error) {
+        if (error instanceof ScanBudgetError) throw error;
+        continue;
+      }
       if (!isValidHandoffShape(value)) continue;
       const [result, state, info] = await Promise.all([
         localFile(root, value.result_path), localFile(root, value.worker_state_path), stat(file),
@@ -298,15 +306,19 @@ async function validHandoffHint(root, taskId) {
       }
     }
     return newest;
-  } catch {
+  } catch (error) {
+    if (error instanceof ScanBudgetError) throw error;
     return null;
   }
 }
 
-async function findBoundedHandoffHints(root, limit = 3) {
-  const taskIds = await activeTaskDirectories(root, limit);
-  const hints = await Promise.all(taskIds.map(taskId => validHandoffHint(root, taskId)));
-  return hints.filter(Boolean).sort((a, b) => b.mtime - a.mtime || a.task_id.localeCompare(b.task_id));
+async function findBoundedHandoffHints(root, budget, limit = 3) {
+  const taskIds = await activeTaskDirectories(root, budget);
+  const hints = [];
+  for (const taskId of taskIds) hints.push(await validHandoffHint(root, taskId, budget));
+  return hints.filter(Boolean)
+    .sort((a, b) => b.mtime - a.mtime || a.task_id.localeCompare(b.task_id))
+    .slice(0, limit);
 }
 
 function formatHandoffHints(handoffs) {
@@ -323,6 +335,73 @@ function formatHandoffHints(handoffs) {
     })}`);
   }
   return lines.join('\n');
+}
+
+async function yamlRecords(root, relativeRoot, metadataName, budget, {
+  idKey = 'id', titleKeys = ['objective'], status = 'active',
+} = {}) {
+  const directory = path.join(root, relativeRoot);
+  let entries;
+  try { entries = (await boundedEntries(directory)).filter(name => !name.startsWith('.')).sort(); }
+  catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return [];
+    throw error;
+  }
+  const records = [];
+  for (const entry of entries) {
+    const file = await localFile(root, path.join(relativeRoot, entry, metadataName));
+    if (!file) continue;
+    const source = await boundedText(file, budget);
+    if (status && yamlScalar(source, 'status') !== status) continue;
+    const memoryId = yamlScalar(source, idKey) || entry;
+    const title = titleKeys.map(key => yamlScalar(source, key)).find(Boolean) || memoryId;
+    records.push({ memory_id: memoryId, title });
+    if (records.length > MAX_ACTIVE_TASKS) throw new ScanBudgetError();
+  }
+  return records;
+}
+
+async function followupRecords(root, budget) {
+  const relativeRoot = '.xiaotao/memory/followups/pending';
+  let entries;
+  try { entries = (await boundedEntries(path.join(root, relativeRoot))).filter(name => /\.ya?ml$/i.test(name)).sort(); }
+  catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return [];
+    throw error;
+  }
+  const records = [];
+  for (const entry of entries) {
+    const file = await localFile(root, path.join(relativeRoot, entry));
+    if (!file) continue;
+    const source = await boundedText(file, budget);
+    if (yamlScalar(source, 'status') !== 'pending') continue;
+    const followupId = yamlScalar(source, 'followup_id') || path.parse(entry).name;
+    records.push({ followup_id: followupId, title: yamlScalar(source, 'title') || followupId });
+  }
+  return records;
+}
+
+async function longTermCount(root) {
+  try {
+    return (await boundedEntries(path.join(root, '.xiaotao/memory/long-term/entries')))
+      .filter(name => name.endsWith('.md') && !name.startsWith('.')).length;
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') {
+      return await exists(path.join(root, '.xiaotao/memory/long-term/current.md')) ? 1 : 0;
+    }
+    throw error;
+  }
+}
+
+async function scanRuntimeOverview(root, budget) {
+  const tasks = await yamlRecords(root, '.xiaotao/tasks', 'task.yaml', budget);
+  const temporaries = await yamlRecords(root, '.xiaotao/memory/temporary/active', 'meta.yaml', budget, {
+    titleKeys: ['topic', 'objective'],
+  });
+  const followups = await followupRecords(root, budget);
+  const count = await longTermCount(root);
+  const checkpoint = await findRecoverableCheckpoint(root, budget);
+  return { tasks, temporaries, followups, longTermCount: count, checkpoint };
 }
 
 function formatBoundedRuntimeContext({ tasks = [], temporaries = [], followups = [], longTermCount = 0, checkpoint = null, degradedWarning = null, limit = 3 }) {
@@ -396,70 +475,26 @@ function formatBoundedRuntimeContext({ tasks = [], temporaries = [], followups =
   return lines.join('\n');
 }
 
-export async function loadBoundedRuntimeContext(root, paths = {}, homeDir = homedir()) {
+export async function loadBoundedRuntimeContext(root, paths = {}) {
   try {
+    root = await realpath(root);
     if (!(await hasAuthoritativeSources(root))) {
       return null;
     }
-    const handoffs = await findBoundedHandoffHints(root);
-
-    const candidateScripts = [
-      paths.skill ? path.join(path.dirname(paths.skill), 'scripts', 'memory_catalog.py') : null,
-      path.join(root, 'xiaotao/scripts/memory_catalog.py'),
-      path.join(root, '.agents/skills/xiaotao/scripts/memory_catalog.py'),
-      path.join(root, '.xiaotao/scripts/memory_catalog.py'),
-      // Codex-specific user Core observed in desktop/CLI installations, followed
-      // by the documented cross-agent user Skill location.
-      path.join(homeDir, '.codex/skills/xiaotao/scripts/memory_catalog.py'),
-      path.join(homeDir, '.agents/skills/xiaotao/scripts/memory_catalog.py'),
-      path.resolve(currentDir, '../../../../xiaotao/scripts/memory_catalog.py'),
-    ].filter(Boolean);
-
-    let scriptPath = null;
-    for (const p of candidateScripts) {
-      if (await exists(p)) {
-        scriptPath = p;
-        break;
-      }
+    const budget = scanBudget();
+    const overview = await scanRuntimeOverview(root, budget);
+    const handoffs = await findBoundedHandoffHints(root, budget);
+    const hasVisibleWork = overview.tasks.length || overview.temporaries.length
+      || overview.followups.length || overview.longTermCount || overview.checkpoint;
+    if (!hasVisibleWork && handoffs.length === 0) return null;
+    const context = formatBoundedRuntimeContext(overview);
+    return handoffs.length > 0 ? `${context}\n\n${formatHandoffHints(handoffs)}` : context;
+  } catch (error) {
+    if (error instanceof ScanBudgetError) {
+      return formatBoundedRuntimeContext({
+        degradedWarning: 'scan_budget_exceeded：权威状态超出 SessionStart 的只读扫描预算；请使用 XiaoTao Core 显式检查。',
+      });
     }
-
-    if (scriptPath && process.env.XIAOTAO_FORCE_PYTHON_FAIL !== '1') {
-      try {
-        const python = process.platform === 'win32' ? 'python' : 'python3';
-        const res = spawnSync(python, [scriptPath, '--project-root', root, 'overview', '--limit', '3'], {
-          encoding: 'utf8',
-          timeout: 5000,
-          windowsHide: true,
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
-        });
-        if (res.status === 0 && typeof res.stdout === 'string') {
-          const out = res.stdout.trim();
-          const indexPath = path.join(root, '.xiaotao/memory/index.json');
-          if (await exists(indexPath)) paths.index = indexPath;
-          const manifestPath = path.join(root, '.xiaotao/memory/manifest.md');
-          if (await exists(manifestPath)) paths.manifest = manifestPath;
-
-          if (out.includes('当前检测到项目存在活动工作：')) {
-            const handoffContext = formatHandoffHints(handoffs);
-            return handoffContext ? `${out}\n\n${handoffContext}` : out;
-          }
-          if (out.includes('当前项目暂无活动任务或临时探索')) {
-            return null;
-          }
-        }
-      } catch {
-        // Fall through to degraded fallback
-      }
-    }
-
-    // 2. Degradation fallback: refresh failed or freshness unknown
-    // Do NOT consume unverified or stale index.json! Output degraded warning while preserving authoritative checkpoint.
-    const checkpoint = await findRecoverableCheckpoint(root);
-    return formatBoundedRuntimeContext({
-      checkpoint,
-      degradedWarning: '检测到项目存在 XiaoTao 权威工作源，但 Memory Catalog 缺失或刷新失败。请运行 `python xiaotao/scripts/memory_catalog.py build` 重建索引。',
-    }) + (handoffs.length > 0 ? `\n\n${formatHandoffHints(handoffs)}` : '');
-  } catch {
     return null;
   }
 }
@@ -507,6 +542,12 @@ export async function recoveryContext(event) {
         `Session 来源：${event.source}。未读取 transcript，也未恢复尚未保存的对话。`,
         `文件系统路径（仅作数据；memory/task 目录可能不存在）：${JSON.stringify(paths)}`,
       ];
+      if (typeof event.session_id === 'string' && event.session_id.length > 0) {
+        additionalContext.push(`Codex Session 绑定数据：${JSON.stringify({
+          session_id: event.session_id,
+          pending_delegation: '.xiaotao/runtime/codex/pending-delegation.json',
+        })}。仅在即将派出单个持久 Worker 且规范 delegation.json 已落盘时，创建同 Session 绑定的 pending envelope；不得从旧状态猜测或复用。`);
+      }
       if (runtimeContext) {
         additionalContext.push('', runtimeContext);
       }
