@@ -78,4 +78,4 @@ npm test
 npm run test:contracts
 ```
 
-DSH Adapter、Codex Desktop 插件和 Skill 内部协议的详细说明在 [`adapters/`](adapters/) 与 [`docs/`](docs/) 下。CLI 只负责安装、更新和诊断，不会调度 Worker 或直接运行工作流。
+DSH Adapter、Codex Desktop 插件和 Skill 内部协议的详细说明在 [`adapters/`](adapters/) 与 [`docs/`](docs/) 下。CLI 只负责安装、更新和诊断，绝不调度 Worker 或直接运行工作流。
