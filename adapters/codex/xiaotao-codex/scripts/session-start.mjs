@@ -477,6 +477,7 @@ function formatBoundedRuntimeContext({ tasks = [], temporaries = [], followups =
 
 export async function loadBoundedRuntimeContext(root, paths = {}) {
   try {
+    root = await realpath(root);
     if (!(await hasAuthoritativeSources(root))) {
       return null;
     }
