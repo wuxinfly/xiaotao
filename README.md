@@ -16,6 +16,7 @@ npm run xiaotao:init
 1. DSH
 2. Codex / 通用 Agent Skills
 3. Claude Code
+4. Antigravity
 ```
 
 选完会自动安装和自检。实际 Skill 装在用户级目录；当前项目只会生成：
@@ -49,6 +50,7 @@ npm run xiaotao:doctor
 | --- | --- |
 | Codex / 通用 Agent Skills | `~/.agents/skills/xiaotao/` |
 | Claude Code | `~/.claude/skills/xiaotao/` |
+| Antigravity | `~/.gemini/config/plugins/xiaotao-antigravity/`（含 PreInvocation 恢复 Hook） |
 | DSH | `~/.dsh/profiles/web/` 的插件配置 |
 
 多个项目可以各自运行一次 `init`。每个项目都有自己的 `.xiaotao/installation.json`，但所有项目共用同一份用户级 XiaoTao；不会反复复制多份 Skill。

@@ -85,3 +85,17 @@ test('installs and verifies DSH through an injected command runner', async (t) =
   assert.equal(result.checks.every((check) => check.ok), true);
   assert.deepEqual(calls.map(([name]) => name), [process.execPath, 'dsh']);
 });
+
+test('installs and verifies Antigravity plugin and skill', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const agSource = path.join(context.packageRoot, 'adapters/antigravity/xiaotao-antigravity');
+  await mkdir(agSource, { recursive: true });
+  await writeFile(path.join(agSource, 'plugin.json'), '{"name":"xiaotao-antigravity"}');
+  await writeFile(path.join(agSource, 'hooks.json'), '{"PreInvocation":[]}');
+  const result = await installScenes({ ...context, sceneIds: ['antigravity'] });
+  assert.equal(result.checks.every((check) => check.ok), true);
+  const target = path.join(context.environment.XIAOTAO_HOME, '.gemini/config/plugins/xiaotao-antigravity');
+  assert.equal(await readFile(path.join(target, 'skills/xiaotao/SKILL.md'), 'utf8'), '# XiaoTao\n');
+  assert.equal(await readFile(path.join(target, 'plugin.json'), 'utf8'), '{"name":"xiaotao-antigravity"}');
+});
+

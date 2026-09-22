@@ -1,0 +1,11 @@
+{
+  "xiaotao-recovery": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node scripts/pre-invocation.mjs",
+        "timeout": 15
+      }
+    ]
+  }
+}

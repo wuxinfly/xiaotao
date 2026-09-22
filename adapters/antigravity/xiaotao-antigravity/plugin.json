@@ -1,0 +1,10 @@
+{
+  "name": "xiaotao-antigravity",
+  "version": "0.3.0",
+  "description": "XiaoTao deep adapter for Google Antigravity, featuring PreInvocation runtime recovery and Subagent boundary enforcement",
+  "author": {
+    "name": "XiaoTao Team"
+  },
+  "repository": "https://github.com/wuxinfly/xiaotao",
+  "license": "MIT"
+}
