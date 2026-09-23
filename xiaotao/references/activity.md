@@ -4,7 +4,15 @@ Activity 回答“这个月完成了什么”“今年做过哪些事”。它�
 不是第四层 Memory，也不是新的权威状态源。删除 `.xiaotao/activity/index.json` 不会丢失事实；
 下一次查询可以重建。
 
+## 与项目记忆时间线（Timeline）的协同与分工
+
+XiaoTao 具备两种不同认知面向的时间视图：
+- **Activity（机器查询视图，`.xiaotao/activity/index.json`）**：扁平事件索引，适合机器执行快速过滤（如按时间范围 `--since`、按事件类型检索），不构造复杂叙事；
+- **项目记忆时间线（人类与模型叙事视图，`.xiaotao/memory/timeline/`）**：按“年/月/日”分层的结构化叙事文档，包含各级 `summary.md` 摘要与当日事件节点，专为面向用户解释“项目经历了什么”而设计，支持逐层有界下钻。
+- **协同与一致性**：两者均由归档 Task、里程碑 Decision 等不可变权威记录派生；事件 ID 与时间戳统一归一化，严格保证事实一致，不构造互相矛盾的数据。
+
 ## 当前范围
+
 
 当前派生 Task 完成事件、Temporary 晋升事件、里程碑 Decision 事件、里程碑 Playbook 评审事件、
 Worker registry 批准事件，以及显式 checkpoint 恢复成功事件。
