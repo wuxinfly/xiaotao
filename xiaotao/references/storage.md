@@ -268,9 +268,9 @@ mtime 代替真实时间。已提交的提升会把 Task 实体化为 `active`�
 “Task 已完成”的可靠发生时间。为兼容旧项目，它不是 schema 必填字段；旧 Task 缺失时仍可读取，
 但不会出现在 Activity 中。不得使用 `updated_at` 或文件 mtime 猜测完成时间。
 
-正式 Task 完成归档时，将业务事实持久化到 `completion.md`，并在 `task.yaml` 中标记 `memory_pending: true`。同时在本地 Runtime 目录 `.xiaotao/memory/pending/tasks/<task-id>.json` 中创建轻量待审工作池指针，使后续记忆提炼能以 O(1) 有界定位待审项，严禁启动或维护时对 `tasks/archive/` 进行全库遍历。
+正式 Task 完成归档时，将业务事实持久化到 `completion.md`。先独占创建本地 Runtime 目录 `.xiaotao/memory/pending/tasks/<task-id>.json` 中的待审指针，再在 `task.yaml` 中标记 `memory_pending: true` 和完成状态，最后归档；指针的 `completion_path` 必须指向归档后的路径。若归档前中断，指针按 Task ID 定位活动 Task 并继续归档；归档后中断则直接定位归档 Task，不得仅因路径暂不可达删除指针。后续记忆提炼通过指针有界定位待审项，严禁启动或维护时对 `tasks/archive/` 进行全库遍历。
 
-当后续触发该 Task 的 Experience Review 且审查结论（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，从归档 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`（ISO 8601 UTC 时间戳），同时安全清理 `.xiaotao/memory/pending/tasks/<task-id>.json`。若审查失败或等待确认，保留待审指针和诊断现场（`last_error`），下次可安全重试。
+当后续触发该 Task 的 Experience Review 且全部审查结论（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，先从归档 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`（ISO 8601 UTC 时间戳），最后清理 `.xiaotao/memory/pending/tasks/<task-id>.json`。若更新后清理前中断，保留的指针用于核验提交结果并完成清理；不得再次执行 entry 或 Playbook 写入。若审查失败或等待确认，保留待审指针和诊断现场（`last_error`），下次可安全重试。
 
 Activity 还会从 `memory/long-term/decisions/` 与 `playbooks/decisions/` 直属的规范
 `*.decision.json` 文件分别派生 `decision_approved` / `decision_superseded` 与

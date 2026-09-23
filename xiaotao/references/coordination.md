@@ -237,7 +237,7 @@ Long-term Memory
 ### 1. 任务完成与即时交付（主任务交付通道）
 
 1. **事实落盘**：同步写入并校验 `completion.md`，包含结果、验证证据、限制、重要决定、待办工作和来源路径。记录写入失败时不得声称可靠收尾，严禁标记完成。
-2. **生命周期终态与待审登记**：在同一次生命周期更新中，在 `task.yaml` 中写入可靠的 `completed_at`、设置 `status: completed`，并标记 `memory_pending: true`；同时在 `.xiaotao/memory/pending/tasks/<task-id>.json` 记录轻量待审工作池指针（包含 `task_id`、`completed_at` 与 `completion_path`）。
+2. **生命周期终态与待审登记**：先以独占创建方式持久化 `.xiaotao/memory/pending/tasks/<task-id>.json` 待审指针（包含 `task_id`、`completed_at` 与归档后的 `completion_path`），再在 `task.yaml` 中写入相同的 `completed_at`、设置 `status: completed` 和 `memory_pending: true`。指针创建失败时不得标记完成；已有指针须核对 Task ID 与来源，不得覆盖不一致的内容。
 3. **安全归档**：将 Task 移动到 `.xiaotao/tasks/archive/<task-id>/`；归档后保持 `completed_at` 不变，使 Activity 可从 Task 自动派生。
 4. **即时向用户交付**：向用户返回简洁大白话的业务交付摘要。业务任务到此完成闭环，不等待 Memory Worker 审查，也不受记忆提取耗时或模型瞬时失败阻塞。
 
@@ -248,6 +248,5 @@ Task 归档后，记忆审查解耦为按需/触发式推进，不阻塞后续�
 1. **触发时机**：用户明确要求整理记忆（如“小涛整理记忆”、“处理待审任务”），或后续与该任务相关的记忆维护被触发时。会话启动时不扫描全部已归档 Task，仅通过 `.xiaotao/memory/pending/tasks/` 有界定位待审项。
 2. **候选提案审查**：由只读 Memory Worker 对比已索引的 Long-term 条目与 Playbooks，为每项沉淀提出 `UPDATE`、`MERGE`、`CREATE` 或 `SKIP` 候选提案。Memory Worker 严格禁止自我批准。
 3. **提案审批与落盘**：经用户或小涛按现有批准语义审核确认后，写入正式 Long-term entry 或 Playbook，并持久化不可变的 `*.decision.json` 记录；若选择 `SKIP` 亦须持久化处理结论。
-4. **清除待审状态**：只有审查结论与 Decision Record 确认持久化后，才移除 `.xiaotao/memory/pending/tasks/<task-id>.json`，并在归档 Task 的 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`。审查失败或等待确认时，保留 pending 指针与诊断信息（`last_error`），下次可安全重试。
-5. **轻量与幂等保证**：以 Task ID 与 `completion.md` 来源引用作为幂等键，重试审查绝不产生重复的 Long-term 条目或 Decision Record。用户明确要求“记住这条”时继续走即时轻量路径。
-
+4. **清除待审状态**：只有全部审查结论与 Decision Record 确认持久化后，才先在归档 Task 的 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`，最后移除 `.xiaotao/memory/pending/tasks/<task-id>.json`。审查失败或等待确认时，保留 pending 指针与诊断信息（`last_error`）。清理中断后，指针仍在时按 `task.yaml` 状态恢复：`memory_pending: true` 继续审查，`memory_pending: false` 仅核验已提交记录并删除指针，不得再次执行写入。
+5. **轻量与幂等保证**：同一 Task 的审查获取 Task 级锁；以 Task ID、归档后的 `completion_path` 和持久化的候选 ID 固定每项 Decision Record ID 与目标 entry/playbook ID。先保存候选及 ID，重试先读取已有候选、决策和目标状态；已有完整提交结果时跳过写入，部分提交时按现有事务协议恢复，ID 冲突且内容不符时停止并保留 pending。不得重新分配 ID 或重复递增 revision。用户明确要求“记住这条”时继续走即时轻量路径。

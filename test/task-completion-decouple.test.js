@@ -47,6 +47,10 @@ test('coordination defines decoupled task completion delivery and on-demand memo
   assert.match(coordination, /memory_pending: false/);
   assert.match(coordination, /memory_reviewed_at/);
   assert.match(coordination, /轻量与幂等保证/);
+  assert.match(coordination, /先在归档 Task 的 `task\.yaml` 中更新 `memory_pending: false`[\s\S]*最后移除/);
+  assert.match(coordination, /`memory_pending: false` 仅核验已提交记录并删除指针，不得再次执行写入/);
+  assert.match(coordination, /同一 Task 的审查获取 Task 级锁/);
+  assert.match(coordination, /持久化的候选 ID 固定每项 Decision Record ID 与目标 entry\/playbook ID/);
 });
 
 test('storage and memory references define pending task pool and review protocol', async () => {
@@ -55,14 +59,16 @@ test('storage and memory references define pending task pool and review protocol
 
   // Storage protocol
   assert.match(storage, /memory\/pending\/`：尚未压缩或解析的 Memory Worker 原始输入与待审任务工作池/);
-  assert.match(storage, /正式 Task 完成归档时，将业务事实持久化到 `completion\.md`，并在 `task\.yaml` 中标记 `memory_pending: true`/);
+  assert.match(storage, /正式 Task 完成归档时，将业务事实持久化到 `completion\.md`/);
+  assert.match(storage, /先独占创建[\s\S]*再在 `task\.yaml` 中标记 `memory_pending: true`/);
   assert.match(storage, /严禁启动或维护时对 `tasks\/archive\/` 进行全库遍历/);
-  assert.match(storage, /从归档 `task\.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`/);
+  assert.match(storage, /先从归档 `task\.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`[\s\S]*最后清理/);
 
   // Memory review protocol
   assert.match(memory, /### 待审任务的长期记忆审查（Pending Task Review）/);
   assert.match(memory, /业务 Task 完成后已同步落盘 `completion\.md` 并标记 `memory_pending: true`/);
   assert.match(memory, /会话启动时绝不遍历扫描 `tasks\/archive\/` 全库/);
-  assert.match(memory, /以 Task ID 与 `completion\.md` 为幂等键/);
+  assert.match(memory, /以 Task ID、归档后的 `completion\.md` 路径及持久化的 `candidate_id` 固定每项 `decision_id`/);
+  assert.match(memory, /已有完整结果直接跳过，部分提交按可变状态事务协议恢复/);
   assert.match(memory, /用户明确说“记住这条”时继续走下文的即时轻量路径/);
 });

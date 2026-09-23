@@ -452,8 +452,9 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 1. **解耦与有界发现**：业务 Task 完成后已同步落盘 `completion.md` 并标记 `memory_pending: true`。待审任务在 `.xiaotao/memory/pending/tasks/<task-id>.json` 记录轻量待审工作池指针。会话启动时绝不遍历扫描 `tasks/archive/` 全库，仅当用户显式要求“整理记忆/处理待审任务”或后续相关记忆维护触发时，通过待审指针有界定位（单次最多处理 limit 个）。
 2. **审查与提案生成**：Memory Worker 读取待审任务的 `completion.md` 及上下文作为只读权威来源，与已索引的 Long-term 条目和 Playbooks 比较，生成 `UPDATE`、`MERGE`、`CREATE` 或 `SKIP` 候选提案。Memory Worker 严格禁止自我批准。
 3. **确认与落盘**：提案经现有授权协议确认后，落地写入 Long-term 或 Playbook，并写入不可变的 `*.decision.json`。若任务无可沉淀知识而选择 `SKIP`，亦须持久化处理结论。
-4. **清除待审与幂等保证**：只有审查结论与 Decision Record 确认持久化后，才删除 `.xiaotao/memory/pending/tasks/<task-id>.json`，并将归档 Task 的 `task.yaml` 更新为 `memory_pending: false` 并记录 `memory_reviewed_at`。以 Task ID 与 `completion.md` 为幂等键，重试审查绝不产生重复记录；审查失败或等待确认时保留 pending 现场以备重试。
-5. **显式轻量路径独立性**：用户明确说“记住这条”时继续走下文的即时轻量路径，不受待审任务审查流程影响。
+4. **清除待审与恢复**：只有全部审查结论与 Decision Record 确认持久化后，才先将归档 Task 的 `task.yaml` 更新为 `memory_pending: false` 并记录 `memory_reviewed_at`，最后删除 `.xiaotao/memory/pending/tasks/<task-id>.json`。若清理中断，按指针与 Task 状态恢复；已是 `memory_pending: false` 时只核验已提交记录并清理指针，不得重放写入。审查失败或等待确认时保留 pending 现场以备重试。
+5. **并发与幂等键**：对同一 Task 使用 Task 级锁。以 Task ID、归档后的 `completion.md` 路径及持久化的 `candidate_id` 固定每项 `decision_id` 和新建目标 ID；在应用提案前持久化候选及 ID，重试必须复用。写入前查验已有候选、不可变 Decision Record 和 entry/Playbook revision；已有完整结果直接跳过，部分提交按可变状态事务协议恢复，ID 相同而内容冲突则停止并保留 pending。不得再次创建条目、发布另一份决策或递增 revision。
+6. **显式轻量路径独立性**：用户明确说“记住这条”时继续走下文的即时轻量路径，不受待审任务审查流程影响。
 
 
 Memory Worker 负责整理 memory 和有界 Experience Review。它按 memory 能力选择或生成，不是

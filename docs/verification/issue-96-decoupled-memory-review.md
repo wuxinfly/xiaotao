@@ -8,7 +8,7 @@
 
 ### 场景 1：任务事实同步落盘与即时交付（主通道）
 
-- **行为**：业务验证通过后，立即写入 `completion.md`，校验其结果、证据、限制与未决事项。在 `task.yaml` 中标记 `completed_at`、`status: completed` 与 `memory_pending: true`。同时在 `.xiaotao/memory/pending/tasks/<task-id>.json` 生成待审工作池指针。
+- **行为**：业务验证通过后，立即写入 `completion.md`，校验其结果、证据、限制与未决事项。先持久化 `.xiaotao/memory/pending/tasks/<task-id>.json` 待审指针，再在 `task.yaml` 中标记 `completed_at`、`status: completed` 与 `memory_pending: true`，最后归档。指针的来源路径指向归档位置。
 - **效果**：小涛向用户返回简洁大白话的业务交付结果，完成任务收尾闭环。Memory Worker 慢、瞬时失败或不可用时，不影响业务任务的可靠归档与交付。
 - **防虚报守卫**：若 `completion.md` 写入失败，严禁标记完成，不丢失任务状态。
 
@@ -21,8 +21,9 @@
 
 - **行为**：以 Task ID 与 `completion.md` 来源路径作为幂等键。由只读 Memory Worker 执行 Experience Review，提出 `UPDATE`、`MERGE`、`CREATE`、`SKIP` 提案。Memory Worker 严格禁止自我批准。
 - **效果**：
-  1. 只有审查结果（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，才移除 `.xiaotao/memory/pending/tasks/<task-id>.json`，并将归档 `task.yaml` 更新为 `memory_pending: false` 并记录 `memory_reviewed_at`。
-  2. 若审查过程中断、失败或等待确认，保留待审现场与 `last_error` 诊断，后续重试不重复生成已入库的 Long-term 条目或 Decision Record。
+  1. 只有全部审查结果（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，才先将归档 `task.yaml` 更新为 `memory_pending: false` 并记录 `memory_reviewed_at`，最后移除待审指针。
+  2. 同一 Task 的审查持有 Task 级锁；候选、决策和新目标使用持久化的稳定 ID。若审查过程中断、失败或等待确认，保留待审现场与 `last_error` 诊断。重试核对已提交记录和目标 revision，避免重复生成 Long-term 条目、重复写入或发布另一份 Decision Record。
+  3. 若任务状态已更新但指针尚未清除，重试仅核验并清理指针；若完成登记后归档前中断，则借助指针定位活动 Task 并恢复归档。
 
 ### 场景 4：用户显式记忆请求保持独立
 
