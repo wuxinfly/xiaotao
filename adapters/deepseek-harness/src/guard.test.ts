@@ -15,6 +15,8 @@ test('canonical Core Guard satisfies character budget and boundary checks', () =
   assert.equal(result.valid, true)
   assert.equal(result.missingBoundaries.length, 0)
   assert.equal(result.charCount, CANONICAL_CORE_GUARD_PROMPT.length)
+  assert.match(CANONICAL_CORE_GUARD_PROMPT, /单会话明确小改动默认由小涛直通/)
+  assert.match(CANONICAL_CORE_GUARD_PROMPT, /工具隔离或缺失能力.*明确要求委派.*有界 Worker/)
 })
 
 test('Core Guard notice generator returns canonical prompt', () => {

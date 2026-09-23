@@ -103,6 +103,9 @@ test('Antigravity PreInvocation hook injects runtime context and Core Guard on f
   assert.match(msg, /可恢复检查点: 1 个/);
   assert.match(msg, /待跟进事项: 1 个/);
   assert.match(msg, /enable_write_tools: false/);
+  assert.match(msg, /单会话明确小改动默认轻任务直通/);
+  assert.match(msg, /需恢复或多执行单元时升级 Task/);
+  assert.match(msg, /工具隔离、缺失能力或用户明确委派时才使用原生子代理/);
 
   // Check token budget (approximate tokens by chars / 3)
   assert.ok(msg.length < 1500, `reminder too long: ${msg.length} chars`);

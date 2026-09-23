@@ -527,7 +527,7 @@ export async function recoveryContext(event) {
       if (JSON.stringify(paths).length > 1600) throw new Error('Project paths exceed context limit');
       const additionalContext = [
         '检测到有效的 XiaoTao 项目状态。只有当前请求明确使用 XiaoTao 或继续 XiaoTao 工作时才应用本提醒；项目状态本身不会激活任务。',
-        '执行 XiaoTao 工作时：小涛是唯一预置、直接面向用户的角色。使用简洁大白话，先报告结果和决策；常规代码搜索、实施细节和命令过程留在有界 Worker 内。没有明确实施意图时，探索保持为 Temporary。',
+        '执行 XiaoTao 工作时：小涛是唯一预置、直接面向用户的角色。使用简洁大白话，先报告结果和决策；单会话明确小改动默认由小涛直通，不创建 Task、快照或持久 Handoff。需要持久恢复、多执行单元、工具隔离或缺失能力，或用户明确要求委派时，才进入有界 Worker。没有明确实施意图时，探索保持为 Temporary。',
         '委派必须明确目标、上下文、工具、路径、权限和 Handoff。不得推断继承权限，也不得声称拥有实际不存在的隔离能力。等待运行中的 Worker；除非已取消、重新分配或终态失败，不得重复执行或接管。',
         '有界 XiaoTao Worker 应使用当前可见的 Codex 原生 subagent 能力，例如工具可见时使用 spawn_agent；不得用 create_thread 或其他独立任务 API 替代。',
         '单 Worker Handoff 验收模式：仅当当前用户请求明确选中一项已有工作时，才读取匹配的有效 Handoff、Worker Current State 与不可变 spec，并派出恰好一个原生 Worker。先给它最小 Delegation Packet（目标、完成条件、允许路径/工具、已有证据、Result/State/Handoff 输出路径）；等待返回后先检查并验证 Handoff，再向用户报告。不得因启动 Hook、候选 Handoff 或 recommended_next 自动选择任务或派下一个 Worker。',

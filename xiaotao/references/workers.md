@@ -167,8 +167,9 @@ Packet 是执行输入和审计记录；模型输出不能修改它或授予额�
 
 - 正式执行：`scope: task`、Task ID，以及 `expires_at: task-completion`。
 - 保留的探索：`scope: temporary`、Temporary ID，以及 `expires_at: temporary-archive`。
-- 琐碎的一次性工作：`scope: session` 和 `expires_at: session-end`；只有宿主暴露稳定且不敏感的
-  ID 时才包含 `session_id`。
+- 确需工具隔离、补充小涛缺失能力或用户明确要求委派，且无需持久化的一次性工作：
+  `scope: session` 和 `expires_at: session-end`；普通轻任务由小涛直通，不生成 Session Worker。
+  只有宿主暴露稳定且不敏感的 ID 时才包含 `session_id`。
 
 使用 [worker.schema.json](schemas/worker.schema.json) 校验。直接将 Task 和 Temporary 作用域
 规格发布为不可变快照，并记录 `resolution: generated`；不要持久化 Session 作用域规格。
