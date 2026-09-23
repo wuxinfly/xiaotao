@@ -5,18 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from activity_catalog import derive_index, resolve_reference_time
-from validate import (
-    Diagnostic,
-    FileReferenceValidator,
-)
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -173,43 +168,59 @@ def derive_timeline(project_root: Path, *, now: datetime | None = None) -> dict[
     }
 
 
-def persist_timeline(project_root: Path, derived: dict[str, Any]) -> None:
-    timeline_dir = project_root / TIMELINE_ROOT
-    years_dir = project_root / YEARS_ROOT
-    timeline_dir.mkdir(parents=True, exist_ok=True)
-    years_dir.mkdir(parents=True, exist_ok=True)
-
+def expected_timeline_files(derived: dict[str, Any]) -> dict[Path, str]:
+    """Return every generated file relative to the timeline directory."""
     grouped = derived["years"]
-
+    files: dict[Path, str] = {Path("summary.md"): generate_project_summary(grouped)}
     for year, months in grouped.items():
-        year_dir = years_dir / year
-        year_dir.mkdir(parents=True, exist_ok=True)
-
+        year_dir = Path("years") / year
+        files[year_dir / "summary.md"] = generate_year_summary(year, months)
         for month, days in months.items():
             month_dir = year_dir / month
-            month_dir.mkdir(parents=True, exist_ok=True)
-
+            files[month_dir / "summary.md"] = generate_month_summary(year, month, days)
             for day, day_events in days.items():
-                day_file = month_dir / f"{day}.yaml"
                 date_str = f"{year}-{month}-{day}"
-                day_file.write_text(dump_date_file_content(date_str, day_events), encoding="utf-8")
+                files[month_dir / f"{day}.yaml"] = dump_date_file_content(date_str, day_events)
+    return files
 
-            # Write month summary
-            month_summary_file = month_dir / "summary.md"
-            month_summary_file.write_text(
-                generate_month_summary(year, month, days), encoding="utf-8"
-            )
 
-        # Write year summary
-        year_summary_file = year_dir / "summary.md"
-        year_summary_file.write_text(
-            generate_year_summary(year, months), encoding="utf-8"
+def generated_files(timeline_dir: Path) -> set[Path]:
+    if not timeline_dir.is_dir():
+        return set()
+    return {
+        path.relative_to(timeline_dir)
+        for path in timeline_dir.rglob("*")
+        if path.is_file() and (
+            path.name == "summary.md" or
+            (path.suffix == ".yaml" and path.stem.isdigit() and len(path.stem) == 2)
         )
+    }
 
-    # Write root summary
-    root_summary_file = timeline_dir / "summary.md"
-    root_summary_file.write_text(
-        generate_project_summary(grouped), encoding="utf-8"
+
+def persist_timeline(project_root: Path, derived: dict[str, Any]) -> None:
+    timeline_dir = project_root / TIMELINE_ROOT
+    expected = expected_timeline_files(derived)
+    for relative_path, content in expected.items():
+        target = timeline_dir / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    for relative_path in generated_files(timeline_dir) - expected.keys():
+        (timeline_dir / relative_path).unlink()
+    years_dir = timeline_dir / "years"
+    if years_dir.is_dir():
+        for directory in sorted(years_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+
+
+def timeline_is_current(project_root: Path, derived: dict[str, Any]) -> bool:
+    timeline_dir = project_root / TIMELINE_ROOT
+    expected = expected_timeline_files(derived)
+    if generated_files(timeline_dir) != expected.keys():
+        return False
+    return all(
+        (timeline_dir / relative_path).read_text(encoding="utf-8") == content
+        for relative_path, content in expected.items()
     )
 
 
@@ -335,10 +346,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "check":
-            timeline_dir = project_root / TIMELINE_ROOT
-            summary_file = timeline_dir / "summary.md"
-            if not summary_file.is_file():
-                print("Timeline summary is missing", file=sys.stderr)
+            if not timeline_is_current(project_root, derive_timeline(project_root, now=ref_time)):
+                print("Timeline is missing or stale", file=sys.stderr)
                 return 1
             print(json.dumps({"status": "current"}, sort_keys=True))
             return 0

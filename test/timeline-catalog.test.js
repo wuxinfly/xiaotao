@@ -130,3 +130,31 @@ test('enforces parameter constraints on drill-down queries', async (t) => {
   );
 });
 
+test('check detects changed sources and missing files; rebuild removes obsolete days', async (t) => {
+  const projectRoot = await createProject(t);
+  const taskPath = '.xiaotao/tasks/archive/20260923-login/task.yaml';
+  const task = (completedAt) => [
+    'id: 20260923-login',
+    'objective: 优化登录体验',
+    'status: completed',
+    'created_at: 2026-09-23T08:00:00Z',
+    'updated_at: 2026-09-23T12:00:00Z',
+    'updated_by: xiao-tao/test',
+    'revision: 2',
+    `completed_at: ${completedAt}`,
+  ].join('\n') + '\n';
+  await writeProjectFile(projectRoot, taskPath, task('2026-09-23T12:00:00Z'));
+  await runTimeline(projectRoot, ['build']);
+
+  const oldDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/09/23.yaml');
+  await writeProjectFile(projectRoot, taskPath, task('2026-10-01T12:00:00Z'));
+  await assert.rejects(runTimeline(projectRoot, ['check']), /Timeline is missing or stale/);
+  await runTimeline(projectRoot, ['build']);
+  assert.deepEqual(JSON.parse((await runTimeline(projectRoot, ['events', '--date', '2026-09-23'])).stdout).events, []);
+  await assert.rejects(readFile(oldDay, 'utf8'), { code: 'ENOENT' });
+  assert.equal(JSON.parse((await runTimeline(projectRoot, ['check'])).stdout).status, 'current');
+
+  const newDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/10/01.yaml');
+  await rm(newDay);
+  await assert.rejects(runTimeline(projectRoot, ['check']), /Timeline is missing or stale/);
+});

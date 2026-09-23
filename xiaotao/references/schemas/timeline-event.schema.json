@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project Memory Timeline event",
+  "type": "object",
+  "required": ["event_id", "event_type", "summary", "occurred_at", "source_refs"],
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "task_id": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "details": { "type": "string" }
+  },
+  "additionalProperties": false
+}
