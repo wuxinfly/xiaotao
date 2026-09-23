@@ -404,6 +404,14 @@ try {
     Invoke-AjvCase $memoryFollowupSchema `
         "$fixtureRoot/memory-followup-duplicate-resolution-refs-invalid.json" 1
 
+    $globalPreferenceSchema = "xiaotao/references/schemas/global-preference.schema.json"
+    Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-valid.json" 0
+    Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-invalid.json" 1
+
+    $timelineEventSchema = "xiaotao/references/schemas/timeline-event.schema.json"
+    Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-valid.json" 0
+    Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-invalid.json" 1
+
     $workerSchema = "xiaotao/references/schemas/worker.schema.json"
     $requirementsSchema = "xiaotao/references/schemas/capability-requirements.schema.json"
     $registrySchema = "xiaotao/references/schemas/worker-registry.schema.json"
