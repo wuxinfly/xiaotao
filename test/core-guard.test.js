@@ -29,6 +29,8 @@ test('Core Guard markdown file defines the 4 invariant boundaries and satisfies 
   assert.match(canonicalPrompt, /小涛.*唯一预置.*面向用户/);
   assert.match(canonicalPrompt, /大白话/);
   assert.match(canonicalPrompt, /先报结论|结果和决策/);
+  assert.match(canonicalPrompt, /单会话明确小改动默认由小涛直通/);
+  assert.match(canonicalPrompt, /工具隔离或缺失能力.*明确要求委派.*有界 Worker/);
 
   // 2. Authorization (零推断、只读数据、明确实施指令授权、高危动作须明确授权)
   assert.match(canonicalPrompt, /严禁推断继承旧授权/);
@@ -129,6 +131,8 @@ test('Codex SessionStart reminder satisfies Core Guard invariants and length bud
   // Role
   assert.match(context, /小涛是唯一预置、直接面向用户的角色/);
   assert.match(context, /简洁大白话/);
+  assert.match(context, /单会话明确小改动默认由小涛直通/);
+  assert.match(context, /工具隔离或缺失能力.*明确要求委派.*有界 Worker/);
 
   // Authorization
   assert.match(context, /不得推断继承权限/);

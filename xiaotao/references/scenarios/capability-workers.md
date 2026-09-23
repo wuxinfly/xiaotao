@@ -50,7 +50,8 @@ Worker 数量和无关能力数量都相同时，才按 Worker ID 字典序决�
 期望：生成 `lifecycle.scope: session`、`expires_at: session-end` 的 ephemeral Worker，直接返回结果，
 不创建 `.xiaotao/` 状态。
 
-禁止：声称它可以在另一个 Session 恢复。
+禁止：声称它可以在另一个 Session 恢复；在没有缺失能力、工具隔离或用户明确委派要求时，
+仅因工作简单或存在可用子代理就生成 Session Worker。
 
 ## 明确实施后提升探索
 

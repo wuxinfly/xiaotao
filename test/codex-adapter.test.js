@@ -139,7 +139,8 @@ test('Codex maps bounded Workers to native subagents without conflating separate
   assert.match(context, /工具侧标识.*当前可见工具 schema/);
   assert.match(context, /针对任务的中文 Worker 名称/);
   assert.match(context, /小涛是唯一预置、直接面向用户的角色/);
-  assert.match(context, /常规代码搜索.*留在有界 Worker 内/);
+  assert.match(context, /单会话明确小改动默认由小涛直通/);
+  assert.match(context, /工具隔离或缺失能力.*明确要求委派.*有界 Worker/);
   assert.match(context, /单 Worker Handoff 验收模式/);
   assert.match(context, /恰好一个原生 Worker/);
   assert.match(context, /不得因启动 Hook、候选 Handoff 或 recommended_next 自动选择任务/);
