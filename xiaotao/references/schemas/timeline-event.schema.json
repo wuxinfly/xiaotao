@@ -1,21 +1,61 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Project Memory Timeline event",
+  "$id": "https://xiaotao.local/schemas/timeline-event.schema.json",
+  "title": "XiaoTao Project Memory Timeline Event",
   "type": "object",
-  "required": ["event_id", "event_type", "summary", "occurred_at", "source_refs"],
+  "required": [
+    "event_id",
+    "event_type",
+    "summary",
+    "occurred_at",
+    "source_refs"
+  ],
   "properties": {
-    "event_id": { "type": "string", "minLength": 1 },
-    "event_type": { "type": "string", "minLength": 1 },
-    "summary": { "type": "string" },
-    "occurred_at": { "type": "string", "format": "date-time" },
+    "event_id": {
+      "type": "string",
+      "pattern": "^activity-[0-9]{8}-[0-9a-f]{12}$"
+    },
+    "event_type": {
+      "enum": [
+        "task_completed",
+        "temporary_promoted",
+        "decision_approved",
+        "decision_superseded",
+        "playbook_approved",
+        "playbook_superseded",
+        "milestone",
+        "checkpoint_recovered",
+        "worker_approved"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "details": {
+      "type": "string"
+    },
     "source_refs": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "minItems": 1
-    },
-    "task_id": { "type": "string" },
-    "decision_id": { "type": "string" },
-    "details": { "type": "string" }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
   },
   "additionalProperties": false
 }

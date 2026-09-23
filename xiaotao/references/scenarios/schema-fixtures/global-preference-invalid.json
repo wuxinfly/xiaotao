@@ -1,0 +1,9 @@
+{
+  "preference_id": "Invalid ID Format!!",
+  "category": "unsupported-category",
+  "statement": "",
+  "confidence": "unknown-confidence",
+  "source_refs": [],
+  "created_at": "not-a-datetime",
+  "updated_at": "not-a-datetime"
+}

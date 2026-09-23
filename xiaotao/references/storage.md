@@ -36,7 +36,15 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
       archive/
       trash/
     pending/
+      tasks/<task-id>.json
     sources/<source-id>.json
+    timeline/
+      summary.md
+      years/<year>/
+        summary.md
+        <month>/
+          summary.md
+          <day>.yaml
     long-term/
       current.md
       entries/<entry-id>.md
@@ -83,7 +91,7 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 - **本地 Runtime 状态（不纳入 Git）：**
   - `memory/manifest.md` 和 `memory/index.json`：由正式 Memory 来源重建的派生 awareness 目录；
   - `memory/temporary/`：Task 前探索、scratchpad 和活动 Worker 状态；
-  - `memory/pending/`：尚未压缩或解析的 Memory Worker 原始输入；
+  - `memory/pending/`：尚未压缩或解析的 Memory Worker 原始输入与待审任务工作池（`tasks/`）；
   - `locks/` 和 `transactions/`：并发和文件系统锁标记；
   - `tasks/`：本地活动 Task 执行状态、Worker current-state 和临时选择。
   - `activity/index.json`：从本地 Task 和不可变 Decision 权威记录重建的派生时间线目录；
@@ -119,9 +127,27 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 !.xiaotao/workers/registry.yaml
 !.xiaotao/instructions/registry.yaml
 !.xiaotao/memory/long-term/
+!.xiaotao/memory/timeline/
 !.xiaotao/memory/followups/
 !.xiaotao/memory/sources/
 ```
+
+## 全局用户记忆存储布局 (`~/.xiaotao/memory/`)
+
+用户跨项目协作的通用习惯、偏好与跨项目经历线索独立存放在用户目录（`$XIAOTAO_HOME/.xiaotao/memory/` 或 `~/.xiaotao/memory/`）：
+
+```text
+~/.xiaotao/memory/
+  preferences/
+    communication.yaml      # 交流偏好
+    coding_style.yaml       # 编码习惯
+    testing.yaml            # 测试与验证风格
+  journeys/
+    <project-slug>.yaml     # 跨项目经历简述，包含项目身份、参与周期与详情入口
+  manifest.md               # 全局用户认知轻量总览
+```
+
+全局用户偏好使用 [global-preference.schema.json](schemas/global-preference.schema.json) 校验；项目记忆时间线事件使用 [timeline-event.schema.json](schemas/timeline-event.schema.json) 校验。
 
 内置 Worker 注册表是不可变的已安装参考数据。只有需要可复用的项目特定 Worker 或能力别名时，
 才创建项目注册表。选中的 Worker 规格复制到匹配的 Task 或 Temporary 中，执行时绝不通过引用
@@ -267,6 +293,10 @@ mtime 代替真实时间。已提交的提升会把 Task 实体化为 `active`�
 `completed_at`，并在后续移动到 `tasks/archive/` 时保持不变。`completed_at` 是 Activity 中
 “Task 已完成”的可靠发生时间。为兼容旧项目，它不是 schema 必填字段；旧 Task 缺失时仍可读取，
 但不会出现在 Activity 中。不得使用 `updated_at` 或文件 mtime 猜测完成时间。
+
+正式 Task 完成归档时，将业务事实持久化到 `completion.md`。先独占创建本地 Runtime 目录 `.xiaotao/memory/pending/tasks/<task-id>.json` 中的待审指针，再在 `task.yaml` 中标记 `memory_pending: true` 和完成状态，最后归档；指针的 `completion_path` 必须指向归档后的路径。若归档前中断，指针按 Task ID 定位活动 Task 并继续归档；归档后中断则直接定位归档 Task，不得仅因路径暂不可达删除指针。后续记忆提炼通过指针有界定位待审项，严禁启动或维护时对 `tasks/archive/` 进行全库遍历。
+
+当后续触发该 Task 的 Experience Review 且全部审查结论（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，先从归档 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`（ISO 8601 UTC 时间戳），最后清理 `.xiaotao/memory/pending/tasks/<task-id>.json`。若更新后清理前中断，保留的指针用于核验提交结果并完成清理；不得再次执行 entry 或 Playbook 写入。若审查失败或等待确认，保留待审指针和诊断现场（`last_error`），下次可安全重试。
 
 Activity 还会从 `memory/long-term/decisions/` 与 `playbooks/decisions/` 直属的规范
 `*.decision.json` 文件分别派生 `decision_approved` / `decision_superseded` 与

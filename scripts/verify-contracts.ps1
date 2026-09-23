@@ -358,6 +358,12 @@ try {
     Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" "$fixtureRoot/task-valid.json" 0
     Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
         "$fixtureRoot/task-completed-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-completed-pending-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-completed-reviewed-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-memory-pending-invalid.json" 1
     $decisionRecordSchema = "xiaotao/references/schemas/decision-record.schema.json"
     Invoke-ProtocolSchemaParityCase $decisionRecordSchema "decision-record" `
         "$fixtureRoot/decision-record-approved-valid.json" 0
@@ -397,6 +403,14 @@ try {
         "$fixtureRoot/memory-followup-duplicate-related-ids-invalid.json" 1
     Invoke-AjvCase $memoryFollowupSchema `
         "$fixtureRoot/memory-followup-duplicate-resolution-refs-invalid.json" 1
+
+    $globalPreferenceSchema = "xiaotao/references/schemas/global-preference.schema.json"
+    Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-valid.json" 0
+    Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-invalid.json" 1
+
+    $timelineEventSchema = "xiaotao/references/schemas/timeline-event.schema.json"
+    Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-valid.json" 0
+    Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-invalid.json" 1
 
     $workerSchema = "xiaotao/references/schemas/worker.schema.json"
     $requirementsSchema = "xiaotao/references/schemas/capability-requirements.schema.json"
