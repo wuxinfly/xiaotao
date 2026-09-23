@@ -19,7 +19,24 @@ Open questions 和可达的项目相对 source refs。这只是覆盖已提交�
 未保存工作已经恢复。即使较新请求成功，旧的 pending 请求仍是 pending；应明确报告陈旧冲突。
 没有 checkpoint 工具的宿主继续遵循普通 Memory 和存储协议。
 
+## 项目记忆时间线规范与下钻协议 (`.xiaotao/memory/timeline/`)
+
+项目记忆是面向人类与模型的结构化历程时间线，由已归档 Task 与不可变决策记录自动派生与增量更新，不引入常驻后台服务：
+
+1. **分层聚合机制**：
+   - 每日事件归集于 `years/<year>/<month>/<day>.yaml`（每个事件符合 `timeline-event.schema.json`）；
+   - 自动生成月度摘要 `years/<year>/<month>/summary.md` 与年度总览 `years/<year>/summary.md`；
+   - 自动生成根级总览 `summary.md`，提供主线脉络与年度导航。
+2. **逐层下钻查询契约**：
+   - 用户提问“项目经历了什么”时，先讲主线（读取根级 `summary.md`）；
+   - 追问具体年份时下钻读取 `years/<year>/summary.md`；
+   - 追问具体月份时下钻读取 `years/<year>/<month>/summary.md`；
+   - 追问当日具体经过与证据时定位 `<day>.yaml` 并展开 `source_refs`。
+   - 启动会话时严格有界感知，严禁一次性把整条时间线倒进模型上下文。
+3. **可恢复性与幂等**：时间线是派生视图，删除 `.xiaotao/memory/timeline/` 可通过构建命令从归档 Task 和不可变决策完整无损重建。
+
 ## Temporary Memory
+
 
 Temporary Memory 表示正式 Task 之前值得保留的讨论。保持 `current.md` 简短：
 
