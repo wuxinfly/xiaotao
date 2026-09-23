@@ -319,7 +319,7 @@ Memory Worker 可以提议 supersession，但必须由小涛或强模型评审�
 `.xiaotao/memory/` 下的 `manifest.md` 和 `index.json` 是本地派生目录文件。正式 Temporary、Task
 和 Long-term 文件仍是权威来源。目录可删除并重建；绝不能通过编辑目录来修改 Memory 声明。
 
-较大 Session 开始时检查目录，缺失或陈旧时重建：
+新 Session 启动时只读取已有且可验证的轻量快照（或运行 `overview --cached`），不扫描、刷新或重建 Catalog。用户提出具体记忆查询，或明确要求检查当前记忆全局状态时，再按需检查 freshness；缺失或陈旧时可重建：
 
 ```bash
 python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> check
@@ -343,16 +343,16 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 
 ### 轻量总览（overview）
 
-在 Session 启动或需要检查当前记忆全局状态时获取轻量概览：
+Session 启动时只读取已有且可验证的 `manifest.md` / Catalog 快照，或运行 `overview --cached`；用户明确要求检查当前记忆全局状态时，可运行会自动刷新的概览：
 
 ```bash
 python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> overview
 python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> overview --format json
 ```
 
-`overview` 默认检查 Catalog freshness，缺失或陈旧时自动重建。默认以 Markdown 文本形式返回
+`overview` 默认检查 Catalog freshness，缺失或陈旧时自动重建，因此不用于 Session 启动。默认以 Markdown 文本形式返回
 `manifest.md` 内容；传入 `--format json` 时返回结构化摘要（包含活跃 Temporary、活跃 Task、各层
-计数与 `has_active_work` 标记）。这是小涛形成初始 Runtime Context 的核心输入。
+计数与 `has_active_work` 标记）。启动阶段只使用已有快照形成初始 Runtime Context；快照缺失或不可用时如实说明，不将其解释为没有项目记忆。
 
 ### 最新记忆（recent）
 
