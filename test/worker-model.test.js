@@ -74,3 +74,19 @@ test('active Core guidance is Chinese and has no legacy Role compatibility contr
   ]);
   assert.doesNotMatch(combined.join('\n'), /role_state_path|role:\*|roles\/<|历史角色快照/);
 });
+
+test('coordination defines light task fast-path and rules for upgrading to persistent task', async () => {
+  const coordination = await readFile('xiaotao/references/coordination.md', 'utf8');
+  const skill = await readFile('xiaotao/SKILL.md', 'utf8');
+
+  // Coordination defines light task fast-path
+  assert.match(coordination, /轻任务直通（默认路径）/);
+  assert.match(coordination, /不创建 Temporary、Task、Worker 选择记录、快照或持久 Handoff/);
+  assert.match(coordination, /升级为持久 Task 的触发条件/);
+  assert.match(coordination, /中途变复杂的平滑升级协议/);
+
+  // Skill defines fast-path in intro and core constraints
+  assert.match(skill, /单会话内明确的小改动默认直通执行/);
+  assert.match(skill, /单会话小改动默认轻任务直通，不创建 Task、快照或持久 Handoff/);
+});
+
