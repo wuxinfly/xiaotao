@@ -1,4 +1,13 @@
 .xiaotao/
+!.xiaotao/
+.xiaotao/*
+!.xiaotao/memory/
+.xiaotao/memory/*
+!.xiaotao/memory/long-term/
+.xiaotao/memory/long-term/*
+!.xiaotao/memory/long-term/entries/
+.xiaotao/memory/long-term/entries/*
+!.xiaotao/memory/long-term/entries/project.overview.md
 .dsh/
 .agents/.local/
 node_modules/
