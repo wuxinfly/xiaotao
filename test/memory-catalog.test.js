@@ -1239,3 +1239,69 @@ test('fails to promote non-existent or already archived temporary', async (t) =>
   assert.match(nonExistent.stderr, /Active Temporary 'temp-missing' does not exist/);
 });
 
+
+test('does not overwrite an existing archived temporary during promotion', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  const archivedMarker = '.xiaotao/memory/temporary/archived/temp-home/keep.txt';
+  await writeProjectFile(projectRoot, archivedMarker, 'preserve this archive');
+
+  const failure = await rejectedCommand(
+    runCatalog(projectRoot, ['promote-temporary', 'temp-home', '--task-id', 'task-home-opt'])
+  );
+  assert.equal(failure.code, 2);
+  assert.match(failure.stderr, /Archived Temporary already exists/);
+  assert.equal(await readFile(path.join(projectRoot, archivedMarker), 'utf8'), 'preserve this archive');
+  await readFile(path.join(projectRoot, '.xiaotao/memory/temporary/active/temp-home/meta.yaml'));
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/tasks/task-home-opt/task.yaml')));
+});
+
+test('rolls back temporary promotion when catalog persistence fails', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  await runCatalog(projectRoot, ['build']);
+
+  const activeDir = path.join(projectRoot, '.xiaotao/memory/temporary/active/temp-home');
+  const originalMeta = await readFile(path.join(activeDir, 'meta.yaml'), 'utf8');
+  const originalCurrent = await readFile(path.join(activeDir, 'current.md'), 'utf8');
+  const indexPath = path.join(projectRoot, '.xiaotao/memory/index.json');
+  const manifestPath = path.join(projectRoot, '.xiaotao/memory/manifest.md');
+  const originalIndex = await readFile(indexPath);
+  const originalManifest = await readFile(manifestPath);
+
+  const failAfterPersist = [
+    'import runpy',
+    'import sys',
+    'from pathlib import Path',
+    'script = Path(sys.argv[1]).resolve()',
+    'project_root = Path(sys.argv[2])',
+    'sys.path.insert(0, str(script.parent))',
+    'namespace = runpy.run_path(str(script), run_name="memory_catalog_test")',
+    'function_globals = namespace["promote_temporary"].__globals__',
+    'real_persist = function_globals["persist_catalog"]',
+    'def fail_after_persist(root, catalog):',
+    '    real_persist(root, catalog)',
+    '    raise RuntimeError("injected catalog persistence failure")',
+    'function_globals["persist_catalog"] = fail_after_persist',
+    'namespace["promote_temporary"](',
+    '    project_root,',
+    '    "temp-home",',
+    '    task_id="task-home-opt",',
+    '    now=namespace["resolve_reference_time"]("2026-09-10T12:00:00Z"),',
+    ')',
+  ].join('\n');
+
+  await assert.rejects(
+    execFileAsync(python, ['-c', failAfterPersist, catalogScript, projectRoot], {
+      cwd: repositoryRoot,
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    }),
+    /injected catalog persistence failure/,
+  );
+
+  assert.equal(await readFile(path.join(activeDir, 'meta.yaml'), 'utf8'), originalMeta);
+  assert.equal(await readFile(path.join(activeDir, 'current.md'), 'utf8'), originalCurrent);
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/memory/temporary/archived/temp-home/meta.yaml')));
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/tasks/task-home-opt/task.yaml')));
+  assert.deepEqual(await readFile(indexPath), originalIndex);
+  assert.deepEqual(await readFile(manifestPath), originalManifest);
+});

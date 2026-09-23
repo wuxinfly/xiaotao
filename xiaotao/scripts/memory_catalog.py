@@ -1851,11 +1851,22 @@ def promote_temporary(
     actor: str = "xiaotao",
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    def validate_id(value: str, label: str) -> None:
+        if not value or value in {".", ".."} or "/" in value or "\\" in value:
+            raise CatalogError(f"Invalid {label}: {value!r}")
+
+    validate_id(temporary_id, "temporary id")
     active_root = project_root / ".xiaotao/memory/temporary/active"
     archived_root = project_root / ".xiaotao/memory/temporary/archived"
     temp_dir = active_root / temporary_id
+    target_archived_dir = archived_root / temporary_id
     if not temp_dir.is_dir():
         raise CatalogError(f"Active Temporary '{temporary_id}' does not exist")
+    if target_archived_dir.exists():
+        raise CatalogError(
+            f"Archived Temporary already exists: {target_archived_dir}; "
+            "existing archives are never overwritten"
+        )
 
     meta_file = temp_dir / "meta.yaml"
     if not meta_file.is_file():
@@ -1871,19 +1882,16 @@ def promote_temporary(
     goals = section_values(current_text, ("Current goal", "Goal"))
     confirmed = section_values(current_text, ("Confirmed",))
     open_items = section_values(current_text, ("Open questions", "Pending", "Open items"))
-
     objective = goals[0] if goals else topic
 
     tasks_root = project_root / ".xiaotao/tasks"
-    tasks_root.mkdir(parents=True, exist_ok=True)
     if not task_id:
-        slug = temporary_id
-        if slug.startswith("temp-"):
-            slug = slug[5:]
+        slug = temporary_id[5:] if temporary_id.startswith("temp-") else temporary_id
         candidate_id = f"task-{slug}"
         if (tasks_root / candidate_id).exists():
             candidate_id = f"task-{slug}-1"
         task_id = candidate_id
+    validate_id(task_id, "task id")
 
     task_dir = tasks_root / task_id
     if task_dir.exists():
@@ -1893,7 +1901,13 @@ def promote_temporary(
     now_str = utc_now(reference_time)
     tx_id = f"tx-promote-{temporary_id}-{int(reference_time.timestamp())}"
 
-    task_dir.mkdir(parents=True, exist_ok=True)
+    xiaotao_root = project_root / ".xiaotao"
+    tasks_root.mkdir(parents=True, exist_ok=True)
+    archived_root.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(prefix=".promotion-", dir=xiaotao_root))
+    task_stage = staging_root / "task"
+    archive_stage = staging_root / "temporary"
+    active_backup = staging_root / "active-temporary-backup"
 
     task_yaml_content = f"""id: {task_id}
 objective: "{objective}"
@@ -1906,11 +1920,8 @@ source_temporary: "{temporary_id}"
 promotion_transaction: "{tx_id}"
 promoted_at: "{now_str}"
 """
-    (task_dir / "task.yaml").write_text(task_yaml_content, encoding="utf-8")
-
-    findings_lines = "\n".join(f"- {c}" for c in confirmed) if confirmed else "- *(由临时探索整理转正)*"
-    open_lines = "\n".join(f"- {o}" for o in open_items) if open_items else "- *(暂无遗留待确认项)*"
-
+    findings_lines = "\n".join(f"- {item}" for item in confirmed) if confirmed else "- *(由临时探索整理转正)*"
+    open_lines = "\n".join(f"- {item}" for item in open_items) if open_items else "- *(暂无遗留待确认项)*"
     progress_content = f"""---
 revision: 0
 updated_at: "{now_str}"
@@ -1928,14 +1939,12 @@ updated_by: "{actor}"
 ## Open items
 {open_lines}
 """
-    (task_dir / "progress.md").write_text(progress_content, encoding="utf-8")
 
     meta_rev = int(meta.get("revision", 0)) + 1
     aliases_yaml = ""
     if meta.get("aliases") and isinstance(meta["aliases"], list):
-        aliases_yaml = "aliases:\n" + "\n".join(f"  - {a}" for a in meta["aliases"]) + "\n"
+        aliases_yaml = "aliases:\n" + "\n".join(f"  - {alias}" for alias in meta["aliases"]) + "\n"
     created_at = meta.get("created_at", now_str)
-
     updated_meta = f"""id: {temporary_id}
 topic: "{topic}"
 status: archive
@@ -1944,31 +1953,100 @@ updated_at: "{now_str}"
 updated_by: "{actor}"
 revision: {meta_rev}
 {aliases_yaml}"""
-    meta_file.write_text(updated_meta.strip() + "\n", encoding="utf-8")
 
-    if current_file.is_file():
-        promoted_note = f"\n\n## Promoted to Task\n- Promoted to Task `{task_id}` at {now_str} via `{tx_id}`.\n"
-        current_file.write_text(current_text.rstrip() + promoted_note, encoding="utf-8")
-
-    archived_root.mkdir(parents=True, exist_ok=True)
-    target_archived_dir = archived_root / temporary_id
-    if target_archived_dir.exists():
-        shutil.rmtree(target_archived_dir)
-    shutil.move(str(temp_dir), str(target_archived_dir))
-
-    expected = derive_catalog(project_root, now=reference_time)
-    persist_catalog(project_root, expected)
-
-    return {
-        "status": "promoted",
-        "temporary_id": temporary_id,
-        "task_id": task_id,
-        "task_path": f".xiaotao/tasks/{task_id}/task.yaml",
-        "objective": objective,
-        "promotion_transaction": tx_id,
-        "promoted_at": now_str,
+    index_path = project_root / INDEX_PATH
+    manifest_path = project_root / MANIFEST_PATH
+    catalog_snapshots = {
+        path: path.read_bytes() if path.is_file() else None
+        for path in (index_path, manifest_path)
     }
+    published_archive = False
+    published_task = False
 
+    try:
+        task_stage.mkdir()
+        (task_stage / "task.yaml").write_text(task_yaml_content, encoding="utf-8")
+        (task_stage / "progress.md").write_text(progress_content, encoding="utf-8")
+
+        shutil.copytree(temp_dir, archive_stage, symlinks=True)
+        (archive_stage / "meta.yaml").write_text(updated_meta.strip() + "\n", encoding="utf-8")
+        staged_current = archive_stage / "current.md"
+        if staged_current.is_file():
+            promoted_note = (
+                f"\n\n## Promoted to Task\n"
+                f"- Promoted to Task {chr(96)}{task_id}{chr(96)} at {now_str} "
+                f"via {chr(96)}{tx_id}{chr(96)}.\n"
+            )
+            staged_current.write_text(current_text.rstrip() + promoted_note, encoding="utf-8")
+
+        # Keep the source intact while preparing both outputs. Move it to a private
+        # rollback location only when the staged outputs are ready to publish.
+        if target_archived_dir.exists():
+            raise CatalogError(
+                f"Archived Temporary already exists: {target_archived_dir}; "
+                "existing archives are never overwritten"
+            )
+        if task_dir.exists():
+            raise CatalogError(f"Task directory already exists: {task_dir}")
+        os.rename(temp_dir, active_backup)
+        try:
+            os.rename(archive_stage, target_archived_dir)
+            published_archive = True
+            os.rename(task_stage, task_dir)
+            published_task = True
+
+            expected = derive_catalog(project_root, now=reference_time)
+            persist_catalog(project_root, expected)
+        except Exception as error:
+            rollback_errors: list[str] = []
+            if published_task and task_dir.exists():
+                try:
+                    shutil.rmtree(task_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"remove task: {rollback_error}")
+            if published_archive and target_archived_dir.exists():
+                try:
+                    shutil.rmtree(target_archived_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"remove archive: {rollback_error}")
+            if active_backup.exists():
+                try:
+                    os.rename(active_backup, temp_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"restore active temporary: {rollback_error}")
+            for path, content in catalog_snapshots.items():
+                try:
+                    if content is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        restore_path = path.with_name(f".{path.name}.rollback-{tx_id}")
+                        restore_path.write_bytes(content)
+                        os.replace(restore_path, path)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"restore {path}: {rollback_error}")
+            if rollback_errors:
+                raise CatalogError(
+                    f"Temporary promotion failed ({error}); rollback was incomplete: "
+                    f"{'; '.join(rollback_errors)}. Recovery data remains at {staging_root}"
+                ) from error
+            raise
+
+        # Promotion is committed. The backup is no longer needed; cleanup failures
+        # leave only a hidden recovery copy and must not turn success into failure.
+        shutil.rmtree(active_backup, ignore_errors=True)
+        return {
+            "status": "promoted",
+            "temporary_id": temporary_id,
+            "task_id": task_id,
+            "task_path": f".xiaotao/tasks/{task_id}/task.yaml",
+            "objective": objective,
+            "promotion_transaction": tx_id,
+            "promoted_at": now_str,
+        }
+    finally:
+        if not active_backup.exists():
+            shutil.rmtree(staging_root, ignore_errors=True)
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     common = argparse.ArgumentParser(add_help=False)
