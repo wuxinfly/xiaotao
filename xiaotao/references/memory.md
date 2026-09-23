@@ -400,7 +400,7 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 
 #### 项目全景概览条目与逐层下钻
 
-为解决“碎片化记忆难以回答项目全局组织与模块地图”的问题，系统支持标准项目全景概览条目 `project.overview`（存放在 `.xiaotao/memory/long-term/entries/project.overview.md`）：
+为解决“碎片化记忆难以回答项目全局组织与模块地图”的问题，小涛仓库将自己的项目全景概览条目 `project.overview` 保存在 `.xiaotao/memory/long-term/entries/project.overview.md`，由 Catalog 正常索引。其他项目需要根据自身代码建立对应条目，不能直接复用小涛仓库的架构描述和代码指纹：
 - **全景内容规范：** 包含核心模块职责划分、关键代码入口文件、全局设计约定以及指向深层知识条目的下钻索引；
 - **宽泛提问优先召回：** 条目配置 `tags`（如 `overview`, `architecture`）、`aliases`（如 `项目结构`, `架构概览`, `代码地图`）与 `search_hints`（覆盖“项目怎么组织的”、“入口文件是哪个”等宽泛自然语言问题）；
 - **渐进下钻路径：** 用户提出宏观问题时，检索器通过 `search "项目结构"` 首位召回 `project.overview`；小涛或 Worker 通过 `show project.overview` 获取系统概貌与子模块线索，再按需检索具体子模块条目，避免一次性倾倒全量知识。

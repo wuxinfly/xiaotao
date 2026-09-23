@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -143,6 +143,27 @@ async function createBenchmarkProject(t) {
     originalBinContent: binContent,
   };
 }
+
+test('shipped project overview is indexed from the project memory directory', async (t) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-shipped-overview-'));
+  t.after(() => rm(projectRoot, { recursive: true, force: true }));
+  for (const relativePath of [
+    'package.json',
+    'xiaotao/SKILL.md',
+    'bin/xiaotao.js',
+    '.xiaotao/memory/long-term/entries/project.overview.md',
+  ]) {
+    const source = path.join(repositoryRoot, ...relativePath.split('/'));
+    const destination = path.join(projectRoot, ...relativePath.split('/'));
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(source, destination);
+  }
+
+  await runCatalog(projectRoot, ['build']);
+  const result = JSON.parse((await runCatalog(projectRoot, ['search', '架构概览'])).stdout);
+  assert.equal(result.candidates[0]?.memory_id, 'project.overview');
+  assert.equal(result.candidates[0]?.code_freshness.status, 'fresh');
+});
 
 test('knowledge retrieval benchmark suite passes top-5 recall and negative assertions', async (t) => {
   const { projectRoot } = await createBenchmarkProject(t);
