@@ -358,6 +358,12 @@ try {
     Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" "$fixtureRoot/task-valid.json" 0
     Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
         "$fixtureRoot/task-completed-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-completed-pending-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-completed-reviewed-valid.json" 0
+    Invoke-AjvCase "xiaotao/references/schemas/task.schema.json" `
+        "$fixtureRoot/task-memory-pending-invalid.json" 1
     $decisionRecordSchema = "xiaotao/references/schemas/decision-record.schema.json"
     Invoke-ProtocolSchemaParityCase $decisionRecordSchema "decision-record" `
         "$fixtureRoot/decision-record-approved-valid.json" 0

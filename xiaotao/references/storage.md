@@ -83,7 +83,7 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 - **本地 Runtime 状态（不纳入 Git）：**
   - `memory/manifest.md` 和 `memory/index.json`：由正式 Memory 来源重建的派生 awareness 目录；
   - `memory/temporary/`：Task 前探索、scratchpad 和活动 Worker 状态；
-  - `memory/pending/`：尚未压缩或解析的 Memory Worker 原始输入；
+  - `memory/pending/`：尚未压缩或解析的 Memory Worker 原始输入与待审任务工作池（`tasks/`）；
   - `locks/` 和 `transactions/`：并发和文件系统锁标记；
   - `tasks/`：本地活动 Task 执行状态、Worker current-state 和临时选择。
   - `activity/index.json`：从本地 Task 和不可变 Decision 权威记录重建的派生时间线目录；
@@ -267,6 +267,10 @@ mtime 代替真实时间。已提交的提升会把 Task 实体化为 `active`�
 `completed_at`，并在后续移动到 `tasks/archive/` 时保持不变。`completed_at` 是 Activity 中
 “Task 已完成”的可靠发生时间。为兼容旧项目，它不是 schema 必填字段；旧 Task 缺失时仍可读取，
 但不会出现在 Activity 中。不得使用 `updated_at` 或文件 mtime 猜测完成时间。
+
+正式 Task 完成归档时，将业务事实持久化到 `completion.md`，并在 `task.yaml` 中标记 `memory_pending: true`。同时在本地 Runtime 目录 `.xiaotao/memory/pending/tasks/<task-id>.json` 中创建轻量待审工作池指针，使后续记忆提炼能以 O(1) 有界定位待审项，严禁启动或维护时对 `tasks/archive/` 进行全库遍历。
+
+当后续触发该 Task 的 Experience Review 且审查结论（包括显式 `SKIP`）与不可变 Decision Record 确认持久化后，从归档 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`（ISO 8601 UTC 时间戳），同时安全清理 `.xiaotao/memory/pending/tasks/<task-id>.json`。若审查失败或等待确认，保留待审指针和诊断现场（`last_error`），下次可安全重试。
 
 Activity 还会从 `memory/long-term/decisions/` 与 `playbooks/decisions/` 直属的规范
 `*.decision.json` 文件分别派生 `decision_approved` / `decision_superseded` 与
