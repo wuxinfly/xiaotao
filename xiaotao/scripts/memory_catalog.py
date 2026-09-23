@@ -202,6 +202,72 @@ def get_temporary_stale_days(project_root: Path) -> int:
     return DEFAULT_TEMPORARY_STALE_DAYS
 
 
+BUILTIN_SYNONYMS: list[set[str]] = [
+    # 认证鉴权 / 权限 / 登录
+    {"auth", "authentication", "authorization", "oauth", "jwt", "token", "login", "sso", "认证", "鉴权", "权限", "登录"},
+    # 数据库 / SQL
+    {"db", "database", "sql", "orm", "mysql", "postgres", "postgresql", "sqlite", "数据库"},
+    # 缓存
+    {"cache", "caching", "redis", "memcached", "缓存"},
+    # 存储与持久化 / 落盘
+    {"storage", "persist", "persistence", "存储", "持久化", "落盘"},
+    # 性能与优化 / 延迟 / 耗时 / 瓶颈
+    {"perf", "performance", "optimization", "latency", "throughput", "bottleneck", "lcp", "fcp", "性能", "优化", "延迟", "耗时", "吞吐", "瓶颈"},
+    # 部署与发布 / 流水线
+    {"deploy", "deployment", "release", "ci", "cd", "pipeline", "publish", "部署", "发布", "上线", "流水线"},
+    # 构建与打包
+    {"build", "bundle", "compile", "package", "构建", "打包", "编译"},
+    # 搜索与检索 / 查询 / 索引 / 编目
+    {"search", "query", "find", "retrieve", "retrieval", "index", "catalog", "搜索", "检索", "查询", "索引", "编目"},
+    # 架构与设计 / 模式 / 结构 / 模块 / 组件
+    {"arch", "architecture", "design", "pattern", "structure", "module", "component", "架构", "设计", "模式", "结构", "模块", "组件"},
+    # 调度与派工 / 委派 / 执行者 / 代理 / 子代理
+    {"dispatch", "schedule", "delegate", "delegation", "worker", "agent", "subagent", "调度", "派工", "委派", "执行者", "代理", "子代理"},
+    # 测试与验证 / 校验 / 核对 / 断言
+    {"test", "testing", "verify", "verification", "check", "assert", "assertion", "测试", "验证", "校验", "核对", "断言"},
+    # 接口与协议 / 契约 / 规范
+    {"api", "interface", "protocol", "contract", "schema", "spec", "specification", "接口", "协议", "契约", "规范"},
+    # 错误与异常 / 故障 / 失败 / 排查 / 调试
+    {"error", "exception", "bug", "fault", "failure", "debug", "troubleshoot", "错误", "异常", "故障", "失败", "排查", "调试"},
+    # 生命周期与钩子 / 事件 / 触发 / 启动
+    {"lifecycle", "hook", "event", "trigger", "startup", "shutdown", "生命周期", "钩子", "事件", "触发", "启动"},
+    # 配置与环境 / 设置
+    {"config", "configuration", "setting", "env", "environment", "profile", "配置", "设置", "环境"},
+]
+
+
+def load_synonym_groups(project_root: Path | None = None) -> list[set[str]]:
+    groups = [set(g) for g in BUILTIN_SYNONYMS]
+    if project_root:
+        config_path = project_root / CONFIG_PATH
+        if config_path.is_file():
+            try:
+                parsed = parse_simple_yaml(config_path)
+                custom = parsed.get("synonyms")
+                if isinstance(custom, list):
+                    for item in custom:
+                        if isinstance(item, str):
+                            words = {w.strip().casefold() for w in item.split(",") if w.strip()}
+                            if len(words) > 1:
+                                groups.append(words)
+                        elif isinstance(item, list):
+                            words = {str(w).strip().casefold() for w in item if str(w).strip()}
+                            if len(words) > 1:
+                                groups.append(words)
+            except Exception:
+                pass
+    return groups
+
+
+def expand_synonyms(tokens: set[str], synonym_groups: list[set[str]]) -> set[str]:
+    expanded: set[str] = set()
+    for token in tokens:
+        for group in synonym_groups:
+            if token in group:
+                expanded.update(group - {token})
+    return expanded
+
+
 def strip_front_matter(text: str) -> str:
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -1018,22 +1084,31 @@ def search_tokens(value: str) -> set[str]:
 def field_score(
     query: str,
     query_tokens: set[str],
+    synonym_tokens: set[str],
     values: Iterable[str],
     exact: int,
     token: int,
-) -> tuple[int, bool]:
+    synonym_weight: int = 0,
+) -> tuple[int, bool, bool]:
     score = 0
     matched = False
+    synonym_matched = False
     for value in values:
         normalized = value.casefold()
         if query and query in normalized:
             score += exact
             matched = True
-        overlap = query_tokens & search_tokens(normalized)
+        val_tokens = search_tokens(normalized)
+        overlap = query_tokens & val_tokens
         if overlap:
             score += min(len(overlap), 5) * token
             matched = True
-    return score, matched
+        elif synonym_tokens and synonym_weight > 0:
+            syn_overlap = synonym_tokens & val_tokens
+            if syn_overlap:
+                score += min(len(syn_overlap), 3) * synonym_weight
+                synonym_matched = True
+    return score, matched, synonym_matched
 
 
 def rank_entry(
@@ -1041,26 +1116,32 @@ def rank_entry(
     query: str,
     contexts: list[str],
     binding: str | None,
+    synonym_groups: list[set[str]] | None = None,
 ) -> tuple[int, list[str]]:
     normalized_query = " ".join((query, *contexts)).casefold().strip()
     tokens = search_tokens(normalized_query)
+    syn_tokens = expand_synonyms(tokens, synonym_groups) if synonym_groups else set()
     score = 0
     reasons: list[str] = []
     if binding and entry["memory_id"] == binding:
         score += 100
         reasons.append("current binding")
     hint_label = "current state" if entry.get("record_type") in {"worker-state", "task"} else "search hint"
-    for label, values, exact, token in (
-        ("title", [entry["title"]], 30, 8),
-        ("summary", [entry["summary"]], 20, 4),
-        ("tag", entry["tags"], 25, 7),
-        ("alias", entry["aliases"], 25, 7),
-        (hint_label, entry["search_hints"], 10, 2),
+    for label, values, exact, token, syn_w in (
+        ("title", [entry["title"]], 30, 8, 4),
+        ("summary", [entry["summary"]], 20, 4, 2),
+        ("tag", entry["tags"], 25, 7, 3),
+        ("alias", entry["aliases"], 25, 7, 3),
+        (hint_label, entry["search_hints"], 10, 2, 1),
     ):
-        added, matched = field_score(normalized_query, tokens, values, exact, token)
+        added, matched, syn_matched = field_score(
+            normalized_query, tokens, syn_tokens, values, exact, token, syn_w
+        )
         score += added
         if matched:
             reasons.append(label)
+        elif syn_matched:
+            reasons.append(f"{label} (synonym)")
     return score, reasons
 
 
@@ -1074,7 +1155,11 @@ def search_index(
     binding: str | None,
     limit: int,
     include_inactive: bool = False,
+    synonym_groups: list[set[str]] | None = None,
+    project_root: Path | None = None,
 ) -> list[dict[str, Any]]:
+    if synonym_groups is None:
+        synonym_groups = load_synonym_groups(project_root)
     candidates: list[dict[str, Any]] = []
     for entry in index["entries"]:
         if not include_inactive and (
@@ -1085,7 +1170,9 @@ def search_index(
             continue
         if memory_kind and entry["memory_kind"] != memory_kind:
             continue
-        score, reasons = rank_entry(entry, query, contexts, binding)
+        score, reasons = rank_entry(
+            entry, query, contexts, binding, synonym_groups=synonym_groups
+        )
         if score <= 0:
             continue
         candidate = dict(entry)
@@ -1756,6 +1843,211 @@ def migrate_long_term(project_root: Path, *, actor: str, apply: bool) -> dict[st
             shutil.rmtree(stage_root)
 
 
+def promote_temporary(
+    project_root: Path,
+    temporary_id: str,
+    *,
+    task_id: str | None = None,
+    actor: str = "xiaotao",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    def validate_id(value: str, label: str) -> None:
+        if not value or value in {".", ".."} or "/" in value or "\\" in value:
+            raise CatalogError(f"Invalid {label}: {value!r}")
+
+    validate_id(temporary_id, "temporary id")
+    active_root = project_root / ".xiaotao/memory/temporary/active"
+    archived_root = project_root / ".xiaotao/memory/temporary/archived"
+    temp_dir = active_root / temporary_id
+    target_archived_dir = archived_root / temporary_id
+    if not temp_dir.is_dir():
+        raise CatalogError(f"Active Temporary '{temporary_id}' does not exist")
+    if target_archived_dir.exists():
+        raise CatalogError(
+            f"Archived Temporary already exists: {target_archived_dir}; "
+            "existing archives are never overwritten"
+        )
+
+    meta_file = temp_dir / "meta.yaml"
+    if not meta_file.is_file():
+        raise CatalogError(f"{temp_dir}: missing meta.yaml")
+    meta = parse_simple_yaml(meta_file)
+    if meta.get("status") != "active":
+        raise CatalogError(f"Temporary '{temporary_id}' is not active (status: {meta.get('status')})")
+
+    current_file = temp_dir / "current.md"
+    current_text = read_optional(current_file)
+
+    topic = meta.get("topic") or temporary_id
+    goals = section_values(current_text, ("Current goal", "Goal"))
+    confirmed = section_values(current_text, ("Confirmed",))
+    open_items = section_values(current_text, ("Open questions", "Pending", "Open items"))
+    objective = goals[0] if goals else topic
+
+    tasks_root = project_root / ".xiaotao/tasks"
+    if not task_id:
+        slug = temporary_id[5:] if temporary_id.startswith("temp-") else temporary_id
+        candidate_id = f"task-{slug}"
+        if (tasks_root / candidate_id).exists():
+            candidate_id = f"task-{slug}-1"
+        task_id = candidate_id
+    validate_id(task_id, "task id")
+
+    task_dir = tasks_root / task_id
+    if task_dir.exists():
+        raise CatalogError(f"Task directory already exists: {task_dir}")
+
+    reference_time = now if now is not None else datetime.now(timezone.utc)
+    now_str = utc_now(reference_time)
+    tx_id = f"tx-promote-{temporary_id}-{int(reference_time.timestamp())}"
+
+    xiaotao_root = project_root / ".xiaotao"
+    tasks_root.mkdir(parents=True, exist_ok=True)
+    archived_root.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(prefix=".promotion-", dir=xiaotao_root))
+    task_stage = staging_root / "task"
+    archive_stage = staging_root / "temporary"
+    active_backup = staging_root / "active-temporary-backup"
+
+    task_yaml_content = f"""id: {task_id}
+objective: "{objective}"
+status: active
+created_at: "{now_str}"
+updated_at: "{now_str}"
+updated_by: "{actor}"
+revision: 0
+source_temporary: "{temporary_id}"
+promotion_transaction: "{tx_id}"
+promoted_at: "{now_str}"
+"""
+    findings_lines = "\n".join(f"- {item}" for item in confirmed) if confirmed else "- *(由临时探索整理转正)*"
+    open_lines = "\n".join(f"- {item}" for item in open_items) if open_items else "- *(暂无遗留待确认项)*"
+    progress_content = f"""---
+revision: 0
+updated_at: "{now_str}"
+updated_by: "{actor}"
+---
+
+# Task Progress: {topic}
+
+## Objective
+{objective}
+
+## Key findings
+{findings_lines}
+
+## Open items
+{open_lines}
+"""
+
+    meta_rev = int(meta.get("revision", 0)) + 1
+    aliases_yaml = ""
+    if meta.get("aliases") and isinstance(meta["aliases"], list):
+        aliases_yaml = "aliases:\n" + "\n".join(f"  - {alias}" for alias in meta["aliases"]) + "\n"
+    created_at = meta.get("created_at", now_str)
+    updated_meta = f"""id: {temporary_id}
+topic: "{topic}"
+status: archive
+created_at: "{created_at}"
+updated_at: "{now_str}"
+updated_by: "{actor}"
+revision: {meta_rev}
+{aliases_yaml}"""
+
+    index_path = project_root / INDEX_PATH
+    manifest_path = project_root / MANIFEST_PATH
+    catalog_snapshots = {
+        path: path.read_bytes() if path.is_file() else None
+        for path in (index_path, manifest_path)
+    }
+    published_archive = False
+    published_task = False
+
+    try:
+        task_stage.mkdir()
+        (task_stage / "task.yaml").write_text(task_yaml_content, encoding="utf-8")
+        (task_stage / "progress.md").write_text(progress_content, encoding="utf-8")
+
+        shutil.copytree(temp_dir, archive_stage, symlinks=True)
+        (archive_stage / "meta.yaml").write_text(updated_meta.strip() + "\n", encoding="utf-8")
+        staged_current = archive_stage / "current.md"
+        if staged_current.is_file():
+            promoted_note = (
+                f"\n\n## Promoted to Task\n"
+                f"- Promoted to Task {chr(96)}{task_id}{chr(96)} at {now_str} "
+                f"via {chr(96)}{tx_id}{chr(96)}.\n"
+            )
+            staged_current.write_text(current_text.rstrip() + promoted_note, encoding="utf-8")
+
+        # Keep the source intact while preparing both outputs. Move it to a private
+        # rollback location only when the staged outputs are ready to publish.
+        if target_archived_dir.exists():
+            raise CatalogError(
+                f"Archived Temporary already exists: {target_archived_dir}; "
+                "existing archives are never overwritten"
+            )
+        if task_dir.exists():
+            raise CatalogError(f"Task directory already exists: {task_dir}")
+        os.rename(temp_dir, active_backup)
+        try:
+            os.rename(archive_stage, target_archived_dir)
+            published_archive = True
+            os.rename(task_stage, task_dir)
+            published_task = True
+
+            expected = derive_catalog(project_root, now=reference_time)
+            persist_catalog(project_root, expected)
+        except Exception as error:
+            rollback_errors: list[str] = []
+            if published_task and task_dir.exists():
+                try:
+                    shutil.rmtree(task_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"remove task: {rollback_error}")
+            if published_archive and target_archived_dir.exists():
+                try:
+                    shutil.rmtree(target_archived_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"remove archive: {rollback_error}")
+            if active_backup.exists():
+                try:
+                    os.rename(active_backup, temp_dir)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"restore active temporary: {rollback_error}")
+            for path, content in catalog_snapshots.items():
+                try:
+                    if content is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        restore_path = path.with_name(f".{path.name}.rollback-{tx_id}")
+                        restore_path.write_bytes(content)
+                        os.replace(restore_path, path)
+                except OSError as rollback_error:
+                    rollback_errors.append(f"restore {path}: {rollback_error}")
+            if rollback_errors:
+                raise CatalogError(
+                    f"Temporary promotion failed ({error}); rollback was incomplete: "
+                    f"{'; '.join(rollback_errors)}. Recovery data remains at {staging_root}"
+                ) from error
+            raise
+
+        # Promotion is committed. The backup is no longer needed; cleanup failures
+        # leave only a hidden recovery copy and must not turn success into failure.
+        shutil.rmtree(active_backup, ignore_errors=True)
+        return {
+            "status": "promoted",
+            "temporary_id": temporary_id,
+            "task_id": task_id,
+            "task_path": f".xiaotao/tasks/{task_id}/task.yaml",
+            "objective": objective,
+            "promotion_transaction": tx_id,
+            "promoted_at": now_str,
+        }
+    finally:
+        if not active_backup.exists():
+            shutil.rmtree(staging_root, ignore_errors=True)
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--project-root", type=Path, default=argparse.SUPPRESS)
@@ -1805,6 +2097,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     migrate = subparsers.add_parser("migrate-long-term", parents=[common])
     migrate.add_argument("--apply", action="store_true")
     migrate.add_argument("--actor", default="")
+
+    promote = subparsers.add_parser("promote-temporary", parents=[common])
+    promote.add_argument("temporary_id")
+    promote.add_argument("--task-id")
+    promote.add_argument("--actor", default="xiaotao")
+
     args = parser.parse_args(argv)
     if not hasattr(args, "project_root"):
         args.project_root = Path.cwd()
@@ -1844,6 +2142,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "migrate-long-term":
             result = migrate_long_term(project_root, actor=args.actor, apply=args.apply)
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "promote-temporary":
+            result = promote_temporary(
+                project_root,
+                args.temporary_id,
+                task_id=args.task_id,
+                actor=args.actor or "xiaotao",
+                now=reference_time,
+            )
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         cached = args.command == "overview" and getattr(args, "cached", False)
@@ -1914,6 +2222,7 @@ def main(argv: list[str] | None = None) -> int:
                 binding=args.binding,
                 limit=args.limit,
                 include_inactive=args.include_inactive,
+                project_root=project_root,
             )
             print(
                 json.dumps(

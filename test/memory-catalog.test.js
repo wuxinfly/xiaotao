@@ -1111,3 +1111,197 @@ test('overview discovers recoverable checkpoints and marks has_active_work even 
   assert.match(textOutput, /binding: task-recovery/);
   assert.match(textOutput, /revision: 3/);
 });
+
+test('searches memory with synonym expansion and ranks exact matches above synonyms', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  await writeProjectFile(
+    projectRoot,
+    '.xiaotao/memory/long-term/entries/lt-auth.md',
+    entryFile({
+      entry_id: 'lt-auth',
+      title: '统一鉴权中心设计',
+      memory_kind: 'decision',
+      content: '所有微服务必须通过统一鉴权中心校验 token。',
+      source_refs: ['.xiaotao/evidence/performance.md'],
+      tags: ['token', 'gateway'],
+      status: 'active',
+    }),
+  );
+  await runCatalog(projectRoot, ['build']);
+
+  const searchSyn = JSON.parse((await runCatalog(projectRoot, ['search', 'auth'])).stdout);
+  assert.equal(searchSyn.candidates.length, 1);
+  assert.equal(searchSyn.candidates[0].memory_id, 'lt-auth');
+  assert.match(searchSyn.candidates[0].relevance_reason, /synonym/);
+
+  const searchExact = JSON.parse((await runCatalog(projectRoot, ['search', '鉴权'])).stdout);
+  assert.equal(searchExact.candidates[0].memory_id, 'lt-auth');
+  assert.match(searchExact.candidates[0].relevance_reason, /title/);
+  assert.doesNotMatch(searchExact.candidates[0].relevance_reason, /title \(synonym\)/);
+  assert.ok(searchExact.candidates[0].score > searchSyn.candidates[0].score);
+});
+
+test('loads custom synonym groups from .xiaotao/config.yaml', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  await writeProjectFile(
+    projectRoot,
+    '.xiaotao/config.yaml',
+    `synonyms:
+  - "checkout, checkoutflow, 结账"
+`,
+  );
+  await writeProjectFile(
+    projectRoot,
+    '.xiaotao/memory/long-term/entries/lt-payment.md',
+    entryFile({
+      entry_id: 'lt-payment',
+      title: '结账流程异常重试',
+      memory_kind: 'experience',
+      content: '结账流程遇网络波动支持指数退避重试。',
+      source_refs: ['.xiaotao/evidence/performance.md'],
+      status: 'active',
+    }),
+  );
+  await runCatalog(projectRoot, ['build']);
+
+  const search = JSON.parse((await runCatalog(projectRoot, ['search', 'checkoutflow'])).stdout);
+  assert.equal(search.candidates.length, 1);
+  assert.equal(search.candidates[0].memory_id, 'lt-payment');
+  assert.match(search.candidates[0].relevance_reason, /synonym/);
+});
+
+test('promotes active temporary to formal task, archives temporary, and refreshes catalog', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  await runCatalog(projectRoot, ['build']);
+
+  const promoteResult = JSON.parse(
+    (await runCatalog(projectRoot, ['promote-temporary', 'temp-home', '--task-id', 'task-home-opt', '--actor', 'test-actor'])).stdout
+  );
+  assert.equal(promoteResult.status, 'promoted');
+  assert.equal(promoteResult.temporary_id, 'temp-home');
+  assert.equal(promoteResult.task_id, 'task-home-opt');
+  assert.equal(promoteResult.task_path, '.xiaotao/tasks/task-home-opt/task.yaml');
+
+  const taskYamlPath = path.join(projectRoot, '.xiaotao/tasks/task-home-opt/task.yaml');
+  const taskYaml = await readFile(taskYamlPath, 'utf8');
+  assert.match(taskYaml, /id: task-home-opt/);
+  assert.match(taskYaml, /source_temporary: "temp-home"/);
+  assert.match(taskYaml, /promotion_transaction: "tx-promote-temp-home-/);
+  assert.match(taskYaml, /promoted_at:/);
+  assert.match(taskYaml, /updated_by: "test-actor"/);
+
+  const progressMdPath = path.join(projectRoot, '.xiaotao/tasks/task-home-opt/progress.md');
+  const progressMd = await readFile(progressMdPath, 'utf8');
+  assert.match(progressMd, /# Task Progress: homepage startup investigation/);
+  assert.match(progressMd, /Verify whether the analytics SDK must initialize synchronously/);
+  assert.match(progressMd, /A trace shows a long main-thread task/);
+  assert.match(progressMd, /Can SDK initialization move after first paint\?/);
+
+  const activeTempDir = path.join(projectRoot, '.xiaotao/memory/temporary/active/temp-home');
+  await assert.rejects(readFile(path.join(activeTempDir, 'meta.yaml')));
+
+  const archivedMetaPath = path.join(projectRoot, '.xiaotao/memory/temporary/archived/temp-home/meta.yaml');
+  const archivedMeta = await readFile(archivedMetaPath, 'utf8');
+  assert.match(archivedMeta, /status: archive/);
+  assert.match(archivedMeta, /revision: 4/);
+  assert.match(archivedMeta, /updated_by: "test-actor"/);
+
+  const archivedCurrentPath = path.join(projectRoot, '.xiaotao/memory/temporary/archived/temp-home/current.md');
+  const archivedCurrent = await readFile(archivedCurrentPath, 'utf8');
+  assert.match(archivedCurrent, /## Promoted to Task/);
+  assert.match(archivedCurrent, /Promoted to Task `task-home-opt`/);
+
+  const indexPath = path.join(projectRoot, '.xiaotao', 'memory', 'index.json');
+  const index = JSON.parse(await readFile(indexPath, 'utf8'));
+  const promotedEntry = index.entries.find((entry) => entry.memory_id === 'task-home-opt');
+  assert.ok(promotedEntry);
+  assert.equal(promotedEntry.status, 'active');
+
+  const tempEntry = index.entries.find((entry) => entry.memory_id === 'temp-home');
+  assert.equal(tempEntry, undefined);
+
+  // Verify memory-index validates cleanly
+  await execFileAsync(python, [
+    validatorScript,
+    'memory-index',
+    indexPath,
+    '--project-root',
+    projectRoot,
+  ]);
+});
+
+test('fails to promote non-existent or already archived temporary', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  const nonExistent = await rejectedCommand(
+    runCatalog(projectRoot, ['promote-temporary', 'temp-missing'])
+  );
+  assert.equal(nonExistent.code, 2);
+  assert.match(nonExistent.stderr, /Active Temporary 'temp-missing' does not exist/);
+});
+
+
+test('does not overwrite an existing archived temporary during promotion', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  const archivedMarker = '.xiaotao/memory/temporary/archived/temp-home/keep.txt';
+  await writeProjectFile(projectRoot, archivedMarker, 'preserve this archive');
+
+  const failure = await rejectedCommand(
+    runCatalog(projectRoot, ['promote-temporary', 'temp-home', '--task-id', 'task-home-opt'])
+  );
+  assert.equal(failure.code, 2);
+  assert.match(failure.stderr, /Archived Temporary already exists/);
+  assert.equal(await readFile(path.join(projectRoot, archivedMarker), 'utf8'), 'preserve this archive');
+  await readFile(path.join(projectRoot, '.xiaotao/memory/temporary/active/temp-home/meta.yaml'));
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/tasks/task-home-opt/task.yaml')));
+});
+
+test('rolls back temporary promotion when catalog persistence fails', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  await runCatalog(projectRoot, ['build']);
+
+  const activeDir = path.join(projectRoot, '.xiaotao/memory/temporary/active/temp-home');
+  const originalMeta = await readFile(path.join(activeDir, 'meta.yaml'), 'utf8');
+  const originalCurrent = await readFile(path.join(activeDir, 'current.md'), 'utf8');
+  const indexPath = path.join(projectRoot, '.xiaotao/memory/index.json');
+  const manifestPath = path.join(projectRoot, '.xiaotao/memory/manifest.md');
+  const originalIndex = await readFile(indexPath);
+  const originalManifest = await readFile(manifestPath);
+
+  const failAfterPersist = [
+    'import runpy',
+    'import sys',
+    'from pathlib import Path',
+    'script = Path(sys.argv[1]).resolve()',
+    'project_root = Path(sys.argv[2])',
+    'sys.path.insert(0, str(script.parent))',
+    'namespace = runpy.run_path(str(script), run_name="memory_catalog_test")',
+    'function_globals = namespace["promote_temporary"].__globals__',
+    'real_persist = function_globals["persist_catalog"]',
+    'def fail_after_persist(root, catalog):',
+    '    real_persist(root, catalog)',
+    '    raise RuntimeError("injected catalog persistence failure")',
+    'function_globals["persist_catalog"] = fail_after_persist',
+    'namespace["promote_temporary"](',
+    '    project_root,',
+    '    "temp-home",',
+    '    task_id="task-home-opt",',
+    '    now=namespace["resolve_reference_time"]("2026-09-10T12:00:00Z"),',
+    ')',
+  ].join('\n');
+
+  await assert.rejects(
+    execFileAsync(python, ['-c', failAfterPersist, catalogScript, projectRoot], {
+      cwd: repositoryRoot,
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    }),
+    /injected catalog persistence failure/,
+  );
+
+  assert.equal(await readFile(path.join(activeDir, 'meta.yaml'), 'utf8'), originalMeta);
+  assert.equal(await readFile(path.join(activeDir, 'current.md'), 'utf8'), originalCurrent);
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/memory/temporary/archived/temp-home/meta.yaml')));
+  await assert.rejects(readFile(path.join(projectRoot, '.xiaotao/tasks/task-home-opt/task.yaml')));
+  assert.deepEqual(await readFile(indexPath), originalIndex);
+  assert.deepEqual(await readFile(manifestPath), originalManifest);
+});

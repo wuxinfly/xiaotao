@@ -71,6 +71,19 @@ Temporary 被显式选择、唯一解析或新建后，维护当前 Session 绑�
 恢复所需的活动 Worker 状态，而不是复制其完整结果。Temporary 被归档、丢弃或提升时，其作用域
 Worker 随之到期。
 
+### Temporary 晋升为正式任务（Promote to Task）
+
+当阶段性讨论和探索成熟，用户明确决定立项或落地为正式 Task 时，支持通过命令原子化转正：
+
+```bash
+python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> promote-temporary <temporary-id> [--task-id <task-id>] [--actor <actor>]
+```
+
+- **目标与事实提炼：** 从 Temporary `current.md` 中提取“当前目标（Goal）”作为 Task 的 `objective`，将“已确认（Confirmed）”作为新 Task `progress.md` 的 `Key findings`，“待确认（Open questions/items）”作为 `Open items`；
+- **元数据与溯源契约：** 生成的 `.xiaotao/tasks/<task-id>/task.yaml` 严格遵循 Schema 校验，自动注入 `source_temporary`、`promotion_transaction` 和 `promoted_at`；
+- **状态流转与自动归档：** 原 Temporary 的 `meta.yaml` 状态更新为 `archive`、版本（revision）自增，并在 `current.md` 末尾追加转正审计记录，随后整个目录原子移动至 `.xiaotao/memory/temporary/archived/<temporary-id>`；
+- **目录自动刷新：** 转正完成后自动重新推导并落盘 Catalog，移出归档的 Temporary 并索引新建的活动 Task。
+
 ## Task Memory
 
 Task Memory 包含公开 Task 上下文，以及每个已调用 Worker 的 Current State。执行单元状态回答：
@@ -376,6 +389,15 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 ```bash
 python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> show <memory-id>
 ```
+
+#### 同义词语义扩展与分层评分
+
+为解决“由于自然语言用词差异（如搜‘鉴权’找不到只写了‘auth’或‘认证’的条目）导致的漏检”，检索器引入了受控的工程同义词网络：
+- **内置工程领域词网：** 内置覆盖认证鉴权（auth/token/login/鉴权）、数据库（db/database/sql/数据库）、缓存（cache/redis/缓存）、存储持久化（storage/persist/落盘）、性能优化（perf/optimization/latency/耗时）、部署发布（deploy/release/ci/cd）、构建打包（build/bundle/compile）、搜索索引（search/query/index）、架构模块（arch/design/module）、调度派工（dispatch/worker/agent）、测试验证（test/verify/assert）、接口契约（api/protocol/contract）、异常排查（error/bug/debug）、生命周期（lifecycle/hook/startup）以及配置环境（config/setting/env）等高频工程场景；
+- **项目级配置扩展：** 支持在 `.xiaotao/config.yaml` 中配置 `synonyms` 列表（逗号分隔或列表字符串），无缝扩展业务专有名词与缩写；
+- **字面匹配优先原则：** 精确包含与词元匹配获得主导权重（如精确匹配 30/20 分），同义词召回作为受控补充权重（1~4 分）。精确匹配条目的排序始终绝对优先于纯近义词命中；
+- **召回透明性：** 若条目因同义词扩展被召回，其 `relevance_reason` 会明确标注 `(synonym)`（例如 `title (synonym)`），确保检索决策透明可解释。
+
 
 审计查询在 `search`、`recent` 或 `show` 后增加 `--include-inactive`；返回结果会明确携带
 `temporal_state`，避免把历史事实误当作当前证据。
