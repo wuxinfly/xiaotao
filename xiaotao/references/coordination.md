@@ -230,18 +230,23 @@ Long-term Memory
 
 只有当前状态锚点指向当下所需信息时，才读取历史 References。
 
-## 完成
+## 完成与收尾解耦
 
-正式 Task 的约定结果和相关验证完成后：
+正式 Task 的约定业务结果和相关验证完成后，小涛执行**任务事实落盘交付**与**长期记忆提炼审查**解耦流程：
 
-1. 请 Memory Worker 压缩最终 Task 状态，并执行 Experience Review：将持久声明与已索引的
-   Long-term 条目比较，将已执行的可复用流程与已索引 Playbooks 比较，然后为每个集合提出
-   `UPDATE`、`MERGE`、`CREATE` 或 `SKIP`。
-2. 写入 `completion.md`，包含结果、验证、限制、待办工作和来源路径。
-3. 在同一次生命周期更新中写入可靠的 `completed_at`、将 Task 标记为 completed，并移动到
-   `.xiaotao/tasks/archive/<task-id>/`；归档后保持 `completed_at` 不变，使 Activity 可从 Task 自动派生。
-4. 审核每项提案；只提升稳定、有来源的知识。所有 Playbook Candidate 都保持不生效，除非
-   用户明确批准；之后按相关可变状态协议应用获批改动。
-5. 向用户返回简洁的交付摘要。
+### 1. 任务完成与即时交付（主任务交付通道）
 
-如果压缩失败，保留 `memory_pending` 记录，并归档已经完成业务目标的 Task。
+1. **事实落盘**：同步写入并校验 `completion.md`，包含结果、验证证据、限制、重要决定、待办工作和来源路径。记录写入失败时不得声称可靠收尾，严禁标记完成。
+2. **生命周期终态与待审登记**：先以独占创建方式持久化 `.xiaotao/memory/pending/tasks/<task-id>.json` 待审指针（包含 `task_id`、`completed_at` 与归档后的 `completion_path`），再在 `task.yaml` 中写入相同的 `completed_at`、设置 `status: completed` 和 `memory_pending: true`。指针创建失败时不得标记完成；已有指针须核对 Task ID 与来源，不得覆盖不一致的内容。
+3. **安全归档**：将 Task 移动到 `.xiaotao/tasks/archive/<task-id>/`；归档后保持 `completed_at` 不变，使 Activity 可从 Task 自动派生。
+4. **即时向用户交付**：向用户返回简洁大白话的业务交付摘要。业务任务到此完成闭环，不等待 Memory Worker 审查，也不受记忆提取耗时或模型瞬时失败阻塞。
+
+### 2. 长期记忆与经验按需审查（异步提炼通道）
+
+Task 归档后，记忆审查解耦为按需/触发式推进，不阻塞后续普通任务：
+
+1. **触发时机**：用户明确要求整理记忆（如“小涛整理记忆”、“处理待审任务”），或后续与该任务相关的记忆维护被触发时。会话启动时不扫描全部已归档 Task，仅通过 `.xiaotao/memory/pending/tasks/` 有界定位待审项。
+2. **候选提案审查**：由只读 Memory Worker 对比已索引的 Long-term 条目与 Playbooks，为每项沉淀提出 `UPDATE`、`MERGE`、`CREATE` 或 `SKIP` 候选提案。Memory Worker 严格禁止自我批准。
+3. **提案审批与落盘**：经用户或小涛按现有批准语义审核确认后，写入正式 Long-term entry 或 Playbook，并持久化不可变的 `*.decision.json` 记录；若选择 `SKIP` 亦须持久化处理结论。
+4. **清除待审状态**：只有全部审查结论与 Decision Record 确认持久化后，才先在归档 Task 的 `task.yaml` 中更新 `memory_pending: false` 并记录 `memory_reviewed_at`，最后移除 `.xiaotao/memory/pending/tasks/<task-id>.json`。审查失败或等待确认时，保留 pending 指针与诊断信息（`last_error`）。清理中断后，指针仍在时按 `task.yaml` 状态恢复：`memory_pending: true` 继续审查，`memory_pending: false` 仅核验已提交记录并删除指针，不得再次执行写入。
+5. **轻量与幂等保证**：同一 Task 的审查获取 Task 级锁；以 Task ID、归档后的 `completion_path` 和持久化的候选 ID 固定每项 Decision Record ID 与目标 entry/playbook ID。先保存候选及 ID，重试先读取已有候选、决策和目标状态；已有完整提交结果时跳过写入，部分提交时按现有事务协议恢复，ID 冲突且内容不符时停止并保留 pending。不得重新分配 ID 或重复递增 revision。用户明确要求“记住这条”时继续走即时轻量路径。
