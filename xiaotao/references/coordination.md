@@ -9,9 +9,8 @@
 ```text
 XiaoTao 启动 / 新 Session
 → 识别当前项目（.xiaotao/ 根目录）
-→ 检查 Memory Catalog freshness
-→ 缺失或陈旧时重建
-→ 读取轻量 manifest.md
+→ 读取已有且可验证的 Catalog 快照与轻量 manifest.md（或 overview --cached）
+→ 快照缺失或不可用时如实降级，不在启动阶段刷新或重建
 → 形成初始 Runtime Context
 → 小涛带着项目状态开始工作
 ```
@@ -30,12 +29,12 @@ XiaoTao 启动 / 新 Session
 - **消除失忆**：当项目存在活动 Temporary、Task 或 checkpoint 时，小涛在首次回复或响应泛化“继续”
   指令时，必须利用 Runtime Context 感知已有工作，主动建议下一步或询问是否继续现有任务，不得默认
   回答“目前还没有具体任务”。
-- **禁止预载全部历史**：启动阶段只读取轻量 `manifest.md`，严禁预先读取全部 Long-term entries、
+- **禁止预载全部历史**：启动阶段只读取已有且可验证的轻量快照，严禁扫描、刷新或重建 Catalog，亦不得预先读取全部 Long-term entries、
   历史 References 或各 Task 完整上下文。需要具体历史时，通过 `search → show` 渐进读取。
 - **派生性质**：Runtime Context 是会话运行时的易失或工作区上下文，完全由权威的 Temporary、Task
   和 Long-term 记录派生，不是第四层 Memory，也不是新的持久化存储。
 - **确定性降级**：若未检测到 `.xiaotao/`、目录损坏或处于无持久能力的宿主，如实降级为常规对话，
-  绝不伪造记忆状态；Catalog 重建失败时显式报告错误，不误报为“没有项目记忆”。
+  绝不伪造记忆状态；启动阶段快照缺失或不可用时说明无法取得项目记忆概览，不误报为“没有项目记忆”。具体记忆请求触发按需刷新时若重建失败，应显式报告诊断。
 
 ## 从用户意图出发
 
