@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 
 const json = async path => JSON.parse(await readFile(path, 'utf8'));
 
@@ -35,6 +36,16 @@ test('timeline event schema verifies valid and invalid fixtures', async () => {
   );
   assert.equal(valid.event_type, 'task_completed');
   assert.ok(valid.source_refs.length >= 1);
+  assert.match(valid.event_id, new RegExp(schema.properties.event_id.pattern));
+  const generated = spawnSync('python', [
+    '-c',
+    "import sys; sys.path.insert(0, 'xiaotao/scripts'); from activity_catalog import make_event_id; print(make_event_id(sys.argv[1], sys.argv[2], sys.argv[3]))",
+    valid.event_type,
+    valid.task_id,
+    valid.occurred_at,
+  ], { encoding: 'utf8' });
+  assert.equal(generated.status, 0, generated.stderr);
+  assert.equal(valid.event_id, generated.stdout.trim());
 
   const invalid = await json(
     'xiaotao/references/scenarios/schema-fixtures/timeline-event-invalid.json',

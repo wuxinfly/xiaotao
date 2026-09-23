@@ -13,7 +13,7 @@
   "properties": {
     "event_id": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^activity-[0-9]{8}-[0-9a-f]{12}$"
     },
     "event_type": {
       "enum": [

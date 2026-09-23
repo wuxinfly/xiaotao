@@ -1,5 +1,5 @@
 {
-  "event_id": "evt-20260923-task-completion-decouple",
+  "event_id": "activity-20260923-0a6292e4172d",
   "event_type": "task_completed",
   "summary": "完成正式 Task 收尾与长期记忆审查解耦，交付主流程不再被审查卡住",
   "occurred_at": "2026-09-23T12:00:00Z",
