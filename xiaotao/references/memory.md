@@ -398,6 +398,25 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 - **字面匹配优先原则：** 精确包含与词元匹配获得主导权重（如精确匹配 30/20 分），同义词召回作为受控补充权重（1~4 分）。精确匹配条目的排序始终绝对优先于纯近义词命中；
 - **召回透明性：** 若条目因同义词扩展被召回，其 `relevance_reason` 会明确标注 `(synonym)`（例如 `title (synonym)`），确保检索决策透明可解释。
 
+#### 项目全景概览条目与逐层下钻
+
+为解决“碎片化记忆难以回答项目全局组织与模块地图”的问题，系统支持标准项目全景概览条目 `project.overview`（存放在 `.xiaotao/memory/long-term/entries/project.overview.md`）：
+- **全景内容规范：** 包含核心模块职责划分、关键代码入口文件、全局设计约定以及指向深层知识条目的下钻索引；
+- **宽泛提问优先召回：** 条目配置 `tags`（如 `overview`, `architecture`）、`aliases`（如 `项目结构`, `架构概览`, `代码地图`）与 `search_hints`（覆盖“项目怎么组织的”、“入口文件是哪个”等宽泛自然语言问题）；
+- **渐进下钻路径：** 用户提出宏观问题时，检索器通过 `search "项目结构"` 首位召回 `project.overview`；小涛或 Worker 通过 `show project.overview` 获取系统概貌与子模块线索，再按需检索具体子模块条目，避免一次性倾倒全量知识。
+
+#### 基于代码关联的新鲜度复核提示 (Code Freshness Check)
+
+代码演进可能使过去的知识描述与最新代码实现脱节。为避免模型将已过期的记忆当成当前事实，系统在检索与展示阶段提供客观的代码变动复核提示：
+- **代码关联机制：** 条目可在元数据中声明关联代码文件列表 `code_refs`，并记录代码基准指纹 `code_fingerprints`（SHA-256 映射）。若未显式声明 `code_refs`，检索器会自动识别 `source_refs` 中的代码文件（排除 `.xiaotao/` 内部文件）；
+- **新鲜度状态推断：**
+  - `fresh`：全部关联代码文件存在且 SHA-256 指纹与基准一致，表示知识与当前代码匹配；
+  - `review_needed`：检测到关联代码文件内容已发生变动或文件被删除，输出明确依据 `reason: "关联代码文件 '<path>' 内容已变动"`，提示小涛/用户注意该知识可能已陈旧；
+  - `unknown`：条目无关联代码文件（如仅来源于对话讨论或外部文档），或缺少指纹基线，系统如实标记为 `unknown`，**绝不虚报检测成功**；
+- **底线守卫与防篡改原则：**
+  - 复核提示（`code_freshness`）仅在 `search` 与 `show` 诊断输出中呈现，**绝对禁止自动化脚本或 Worker 静默改写、删除或篡改权威 entry**；
+  - 知识库的更新与纠偏必须严格遵循既有的 Memory Worker 提案、小涛/用户评审确认以及决策归档流程。
+
 
 审计查询在 `search`、`recent` 或 `show` 后增加 `--include-inactive`；返回结果会明确携带
 `temporal_state`，避免把历史事实误当作当前证据。

@@ -1,0 +1,33 @@
+[
+  {
+    "query": "项目整体结构是怎么组织的",
+    "category": "broad_overview",
+    "expected_top_ids": ["project.overview"],
+    "min_expected_matches": 1
+  },
+  {
+    "query": "架构概览",
+    "category": "alias_lookup",
+    "expected_top_ids": ["project.overview"],
+    "min_expected_matches": 1
+  },
+  {
+    "query": "入口文件是哪个",
+    "category": "search_hints",
+    "expected_top_ids": ["project.overview"],
+    "min_expected_matches": 1
+  },
+  {
+    "query": "代码地图",
+    "category": "alias_lookup",
+    "expected_top_ids": ["project.overview"],
+    "min_expected_matches": 1
+  },
+  {
+    "query": "完全无关的火星天气查询",
+    "category": "negative_case",
+    "expected_top_ids": [],
+    "min_expected_matches": 0,
+    "expect_empty": true
+  }
+]

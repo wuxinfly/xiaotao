@@ -499,6 +499,15 @@ def parse_long_term_entries(
         optional_string_list(entry, "tags", path)
         optional_string_list(entry, "aliases", path)
         optional_string_list(entry, "search_hints", path)
+        optional_string_list(entry, "code_refs", path)
+        if "code_fingerprints" in entry:
+            fp = entry["code_fingerprints"]
+            if not isinstance(fp, dict) or any(
+                not isinstance(k, str) or not isinstance(v, str) for k, v in fp.items()
+            ):
+                raise CatalogError(
+                    f"{path}: 'code_fingerprints' must be a mapping of string to string"
+                )
         validate_decision_context(entry, path)
         validate_temporal_fields(entry, path)
         entries.append(entry)
@@ -1145,6 +1154,124 @@ def rank_entry(
     return score, reasons
 
 
+def check_code_freshness(project_root: Path, entry: dict[str, Any]) -> dict[str, Any]:
+    full_entry = entry
+    if (
+        "code_refs" not in full_entry
+        and "code_fingerprints" not in full_entry
+        and "source_refs" not in full_entry
+        and "path" in entry
+    ):
+        path = project_root / Path(entry["path"])
+        if path.is_file() and entry.get("record_type") == "long-term-entry":
+            try:
+                matched = next(
+                    (
+                        c
+                        for c in parse_long_term_entries(path)
+                        if c.get("entry_id") == entry.get("locator")
+                    ),
+                    None,
+                )
+                if matched is not None:
+                    full_entry = matched
+            except Exception:
+                pass
+
+    code_refs = full_entry.get("code_refs")
+    if code_refs is None:
+        raw_sources = full_entry.get("source_refs", [])
+        code_exts = {".js", ".mjs", ".cjs", ".ts", ".py", ".sh", ".json", ".yaml", ".yml", ".toml"}
+        code_refs = [
+            ref
+            for ref in raw_sources
+            if isinstance(ref, str)
+            and not ref.startswith(".xiaotao/")
+            and Path(ref).suffix.lower() in code_exts
+        ]
+
+    if not code_refs:
+        return {
+            "status": "unknown",
+            "reason": "条目无关联代码文件，无法自动推断代码新鲜度 (no associated code files)",
+            "files": [],
+        }
+
+    raw_fps = full_entry.get("code_fingerprints")
+    code_fingerprints: dict[str, str] = raw_fps if isinstance(raw_fps, dict) else {}
+
+    missing_files: list[str] = []
+    changed_files: list[tuple[str, str, str]] = []
+    untracked_files: list[str] = []
+    fresh_files: list[str] = []
+    files_summary: list[dict[str, Any]] = []
+
+    for ref in code_refs:
+        target_path = project_root / ref
+        if not target_path.is_file():
+            missing_files.append(ref)
+            files_summary.append({"path": ref, "status": "missing"})
+            continue
+
+        try:
+            current_sha256 = hashlib.sha256(target_path.read_bytes()).hexdigest()
+        except OSError:
+            missing_files.append(ref)
+            files_summary.append({"path": ref, "status": "unreadable"})
+            continue
+
+        expected_sha256 = code_fingerprints.get(ref)
+        if expected_sha256 is None:
+            untracked_files.append(ref)
+            files_summary.append({
+                "path": ref,
+                "status": "no_fingerprint",
+                "current_fingerprint": current_sha256,
+            })
+        elif current_sha256.lower() != expected_sha256.lower():
+            changed_files.append((ref, current_sha256, expected_sha256))
+            files_summary.append({
+                "path": ref,
+                "status": "changed",
+                "current_fingerprint": current_sha256,
+                "expected_fingerprint": expected_sha256,
+            })
+        else:
+            fresh_files.append(ref)
+            files_summary.append({
+                "path": ref,
+                "status": "fresh",
+                "current_fingerprint": current_sha256,
+                "expected_fingerprint": expected_sha256,
+            })
+
+    if missing_files:
+        status = "review_needed"
+        reason = f"关联代码文件不存在: {', '.join(missing_files)}"
+    elif changed_files:
+        status = "review_needed"
+        details = [
+            f"'{f}' 内容已变动 (当前 SHA-256: {curr[:8]}..., 基线: {exp[:8]}...)"
+            for f, curr, exp in changed_files
+        ]
+        reason = f"关联代码文件内容已变动: {'; '.join(details)}"
+    elif untracked_files and not fresh_files:
+        status = "unknown"
+        reason = "关联代码文件缺少指纹基线 (code_fingerprints)，无法自动推断代码新鲜度"
+    elif untracked_files and fresh_files:
+        status = "review_needed"
+        reason = f"部分关联代码文件缺少指纹基线: {', '.join(untracked_files)}"
+    else:
+        status = "fresh"
+        reason = "全部关联代码文件指纹校验一致 (all code references match fingerprints)"
+
+    return {
+        "status": status,
+        "reason": reason,
+        "files": files_summary,
+    }
+
+
 def search_index(
     index: dict[str, Any],
     query: str,
@@ -1181,7 +1308,12 @@ def search_index(
         candidate.pop("search_hints", None)
         candidates.append(candidate)
     candidates.sort(key=lambda item: (-item["score"], item["memory_id"]))
-    return candidates[:limit]
+    top_candidates = candidates[:limit]
+    if project_root:
+        for candidate in top_candidates:
+            if candidate.get("record_type") == "long-term-entry":
+                candidate["code_freshness"] = check_code_freshness(project_root, candidate)
+    return top_candidates
 
 
 def parse_iso_timestamp(raw: str | None) -> datetime | None:
@@ -1589,7 +1721,9 @@ def detail_for_entry(project_root: Path, entry: dict[str, Any]) -> dict[str, Any
         )
         if match is None:
             raise CatalogError(f"Long-term entry '{entry['memory_id']}' is no longer present")
-        return match
+        match_copy = dict(match)
+        match_copy["code_freshness"] = check_code_freshness(project_root, match)
+        return match_copy
     text = read_optional(path)
     if path.suffix in {".yaml", ".yml"}:
         return parse_simple_yaml(path)
@@ -2251,11 +2385,14 @@ def main(argv: list[str] | None = None) -> int:
                 entry["status"] != "active" or not is_current_knowledge(entry)
             ) and not args.include_inactive:
                 raise CatalogError(f"Memory '{args.memory_id}' is unavailable")
+            detail = detail_for_entry(project_root, entry)
+            freshness = check_code_freshness(project_root, detail if isinstance(detail, dict) else entry)
             print(
                 json.dumps(
                     {
                         "memory": entry,
-                        "detail": detail_for_entry(project_root, entry),
+                        "detail": detail,
+                        "code_freshness": freshness,
                         "catalog_refreshed": refreshed,
                     },
                     ensure_ascii=False,

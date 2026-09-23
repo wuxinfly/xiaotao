@@ -858,7 +858,7 @@ def validate_long_term_entry(
     required = {"entry_id", "title", "memory_kind", "content", "source_refs"}
     allowed = required | {
         "status", "decision_context", "tags", "aliases", "search_hints",
-        "valid_from", "valid_until",
+        "valid_from", "valid_until", "code_refs", "code_fingerprints",
     }
     check_object_shape(value, path, errors, required=required, allowed=allowed)
     if "entry_id" in value:
@@ -907,6 +907,18 @@ def validate_long_term_entry(
         ):
             check_unique_strings(value[key], f"{path}.{key}", errors)
     validate_temporal_fields(value, path, errors)
+    if "code_refs" in value and check_array(
+        value["code_refs"],
+        f"{path}.code_refs",
+        errors,
+        file_reference,
+    ):
+        check_unique_strings(value["code_refs"], f"{path}.code_refs", errors)
+    if "code_fingerprints" in value:
+        if require_object(value["code_fingerprints"], f"{path}.code_fingerprints", errors):
+            for fp_key, fp_val in value["code_fingerprints"].items():
+                file_reference(fp_key, f"{path}.code_fingerprints.{fp_key}", errors)
+                check_string(fp_val, f"{path}.code_fingerprints.{fp_key}", errors, min_length=1)
 
 
 def validate_memory_index_entry(
