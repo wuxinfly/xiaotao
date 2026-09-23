@@ -1,0 +1,12 @@
+{
+  "event_id": "evt-20260923-task-completion-decouple",
+  "event_type": "task_completed",
+  "summary": "完成正式 Task 收尾与长期记忆审查解耦，交付主流程不再被审查卡住",
+  "occurred_at": "2026-09-23T12:00:00Z",
+  "task_id": "20260923-收尾解耦",
+  "details": "业务结果与验证完成后同步落盘 completion.md，标记 memory_pending: true，并在 pending/tasks 下维护待审指针",
+  "source_refs": [
+    ".xiaotao/tasks/archive/20260923-收尾解耦/task.yaml",
+    ".xiaotao/tasks/archive/20260923-收尾解耦/completion.md"
+  ]
+}

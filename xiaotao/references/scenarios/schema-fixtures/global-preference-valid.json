@@ -1,0 +1,13 @@
+{
+  "preference_id": "comm.concise-chinese",
+  "category": "communication",
+  "statement": "交流使用简洁大白话中文，结果优先于过程",
+  "context": "跨项目沟通偏好，在多个项目中反复确认",
+  "confidence": "confirmed",
+  "source_refs": [
+    "memory/sources/20260901-user-instruction.md",
+    ".xiaotao/tasks/archive/task-init/completion.md"
+  ],
+  "created_at": "2026-09-01T08:00:00Z",
+  "updated_at": "2026-09-23T12:00:00Z"
+}

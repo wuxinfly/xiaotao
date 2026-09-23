@@ -36,7 +36,15 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
       archive/
       trash/
     pending/
+      tasks/<task-id>.json
     sources/<source-id>.json
+    timeline/
+      summary.md
+      years/<year>/
+        summary.md
+        <month>/
+          summary.md
+          <day>.yaml
     long-term/
       current.md
       entries/<entry-id>.md
@@ -119,9 +127,27 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 !.xiaotao/workers/registry.yaml
 !.xiaotao/instructions/registry.yaml
 !.xiaotao/memory/long-term/
+!.xiaotao/memory/timeline/
 !.xiaotao/memory/followups/
 !.xiaotao/memory/sources/
 ```
+
+## 全局用户记忆存储布局 (`~/.xiaotao/memory/`)
+
+用户跨项目协作的通用习惯、偏好与跨项目经历线索独立存放在用户目录（`$XIAOTAO_HOME/.xiaotao/memory/` 或 `~/.xiaotao/memory/`）：
+
+```text
+~/.xiaotao/memory/
+  preferences/
+    communication.yaml      # 交流偏好
+    coding_style.yaml       # 编码习惯
+    testing.yaml            # 测试与验证风格
+  journeys/
+    <project-slug>.yaml     # 跨项目经历简述，包含项目身份、参与周期与详情入口
+  manifest.md               # 全局用户认知轻量总览
+```
+
+全局用户偏好使用 [global-preference.schema.json](schemas/global-preference.schema.json) 校验；项目记忆时间线事件使用 [timeline-event.schema.json](schemas/timeline-event.schema.json) 校验。
 
 内置 Worker 注册表是不可变的已安装参考数据。只有需要可复用的项目特定 Worker 或能力别名时，
 才创建项目注册表。选中的 Worker 规格复制到匹配的 Task 或 Temporary 中，执行时绝不通过引用
