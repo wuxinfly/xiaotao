@@ -521,3 +521,5 @@ ID 并递增 revision；其他目标文件以各自递增的 revision 标为 `su
 但不能批准候选。
 
 移动目录或文件前，记录转换、时间戳、actor/reviewer、适用时的理由和来源路径。
+
+`.xiaotao/memory/imports/<import_id>/manifest.json` 存导入状态与确认事件，`sources/` 存原样字节副本；两者是权威来源并随项目版本管理。Activity index 和 Timeline 是其派生产物。格式与命令见 [external-memory.md](external-memory.md)。

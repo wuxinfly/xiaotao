@@ -97,3 +97,5 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
 - 长 Session、Turn Guard 或会话恢复时，严禁永久常驻完整 SKILL.md 与全套 references。依靠极简
   [Core Guard](references/guard.md)（< 300 tokens）与动态 Runtime Context 锚定核心边界，具体规则
   按需加载，避免上下文膨胀与规则漂移。
+
+外部已完成工作文档的显式导入与时间线确认，按 [external-memory.md](references/external-memory.md) 操作。

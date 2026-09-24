@@ -25,7 +25,8 @@
         "playbook_superseded",
         "milestone",
         "checkpoint_recovered",
-        "worker_approved"
+        "worker_approved",
+        "external_work"
       ]
     },
     "summary": {

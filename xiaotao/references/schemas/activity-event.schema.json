@@ -33,7 +33,8 @@
         "playbook_approved",
         "playbook_superseded",
         "checkpoint_recovered",
-        "worker_approved"
+        "worker_approved",
+        "external_work"
       ]
     },
     "title": {

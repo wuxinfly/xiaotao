@@ -250,3 +250,7 @@ Memory Worker 是在持久边界（委派完成、Session Handoff、Temporary �
 在发布时核对摘要和 registry 内容，但后续读取不可要求旧 registry revision 仍是当前 revision。
 registry 后续编辑、禁用或移除 Worker 都不会改写历史批准事实。批准记录只证明既有评审结果，
 不能自行授予批准权限，也不能由 Activity 创建。
+
+外部记忆整合 Worker 的职责：读取显式导入的受管副本及当前 Activity/Memory；核实发生时间、归属、结果与重复内容；形成 `external_memory.py confirm` 所需的提案，请用户确认后提交。日期不明不得猜测，SKIP 写原因；对长期有效知识只提出候选，沿用现有独立评审和 Decision Record，不直接更新长期条目。详见 [external-memory.md](external-memory.md)。
+
+执行说明：[external-memory-integrator.md](../workers/external-memory-integrator.md)。
