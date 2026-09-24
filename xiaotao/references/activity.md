@@ -145,3 +145,5 @@ python xiaotao/scripts/activity_catalog.py --project-root <root> check
 
 `build` 原子写入派生 Index。`check` 只判断现有 Index 是否有效且与当前 Task 和 Decision 来源一致，
 不修改文件。
+
+外部工作文档经显式导入和确认后，以 `external_work` 事件纳入 Activity；时间取已确认的发生时间，来源是项目内受管副本。操作见 [external-memory.md](external-memory.md)。

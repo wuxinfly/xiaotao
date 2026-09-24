@@ -670,3 +670,5 @@ Memory Merger Worker 处理三方 memory 合并请求，不改变 Task 范围，
 python xiaotao/scripts/validate.py memory-merge-request <file> --project-root <project-root>
 python xiaotao/scripts/validate.py memory-merge-response <file> --project-root <project-root>
 ```
+
+外部已完成工作文档导入参见 [external-memory.md](external-memory.md)；有效知识仍走 Memory Worker 的候选、评审与 Decision Record 流程。

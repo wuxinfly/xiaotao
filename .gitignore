@@ -17,3 +17,5 @@ __pycache__/
 adapters/deepseek-harness/lib/
 website/.astro/
 website/dist/
+!.xiaotao/memory/imports/
+!.xiaotao/memory/imports/**

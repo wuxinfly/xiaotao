@@ -51,6 +51,7 @@ ACTIVITY_EVENT_TYPES = {
     "playbook_superseded",
     "checkpoint_recovered",
     "worker_approved",
+    "external_work",
 }
 ACTIVITY_EVENT_ID_PATTERN = re.compile(r"^activity-[A-Za-z0-9][A-Za-z0-9._-]*$")
 

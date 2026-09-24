@@ -38,6 +38,7 @@ INDEX_PATH = ACTIVITY_ROOT / "index.json"
 TASKS_ROOT = Path(".xiaotao/tasks")
 DECISIONS_ROOT = Path(".xiaotao/memory/long-term/decisions")
 PLAYBOOK_DECISIONS_ROOT = Path(".xiaotao/playbooks/decisions")
+IMPORTS_ROOT = Path(".xiaotao/memory/imports")
 WORKER_APPROVALS_ROOT = Path(".xiaotao/workers/approvals")
 TEMPORARY_ROOT = Path(".xiaotao/memory/temporary")
 DECISION_SUFFIX = ".decision.json"
@@ -51,6 +52,7 @@ EVENT_TYPES = {
     "playbook_superseded",
     "checkpoint_recovered",
     "worker_approved",
+    "external_work",
 }
 TASK_EVENT_STATUSES = {"completed", "archive"}
 # ``promoted_at`` is only written when the promotion transaction commits, so a ``preparing`` Task
@@ -253,6 +255,55 @@ def checkpoint_source_files(project_root: Path) -> list[Path]:
     return result
 
 
+def external_source_files(project_root: Path) -> list[Path]:
+    root = project_root / IMPORTS_ROOT
+    if root.exists() and not root.is_dir():
+        raise CatalogError(f"Import root must be a directory: {root}")
+    files = sorted(root.glob("*/manifest.json"))
+    for path in files:
+        if path.is_symlink():
+            raise CatalogError(f"Import manifest must not be a symlink: {path}")
+        project_relative(project_root, path)
+    return files
+
+
+def derive_external_events(project_root: Path, sources: list[Path]) -> list[dict[str, Any]]:
+    events = []
+    ids = set()
+    for path in sources:
+        record, _ = read_json_object(path, "External work import")
+        if record.get("import_id") != path.parent.name or record.get("status") not in {"pending", "skipped", "confirmed"}:
+            raise CatalogError(f"invalid import manifest {path}")
+        for source in record.get("sources", []):
+            ref = source["ref"]
+            expected = (IMPORTS_ROOT / path.parent.name / "sources").as_posix() + "/"
+            if not isinstance(ref, str) or not ref.startswith(expected):
+                raise CatalogError(f"invalid managed source: {ref}")
+            file = project_root / ref
+            if file.is_symlink() or not file.is_file() or project_relative(project_root, file) != ref:
+                raise CatalogError(f"missing managed source: {ref}")
+            if hashlib.sha256(file.read_bytes()).hexdigest() != source["sha256"]:
+                raise CatalogError(f"managed source hash mismatch: {ref}")
+        if record["status"] != "confirmed":
+            continue
+        allowed = {item["ref"] for item in record["sources"]}
+        for item in record["events"]:
+            refs = item["source_refs"]
+            stamp = normalize_utc(item["occurred_at"])
+            if not refs or len(refs) != len(set(refs)) or not set(refs) <= allowed:
+                raise CatalogError(f"invalid event source refs: {path}")
+            stable = "external-" + hashlib.sha256((stamp + "\n" + item["title"] + "\n" + "\n".join(sorted(refs))).encode()).hexdigest()[:24]
+            if item["event_id"] != stable or stable in ids:
+                raise CatalogError(f"duplicate or invalid external event ID: {path}")
+            ids.add(stable)
+            event = {"event_id": make_event_id("external_work", stable, stamp),
+                     "occurred_at": stamp, "event_type": "external_work", "title": item["title"],
+                     "summary": item["summary"], "source_refs": refs, "status": "completed"}
+            validate_event(project_root, event)
+            events.append(event)
+    return events
+
+
 def activity_source_files(project_root: Path) -> list[Path]:
     return (
         task_source_files(project_root)
@@ -260,6 +311,9 @@ def activity_source_files(project_root: Path) -> list[Path]:
         + playbook_decision_source_files(project_root)
         + checkpoint_source_files(project_root)
         + worker_approval_source_files(project_root)
+        + external_source_files(project_root)
+        + [project_root / item["ref"] for manifest in external_source_files(project_root)
+           for item in read_json_object(manifest, "External work import")[0].get("sources", [])]
     )
 
 
@@ -590,13 +644,15 @@ def derive_index(project_root: Path, *, now: datetime | None = None) -> dict[str
     playbook_sources = playbook_decision_source_files(project_root)
     checkpoint_sources = checkpoint_source_files(project_root)
     worker_approval_sources = worker_approval_source_files(project_root)
-    sources = task_sources + decision_sources + playbook_sources + checkpoint_sources + worker_approval_sources
+    external_sources = external_source_files(project_root)
+    sources = activity_source_files(project_root)
     digest_before = source_digest(project_root, sources)
     events = derive_task_events(project_root, task_sources)
     events.extend(derive_decision_events(project_root, decision_sources))
     events.extend(derive_playbook_events(project_root, playbook_sources))
     events.extend(derive_checkpoint_events(project_root))
     events.extend(derive_worker_approval_events(project_root, worker_approval_sources))
+    events.extend(derive_external_events(project_root, external_sources))
     events.sort(key=lambda item: (item["occurred_at"], item["event_id"]))
     sources_after = activity_source_files(project_root)
     digest_after = source_digest(project_root, sources_after)
