@@ -81,7 +81,7 @@ test('coordination defines light task fast-path and rules for upgrading to persi
 
   // Coordination defines light task fast-path
   assert.match(coordination, /轻任务直通（默认路径）/);
-  assert.match(coordination, /不创建 Temporary、Task、Worker 选择记录、快照或持久 Handoff/);
+  assert.match(coordination, /不创建 Task、Worker 选择记录、快照或持久 Handoff/);
   assert.match(coordination, /升级为持久 Task 的触发条件/);
   assert.match(coordination, /中途变复杂的平滑升级协议/);
   assert.match(coordination, /确需宿主工具隔离、补充小涛缺失的能力，或用户明确要求委派/);

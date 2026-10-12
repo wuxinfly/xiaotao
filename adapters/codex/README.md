@@ -5,6 +5,8 @@
 `SubagentStart`。压缩后，SessionStart 可在下一次模型请求前提供精简规则和记忆入口；派出一个
 已准备好的持久 Worker 时，SubagentStart 可注入经过验证的 Delegation Packet。
 
+阶段进度由 Core 按方案确认、代码改动、验证或阻塞节点主动保存并回读；SessionStart 提醒与该规则对齐，但 Hook 本身不执行保存，也不保证模型不会漏存。
+
 ## 已实现的范围
 
 - 提供协调、授权、Worker 等待和按需加载等少量 Core 提醒。
