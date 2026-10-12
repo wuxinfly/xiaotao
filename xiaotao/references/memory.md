@@ -64,7 +64,7 @@ Open questions 和可达的项目相对 source refs。这只是覆盖已提交�
 ## Temporary Memory
 
 
-Temporary Memory 表示正式 Task 之前值得保留的讨论。保持 `current.md` 简短：
+Temporary Memory 表示值得保留的讨论或无需正式 Task 的轻任务阶段进度。保持 `current.md` 简短：
 
 ```markdown
 ---
@@ -91,7 +91,7 @@ updated_by: xiao-tao/session-or-run-id
 - references/<name>.md
 ```
 
-用户明确要求 Session Handoff 时，将当前讨论压缩为上述格式。讨论有长期价值但已暂停时归档；
+阶段节点按 [coordination.md](coordination.md) 保存简短进度；用户明确要求 Session Handoff 时，也将当前讨论压缩为上述格式。讨论有长期价值但已暂停时归档；
 只有用户明确否定且不再有延续价值时才移入 Trash。
 
 ### Temporary 路由上下文

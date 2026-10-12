@@ -41,6 +41,7 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
 | 长 Session 极简底线守卫、Turn 常驻或 Hook 恢复提醒 | [guard.md](references/guard.md) |
 | 解释或暴露 XiaoTao 的跨宿主输入输出契约 | [contract.md](references/contract.md) |
 | 开始、恢复、晋升、协调、委派或结束实质工作 | [coordination.md](references/coordination.md) |
+| 阶段保存简短进度（含轻任务） | [coordination.md](references/coordination.md) 的阶段进度保存与 [storage.md](references/storage.md) |
 | 创建或修改 `.xiaotao/` 状态 | [storage.md](references/storage.md) |
 | 浏览、查询、压缩、恢复、归档或晋升项目 Memory | [memory.md](references/memory.md) |
 | 查询某段时间完成过什么或回顾项目活动 | [activity.md](references/activity.md) |
@@ -62,6 +63,8 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
   完整证据、历史背景、内部路径和 Worker 细节留在记录中，用户要求时再展开。没有内容的类别不要硬写。
 
 ## 核心约束
+
+- 阶段进度保存：已启用 XiaoTao 的项目中，方案确定或重要调整、一批相关代码改完、验证结束或遇到阻塞时，若产生值得接续的新事实，必须在向用户交付该阶段结果前保存简短进度并回读核验；本轮仍有未完成工作时补查是否漏存。复用当前 Task `progress.md` 或 Temporary `current.md`；轻任务也可仅保存 Temporary，不强行创建 Task 或委派。无新事实、普通闲聊或用户明确要求不保存时跳过。具体流程见 [coordination.md](references/coordination.md)；聊天总结不代表已落盘，保存失败必须说明。
 
 - 对话、澄清与单会话明确小改动由小涛直接处理。单会话小改动默认轻任务直通，不创建 Task、快照或持久 Handoff；出现跨会话继续、长时间运行、多执行单元协作或中途变复杂时，才创建/升级为正式 Task 并委派 Worker。无需持久化但确需工具隔离、补充小涛缺失能力或用户明确要求委派时，可以使用 Session Worker；不得仅因技术执行或存在可用子代理就委派普通轻任务。直通路径与 Task 路径遵守完全相同的授权边界与必要验证要求；直通中途变复杂时先保存已确认工作再升级。子代理不可用时如实降级为直接执行，不得声称运行了独立 Worker。
 - Memory Worker 仅负责整理记忆与经验审查。工具白名单严格限制为只读工具，输出严格限定为
