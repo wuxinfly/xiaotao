@@ -1,14 +1,14 @@
 {
   "name": "xiaotao-codex",
-  "version": "0.3.0",
-  "description": "恢复 XiaoTao 状态入口，并向单个 Codex subagent 注入有界 Delegation Packet。",
+  "version": "0.4.0",
+  "description": "恢复 XiaoTao、注入有界 Worker Packet，并在结束回复时检查阶段保存回执。",
   "author": {
     "name": "IHongTaoI"
   },
   "interface": {
     "displayName": "XiaoTao Codex",
-    "shortDescription": "恢复状态并注入有界 Worker Packet。",
-    "longDescription": "面向 XiaoTao 项目的 SessionStart 与 SubagentStart Hooks。只读恢复共享项目状态入口，并为会话绑定的单 Worker 注入经过验证的 Delegation Packet；不读取聊天记录，也不自动选择 Task。",
+    "shortDescription": "恢复状态、注入 Worker、检查进度漏存。",
+    "longDescription": "面向 XiaoTao 项目的恢复、单 Worker 注入与阶段进度回执检查。Stop 最多提醒一次补查，不读取聊天记录、不代写总结、不自动选择 Task。",
     "developerName": "IHongTaoI",
     "category": "Productivity",
     "capabilities": [],

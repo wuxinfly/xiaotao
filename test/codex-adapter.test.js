@@ -424,7 +424,7 @@ test('shipped hook command runs from an installed plugin path with spaces and sh
   const projectRoot = path.join(root, 'project');
   await project(projectRoot);
   const hooks = JSON.parse(await readFile(path.join(source, 'hooks/hooks.json'), 'utf8'));
-  assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart', 'SubagentStart']);
+  assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart', 'SubagentStart', 'UserPromptSubmit', 'Stop']);
   const command = hooks.hooks.SessionStart[0].hooks[0].command;
   const stdout = execSync(command, {
     cwd: projectRoot, env: { ...process.env, PLUGIN_ROOT: source },
@@ -455,7 +455,7 @@ test('local installer prepares a hooks-only personal source without activation o
   assert.equal(catalog.plugins[0].source.path, './.codex/plugins/xiaotao-codex');
   assert.equal(catalog.plugins[0].policy.installation, 'AVAILABLE');
   assert.equal(manifest.skills, undefined);
-  assert.match(manifest.version, /^0\.3\.0\+codex\.[a-f0-9]{16}$/);
+  assert.match(manifest.version, /^0\.4\.0\+codex\.[a-f0-9]{16}$/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/handoff-contract.mjs'), 'utf8'), /isValidHandoffShape/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/subagent-start.mjs'), 'utf8'), /subagentContext/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/delegation-contract.mjs'), 'utf8'), /validDelegationPacket/);

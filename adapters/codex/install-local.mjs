@@ -11,6 +11,7 @@ const FILES = [
   '.codex-plugin/plugin.json',
   'hooks/hooks.json',
   'scripts/session-start.mjs',
+  'scripts/progress-check.mjs',
   'scripts/handoff-contract.mjs',
   'scripts/subagent-start.mjs',
   'scripts/delegation-contract.mjs',
@@ -120,7 +121,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const result = await installLocal();
     console.log(`Prepared XiaoTao Codex ${result.version}\nSource: ${result.pluginDir}\nMarketplace: ${result.marketplace}`);
     console.log('Refresh the desktop app and install/reinstall xiaotao-codex from your personal marketplace.');
-    console.log('Review and trust its SessionStart hook in Codex, then start a new conversation.');
+    console.log('Review and trust its lifecycle hooks in Codex, then start a new conversation.');
     console.log('Projects must separately have XiaoTao installed with: node ./bin/xiaotao.js init <project> --tools codex');
     console.log('This command does not activate the plugin, grant hook trust, or enable automatic checkpoints.');
   } catch (error) { console.error(`XiaoTao Codex: ${error.message}`); process.exitCode = 1; }
