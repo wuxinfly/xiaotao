@@ -1,5 +1,5 @@
 {
-  "description": "恢复 XiaoTao 入口，并为单个会话绑定 Worker 注入有界 Packet；不自动写入 checkpoint。",
+  "description": "恢复 XiaoTao、注入单 Worker Packet，并在 Stop 有界检查阶段保存回执。",
   "hooks": {
     "SessionStart": [
       {
@@ -23,6 +23,30 @@
             "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','subagent-start.mjs')).href).then(m=>m.run())\"",
             "timeout": 5,
             "additionalContextLimit": 8000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','progress-check.mjs')).href).then(m=>m.run())\"",
+            "timeout": 5,
+            "additionalContextLimit": 2500
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','progress-check.mjs')).href).then(m=>m.run())\"",
+            "timeout": 5,
+            "additionalContextLimit": 2500
           }
         ]
       }

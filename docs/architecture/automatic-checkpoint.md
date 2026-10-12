@@ -8,7 +8,7 @@ Scope: [#56](https://github.com/IHongTaoI/xiaotao/issues/56). Updated 2026-09-10
 | Host | Capability available | Feature activated |
 | --- | --- | --- |
 | DSH | `agent/turn-stopping` is awaited; token-meter can expose canonical projected pressure; request/usage provides a fallback | Opt-in pressure trigger is implemented. It is not called pre-compaction or Session End. |
-| Codex Hooks | Official Hooks documentation exposes real `PreCompact`, `PostCompact`, `SessionEnd`, `Stop` and `SessionStart` events | Existing plugin activates only `SessionStart`. Automatic checkpoint is unsupported until a bounded model/tool path can supply target and facts before compaction. |
+| Codex Hooks | Official Hooks documentation exposes real `PreCompact`, `PostCompact`, `SessionEnd`, `Stop` and `SessionStart` events | Plugin activates SessionStart, single-Worker SubagentStart and UserPromptSubmit/Stop progress-receipt checks. Stop can request one model continuation for a missing receipt; automatic pre-compaction checkpoint remains inactive. |
 | Bare Core Skill | No deterministic lifecycle capability | Unsupported; explicit save remains available through host tools. |
 
 Capability availability and feature activation are recorded separately. A hook name or declaration scan is not live
@@ -52,3 +52,7 @@ The transcript format is explicitly not a stable hook interface. Therefore the c
 capability as available but leaves automatic checkpoint inactive instead of guessing or silently copying a transcript.
 
 Reference: [official Codex Hooks documentation](https://learn.chatgpt.com/docs/hooks).
+
+## Codex Stop receipt checks
+
+Stop checks explicit turn receipts and can request one focused model continuation. It does not read transcripts, select a progress target or write snapshots. The model still applies Core milestone rules and declares saved/skipped/failed. File hashes verify the saved file, not semantic completeness. See [Codex adapter](../../adapters/codex/README.md#阶段保存漏存检查). Real desktop acceptance is unverified.
