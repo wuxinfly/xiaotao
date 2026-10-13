@@ -14,7 +14,7 @@ const run = (root, args, input, now = fixed) => new Promise((resolve, reject) =>
 const json = async (...args) => JSON.parse(await run(...args));
 async function put(root, relative, text) { const p = path.join(root, relative); await mkdir(path.dirname(p), { recursive: true }); await writeFile(p, text); }
 async function fixture(t) { const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-daily-')); t.after(() => rm(root, { recursive: true, force: true })); await mkdir(path.join(root, '.xiaotao')); return root; }
-const note = (extra = {}) => ({ topic_id: 'daily-design', title: '每日记忆方案', summary: '确认按年、月、日逐层检索', details: '保留当前方案与待办，尚未实施。', actor: 'xiaotao/test', expected_revision: null, request_id: 'turn-1', ...extra });
+const note = (extra = {}) => ({ occurred_at: fixed, timezone: 'UTC', topic_id: 'daily-design', title: '每日记忆方案', summary: '确认按年、月、日逐层检索', details: '保留当前方案与待办，尚未实施。', actor: 'xiaotao/test', expected_revision: null, request_id: 'turn-1', ...extra });
 
 test('conversation saves directly to a daily detail and links bounded year/month/day navigation', async t => {
   const root = await fixture(t); const saved = await json(root, ['save'], note());
@@ -49,7 +49,7 @@ test('CAS, identical retries and reused request IDs protect previously saved fac
 
 test('project timezone attributes UTC midnight boundaries to the correct local day and year', async t => {
   const root = await fixture(t); await put(root, '.xiaotao/config.yaml', 'memory_timezone: Asia/Shanghai\n');
-  const result = await json(root, ['save'], note(), '2026-12-31T18:00:00Z');
+  const result = await json(root, ['save'], note({ occurred_at: '2026-12-31T18:00:00Z', timezone: 'Asia/Shanghai' }), '2026-12-31T18:00:00Z');
   assert.match(result.path, /2027\/01\/01/);
   const record = (await json(root, ['show', '--date', '2027-01-01', '--topic', 'daily-design'])).record;
   assert.equal(record.occurred_at, '2026-12-31T18:00:00Z'); assert.equal(record.timezone, 'Asia/Shanghai');
@@ -167,4 +167,20 @@ test('existing Activity events use the project timezone without changing their s
   assert.equal(events.total, 1);
   assert.match(events.events[0].event_id, /^activity-20261231-/);
   assert.equal((await json(root, ['events', '--date', '2026-12-31'])).total, 0);
+});
+
+
+test('save context freezes retry attribution across midnight and refuses to retime existing facts', async t => {
+  const root = await fixture(t); await put(root, '.xiaotao/config.yaml', 'memory_timezone: Asia/Shanghai\n');
+  const context = await json(root, ['context'], undefined, '2026-10-13T15:59:59Z');
+  assert.equal(context.date, '2026-10-13');
+  const request = note({ occurred_at: context.occurred_at, timezone: context.timezone });
+  const first = await json(root, ['save'], request, '2026-10-13T15:59:59Z');
+  const retry = await json(root, ['save'], request, '2026-10-13T16:00:01Z');
+  assert.equal(retry.status, 'duplicate'); assert.equal(retry.path, first.path);
+  assert.equal((await json(root, ['events', '--date', '2026-10-14'])).total, 0);
+  await assert.rejects(run(root, ['save'], { ...request, expected_revision: 0, request_id: 'retime', occurred_at: '2026-10-13T14:00:00Z' }), /immutable/);
+  assert.equal((await json(root, ['show', '--date', '2026-10-13', '--topic', 'daily-design'])).record.occurred_at, context.occurred_at);
+  const incomplete = note(); delete incomplete.occurred_at;
+  await assert.rejects(run(root, ['save'], incomplete), /requires occurred_at/);
 });

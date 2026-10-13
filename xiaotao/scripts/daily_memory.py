@@ -270,8 +270,12 @@ def save_note(root, request, now):
     expected = request.get('expected_revision')
     if expected is not None and (type(expected) is not int or expected < 0):
         raise DailyError('expected_revision must be null (create) or a nonnegative integer')
-    occurred = stamp(request['occurred_at']) if 'occurred_at' in request else now
-    zone_name = request.get('timezone', memory_timezone(root, now))
+    # Freeze date attribution in the request itself so an identical retry after
+    # midnight or a config change cannot create a second note on another day.
+    if 'occurred_at' not in request or 'timezone' not in request:
+        raise DailyError('save requires occurred_at and timezone; obtain them with context and keep them on retry')
+    occurred = stamp(request['occurred_at'])
+    zone_name = request['timezone']
     day = occurred.astimezone(zone(zone_name, occurred)).date().isoformat()
     relative = note_relative(day, request.get('topic_id'))
     with timeline_lock(root):
@@ -298,8 +302,6 @@ def save_note(root, request, now):
         }
         # Exact retry is recognized before CAS; other stale writes fail closed.
         semantic = {k: v for k, v in record.items() if k not in {'revision', 'updated_at', 'request_id'}}
-        if 'occurred_at' not in request:
-            semantic.pop('occurred_at')
         digest = hashlib.sha256(json.dumps(semantic, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         record['request_hash'] = digest
         validate_record(record, relative)
@@ -312,6 +314,8 @@ def save_note(root, request, now):
         if old and old['work_ref'] and (not work or old['work_ref']['kind'] != work['kind'] or old['work_ref']['id'] != work['id']):
             raise DailyError('cannot rebind a daily topic to different work')
         if old:
+            if record['timezone'] != old['timezone'] or record['occurred_at'] != old['occurred_at']:
+                raise DailyError('existing note date/timezone/occurred_at is immutable; use its original values')
             record['occurred_at'] = old['occurred_at']
             # A new request with no changed facts does not invent a new revision.
             compare = ('title', 'summary', 'details', 'source_refs', 'work_ref')

@@ -220,7 +220,7 @@ def parse_args(argv):
     common.add_argument('--now', default=argparse.SUPPRESS)
     parser = argparse.ArgumentParser(description=__doc__, parents=[common])
     commands = parser.add_subparsers(dest='command', required=True)
-    for c in ('build', 'check', 'save'):
+    for c in ('build', 'check', 'save', 'context'):
         commands.add_parser(c, parents=[common])
     summary = commands.add_parser('summary', parents=[common])
     summary.add_argument('--year')
@@ -251,7 +251,11 @@ def main(argv=None):
     try:
         root = args.project_root.resolve(strict=True)
         now = resolve_reference_time(args.now)
-        if args.command == 'save':
+        if args.command == 'context':
+            name = memory_timezone(root, now)
+            print(json.dumps({'timezone': name, 'occurred_at': now.isoformat(timespec='seconds').replace('+00:00', 'Z'),
+                              'date': now.astimezone(zone(name, now)).date().isoformat()}))
+        elif args.command == 'save':
             raw = sys.stdin.buffer.read(MAX_BYTES + 1)
             if len(raw) > MAX_BYTES:
                 raise TimelineError('save input exceeds 32 KiB')

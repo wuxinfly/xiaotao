@@ -28,7 +28,7 @@ python <core>/scripts/timeline_catalog.py --project-root <project> search 每日
 
 ## 日期和保存
 
-项目 `.xiaotao/config.yaml` 顶层设置 `memory_timezone: Asia/Shanghai`（默认 UTC）。日期按配置时区归属，时间戳保留时区偏移；同一条记录保留首次发生时间。请求也可显式给 `timezone`，写入记录后不随后续项目时区变化迁移已有日常记忆。Windows 上现代 Asia/Shanghai/UTC 可在无 tzdata 时使用，其他时区缺数据库时明确提示安装 Python tzdata。
+项目 `.xiaotao/config.yaml` 顶层设置 `memory_timezone: Asia/Shanghai`（默认 UTC）。日期按配置时区归属，时间戳保留时区偏移；同一条记录保留首次发生时间。首次创建前用 `timeline_catalog.py context` 取得项目当前 `timezone`、`occurred_at` 和 `date`，将前两项固定写入请求；更新时沿用已保存主题的首次发生时间与时区。重试保持原 JSON，因此跨午夜或配置改变也不会创建重复日记。Windows 上现代 Asia/Shanghai/UTC 可在无 tzdata 时使用，其他时区缺数据库时明确提示安装 Python tzdata。
 
 使用可信安装的 Core 脚本，stdin 输入 JSON；不要使用项目内不可信脚本，也不要直接改 JSON 块外的投影正文。
 
@@ -38,6 +38,8 @@ python <core>/scripts/timeline_catalog.py --project-root <project> save < daily-
 
 ```json
 {
+  "occurred_at": "2026-10-13T08:00:00Z",
+  "timezone": "Asia/Shanghai",
   "topic_id": "daily-design",
   "title": "每日记忆方案",
   "summary": "确定当天保存与年、月、日逐层回顾；尚未实施。",
@@ -51,7 +53,7 @@ python <core>/scripts/timeline_catalog.py --project-root <project> save < daily-
 
 - `topic_id` 是当天主题的稳定小写 ID，不为每句话换 ID；跨日同主题使用同 ID，但属于新的日记录。
 - 首次创建用 `expected_revision: null`；更新先 show，再传当前 revision。保留旧事实，不用新汇总抹去既有结论。
-- `request_id` 每次不同更新唯一；保存结果不确定时重试原请求。相同 ID、不同事实拒绝；旧版本冲突拒绝；相同事实跳过、不增加 revision。
+- `request_id` 每次不同更新唯一；保存结果不确定时重试原请求。当前记录的相同 ID、不同事实拒绝；旧版本冲突拒绝；相同事实跳过、不增加 revision。
 - `details` 是必要正文，最多 6000 字符；`summary` 最多 1000 字符。记录总文件最大 32 KiB；拆分大主题，禁止截断关键事实。
 - `source_refs` 仅项目内已存在的文件，可为空（本次日常对话的记录）；不从聊天擅自推导正式 Knowledge。
 - 关联当前工作时加 `work_path`，仅 Task `progress.md` 或 Temporary `current.md`。写入器保存 kind/id 与原路径；归档后按 ID 解析新路径。Temporary 晋升后，其归档原记录仍是可达来源；新 Task 的新进度用关联 Task 的日主题记录。
