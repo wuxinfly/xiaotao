@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { Readable, Writable } from 'node:stream';
 import { progressContext, acknowledge, run } from '../adapters/codex/xiaotao-codex/scripts/progress-check.mjs';
 const script = fileURLToPath(new URL('../adapters/codex/xiaotao-codex/scripts/progress-check.mjs', import.meta.url));
-const target = '.xiaotao/memory/temporary/active/topic/current.md';
+const today = new Date().toISOString().slice(0, 10);
+const target = `.xiaotao/memory/timeline/years/${today.replaceAll('-', '/')}/details/topic.md`;
 async function put(root, file, content) { await mkdir(path.dirname(path.join(root, file)), { recursive: true }); await writeFile(path.join(root, file), content); }
 async function fixture(t) {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-progress-'));
@@ -17,7 +18,13 @@ async function fixture(t) {
   return { cwd, session_id: 'session-a', turn_id: 'turn-a', hook_event_name: 'UserPromptSubmit' };
 }
 const stop = e => ({ ...e, hook_event_name: 'Stop', stop_hook_active: false });
-async function save(e, relative = target, revision = 0) { await put(e.cwd, relative, `---\nrevision: ${revision}\nupdated_at: ${new Date().toISOString()}\nupdated_by: xiao-tao/test\n---\n目标：修复配置\n已改，尚未验证。\n`); }
+async function save(e, relative = target, revision = 0, workRef = null) {
+  const updated = new Date().toISOString();
+  const front = `---\nrevision: ${revision}\nupdated_at: ${updated}\nupdated_by: xiao-tao/test\n---\n`;
+  if (!relative.includes('/timeline/')) return put(e.cwd, relative, front + '已改，尚未验证。\n');
+  const record = { schema_version: 1, record_id: `daily-${today}-topic`, topic_id: 'topic', date: today, timezone: 'UTC', title: '本轮工作', summary: '已改，尚未验证', details: '', source_refs: [], revision, updated_at: updated, updated_by: 'xiao-tao/test', occurred_at: updated, work_ref: workRef };
+  await put(e.cwd, relative, front + '\n```xiaotao-daily-record\n' + JSON.stringify(record) + '\n```\n');
+}
 
 test('missing receipt continues once, repeated Stop and active continuation cannot loop', async t => {
   const e = await fixture(t); await progressContext(e);
@@ -61,11 +68,16 @@ test('sessions and turns are isolated; unknown turns and missing identifiers fai
   assert.equal(await progressContext({ ...stop(e), turn_id: undefined }), null);
 });
 
-test('completed lightweight work can acknowledge the archived Current State', async t => {
+test('linked lightweight work requires both daily and archived Current State receipts', async t => {
   const e = await fixture(t); await progressContext(e);
-  const archived = target.replace('/active/', '/archive/'); await save(e, archived);
-  await acknowledge({ ...e, status: 'saved', path: archived });
+  const archived = '.xiaotao/memory/temporary/archive/topic/current.md';
+  await save(e, archived);
+  await save(e, target, 0, { kind: 'temporary', id: 'topic', path: '.xiaotao/memory/temporary/active/topic/current.md' });
+  await assert.rejects(acknowledge({ ...e, status: 'saved', path: target }), /linked_work_receipt_missing/);
+  await acknowledge({ ...e, status: 'saved', path: target, work_paths: [archived] });
   assert.equal(await progressContext(stop(e)), null);
+  await save(e, archived, 1);
+  assert.equal((await progressContext(stop(e))).decision, 'block');
 });
 
 test('ordinary and nested repositories do not borrow parent project state', async t => {
@@ -129,4 +141,38 @@ test('a busy lock fails open and remains owned by its original writer', async t 
   const result = execFileSync(process.execPath, [script], { input: JSON.stringify(stop(e)), encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
   assert.deepEqual(JSON.parse(result), {});
   assert.equal(await readFile(lock, 'utf8'), 'other writer');
+});
+
+const compact = (e, trigger = 'manual') => ({ ...e, hook_event_name: 'PreCompact', turn_id: undefined, trigger });
+
+test('manual compaction checks latest session receipt without requiring an active turn ID', async t => {
+  const e = await fixture(t); await progressContext(e); await save(e);
+  await acknowledge({ ...e, status: 'saved', path: target });
+  assert.equal(await progressContext(compact(e)), null);
+  await save(e, target, 1);
+  assert.equal((await progressContext(compact(e))).continue, false);
+  assert.equal((await progressContext(compact(e))).continue, undefined);
+});
+
+test('missing or failed compaction receipt pauses once and automatic mid-turn compaction warns without trapping', async t => {
+  const e = await fixture(t);
+  const first = await progressContext(compact(e));
+  assert.equal(first.continue, false); assert.match(first.stopReason, /没有自动总结/);
+  assert.equal((await progressContext(compact(e))).continue, undefined);
+  const next = { ...e, turn_id: 'next' }; await progressContext(next);
+  await acknowledge({ ...next, status: 'failed', reason: 'save-failed' });
+  assert.equal((await progressContext(compact(next))).continue, false);
+  assert.match((await progressContext(compact(next, 'auto'))).systemMessage, /自动压缩.*放行/);
+  await acknowledge({ ...next, status: 'skipped', reason: 'no-new-facts' });
+  assert.equal(await progressContext(compact(next)), null);
+});
+
+test('receipts reject generated summaries, mismatched daily identity and unrelated work', async t => {
+  const e = await fixture(t); await progressContext(e); await save(e);
+  await assert.rejects(acknowledge({ ...e, status: 'saved', path: target.replace('details/topic.md', 'summary.md') }), /invalid_progress_target/);
+  const before = await readFile(path.join(e.cwd, target), 'utf8');
+  await put(e.cwd, target, before.replace('daily-' + today + '-topic', 'daily-2000-01-01-topic'));
+  await assert.rejects(acknowledge({ ...e, status: 'saved', path: target }), /invalid_daily_record/);
+  await put(e.cwd, target, before);
+  await assert.rejects(acknowledge({ ...e, status: 'saved', path: target, work_paths: ['.xiaotao/tasks/other/progress.md'] }), /unrelated_work/);
 });

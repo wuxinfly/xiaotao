@@ -24,8 +24,8 @@ XiaoTao 的记忆用于延续协作与沉淀经验，不用于复刻对话或流
    - **已核实的当前项目说明进入知识库**：架构图景、模块职责、约定规范、现行结论进入 `knowledge/entries/`；
    - **跨项目经历简述或稳定偏好进入全局用户记忆**：跨项目通用偏好进入 `preferences/`，经历线索进入 `journeys/`。**硬性约束**：不能仅凭一次行为推断稳定偏好，必须具备两次以上跨会话/任务事实佐证。
    - **同一事件多处关联**：同一件事可以分别在多处落地其侧重点，但以稳定引用关联，避免复制完整细节。
-   - **时间线事件身份**：可由 Activity 派生的事件沿用 `activity_catalog.py` 根据事件类型、来源 ID 与归一化发生时间生成的 `event_id` 和 `occurred_at`，不另造时间线 ID；仅存在于项目记忆的事件也使用同一 ID 格式，并保留其稳定来源。
-   - **评审与不可变决策**：写入前检查来源、重复、冲突与现行证据，严格沿用 Memory Worker 提案（只读隔离、禁止自我批准）与 Decision Record；无冲突的显式创建继续保持轻量授权路径。
+   - **时间线事件身份**：可由 Activity 派生的事件沿用 `activity_catalog.py` 根据事件类型、来源 ID 与归一化发生时间生成的 `event_id` 和 `occurred_at`，不另造时间线 ID；每日原始记忆使用 `daily-<日期>-<主题ID>` 稳定身份，保留来源；不反向制造 Activity 事件。
+   - **评审与不可变决策**：正式 Knowledge/Playbook 入库前检查来源、重复、冲突与现行证据，严格沿用 Memory Worker 提案（只读隔离、禁止自我批准）与 Decision Record；无冲突的显式创建继续保持轻量授权路径。每日事实保存不自动触发正式入库审查。
 
 
 ## 可选快照 Checkpoint
@@ -47,19 +47,11 @@ Open questions 和可达的项目相对 source refs。这只是覆盖已提交�
 
 ## 项目记忆时间线规范与下钻协议 (`.xiaotao/memory/timeline/`)
 
-项目记忆是面向人类与模型的结构化历程时间线，由已归档 Task 与不可变决策记录自动派生与增量更新，不引入常驻后台服务：
+时间线是日常记忆的主要入口。详情保存在 `years/<year>/<month>/<day>/details/<topic>.md`；日 `summary.md`、月/年 `summary.md` 与根总览是可重建导航。它们汇集当天详情与既有 Activity 的任务、决策、外部工作事件。**删除整个 timeline 会丢失日常记忆**；只能重建派生导航，不能删除原始 details。
 
-1. **分层聚合机制**：
-   - 每日事件归集于 `years/<year>/<month>/<day>.yaml`（每个事件符合 `timeline-event.schema.json`）；
-   - 自动生成月度摘要 `years/<year>/<month>/summary.md` 与年度总览 `years/<year>/summary.md`；
-   - 自动生成根级总览 `summary.md`，提供主线脉络与年度导航。
-2. **逐层下钻查询契约**：
-   - 用户提问“项目经历了什么”时，先讲主线（读取根级 `summary.md`）；
-   - 追问具体年份时下钻读取 `years/<year>/summary.md`；
-   - 追问具体月份时下钻读取 `years/<year>/<month>/summary.md`；
-   - 追问当日具体经过与证据时定位 `<day>.yaml` 并展开 `source_refs`。
-   - 启动会话时严格有界感知，严禁一次性把整条时间线倒进模型上下文。
-3. **可恢复性与幂等**：时间线是派生视图，删除 `.xiaotao/memory/timeline/` 可通过构建命令从归档 Task 和不可变决策完整无损重建。
+阅读遵循总览 → 年 → 月 → 日 → 所选详情/Task/Temporary。`timeline_catalog.py summary --year 2026`、再加 `--month 10`，然后 `summary --date 2026-10-13`；选定主题后 `show --date 2026-10-13 --topic <id>`。日事件分页查询 `events --date <date> --limit 20 --offset 0`。日常记忆关键词查询 `search <query>` 默认仅最近 30 日，扩大范围时显式指定 `--from/--to`。不要全量加载详情。
+
+保存、时区、权威记录、重建保护及旧日文件迁移见 [daily-memory.md](daily-memory.md)。知识库仍维护项目当前事实，不把历史日记自动提升为 Knowledge。Temporary/Task 仍承载独立工作状态；每日汇总仅关联其路径与本日变化。
 
 ## Temporary Memory
 

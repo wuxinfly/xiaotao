@@ -1,5 +1,5 @@
 {
-  "description": "恢复 XiaoTao、注入单 Worker Packet，并在 Stop 有界检查阶段保存回执。",
+  "description": "恢复 XiaoTao、注入 Worker Packet，检查每日保存回执并保护手动压缩。",
   "hooks": {
     "SessionStart": [
       {
@@ -41,6 +41,19 @@
     ],
     "Stop": [
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"import(require('node:url').pathToFileURL(require('node:path').join(process.env.PLUGIN_ROOT,'scripts','progress-check.mjs')).href).then(m=>m.run())\"",
+            "timeout": 5,
+            "additionalContextLimit": 2500
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "^(manual|auto)$",
         "hooks": [
           {
             "type": "command",

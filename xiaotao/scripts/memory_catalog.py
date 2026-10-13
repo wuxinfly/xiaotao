@@ -1629,12 +1629,13 @@ def catalog_overview_summary(
         "pending_followup_count": len(all_followups),
         "pending_followups": bounded_followups,
         "more_followups": max(0, len(all_followups) - limit),
+        "timeline_entry": ".xiaotao/memory/timeline/summary.md",
         "bounded_limit": limit,
     }
 
 
 def bounded_runtime_context_text(summary: dict[str, Any]) -> str:
-    lines = ["# Memory Overview (Runtime Context)", ""]
+    lines = ["# Memory Overview (Runtime Context)", "", "项目日常记忆入口：.xiaotao/memory/timeline/summary.md；按年/月/日逐层下钻到当天详情。", ""]
     if summary.get("catalog_cached"):
         lines.append("> 启动时使用现有 Catalog 快照；处理具体问题时请先用 search / show 按需确认最新状态。")
         lines.append("")

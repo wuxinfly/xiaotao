@@ -12,8 +12,8 @@
   - `.xiaotao/memory/timeline/summary.md`：项目经历总览（跨年份主线与年度导航）；
   - `years/<year>/summary.md`：年度总览；
   - `years/<year>/<month>/summary.md`：月度摘要；
-  - `years/<year>/<month>/<day>.yaml`：当日事件列表（符合 `timeline-event.schema.json`）。
-- **底层不丢失**：上层摘要在事件增加时动态刷新，底层 `<day>.yaml` 及其指向 Task/Decision 的原始 `source_refs` 永久保留，绝不被摘要吞噬。
+  - `years/<year>/<month>/<day>/events.yaml`：当日事件列表（有界派生事件，日常原文保存在同日日目录 details/）。
+- **底层不丢失**：上层摘要在事件增加时动态刷新，底层每日 `details/` 权威记录 及其指向 Task/Decision 的原始 `source_refs` 永久保留，绝不被摘要吞噬。
 
 ### 场景 2：逐层有界下钻查询（Progressive Drilling Down）
 - **行为**：

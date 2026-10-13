@@ -1,375 +1,321 @@
 #!/usr/bin/env python3
-"""Build, check, and drill down XiaoTao's derived Project Memory Timeline."""
-
+"""Save daily project facts and derive bounded year/month/day navigation."""
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import posixpath
+from urllib.parse import quote
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 from activity_catalog import derive_index, resolve_reference_time
+from daily_memory import (DailyError, ROOT, MAX_BYTES, atomic_text, day_relative, list_notes,
+                          load_note, memory_timezone, note_relative, read_text, resolve_work,
+                          safe, save_note, stamp, timeline_lock, valid_date, zone)
 
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+TIMELINE_ROOT = ROOT
+GENERATED = '<!-- xiaotao:timeline-generated:v2 -->\n'
+MANAGED = re.compile(r'^(?:summary\.md|years/\d{4}/summary\.md|years/\d{4}/\d{2}/summary\.md|years/\d{4}/\d{2}/\d{2}/(?:summary\.md|events\.yaml))$')
+LEGACY_DAY = re.compile(r'^years/(\d{4})/(\d{2})/(\d{2})\.yaml$')
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 
 
-TIMELINE_ROOT = Path(".xiaotao/memory/timeline")
-YEARS_ROOT = TIMELINE_ROOT / "years"
-DATE_PATTERN = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
-
-
-class TimelineError(ValueError):
+class TimelineError(DailyError):
     pass
 
 
-def parse_scalar_val(val: str) -> Any:
-    val = val.strip()
-    if val.startswith('"') and val.endswith('"'):
-        try:
-            return json.loads(val)
-        except Exception:
-            return val[1:-1]
-    if val.lower() == "true":
-        return True
-    if val.lower() == "false":
-        return False
-    return val
+def short(value, maximum=180):
+    return ' '.join(str(value).split())[:maximum].replace('[', '［').replace(']', '］')
 
 
-def dump_simple_yaml_event(event: dict[str, Any]) -> str:
-    """Format a single timeline event into readable clean YAML."""
-    lines = [
-        f"  - event_id: {json.dumps(event['event_id'], ensure_ascii=False)}",
-        f"    event_type: {event['event_type']}",
-        f"    summary: {json.dumps(event.get('summary', event.get('title', '')), ensure_ascii=False)}",
-        f"    occurred_at: {event['occurred_at']}",
-    ]
-    if "task_id" in event:
-        lines.append(f"    task_id: {json.dumps(event['task_id'], ensure_ascii=False)}")
-    if "decision_id" in event:
-        lines.append(f"    decision_id: {json.dumps(event['decision_id'], ensure_ascii=False)}")
-    if "details" in event and event["details"]:
-        lines.append(f"    details: {json.dumps(event['details'], ensure_ascii=False)}")
-    lines.append("    source_refs:")
-    for ref in event.get("source_refs", []):
-        lines.append(f"      - {json.dumps(ref, ensure_ascii=False)}")
-    return "\n".join(lines)
+def event_summary(event):
+    return short(event.get('summary') or event.get('title') or '事件')
 
 
-def dump_date_file_content(date_str: str, events: list[dict[str, Any]]) -> str:
-    header = f'date: "{date_str}"\nevents:\n'
-    body = "\n".join(dump_simple_yaml_event(e) for e in events) + "\n"
-    return header + body
+def highlights(events, limit=3):
+    values = list(dict.fromkeys(event_summary(e) for e in reversed(events)))
+    return '；'.join(values[:limit]) + ('…' if len(values) > limit else '')
 
 
-def generate_month_summary(year: str, month: str, days: dict[str, list[dict[str, Any]]]) -> str:
-    total_events = sum(len(evs) for evs in days.values())
-    lines = [
-        f"# 项目记忆月度摘要：{year}-{month}",
-        "",
-        f"本月共记录 **{total_events}** 个关键事件与任务成果，覆盖 {len(days)} 个活动日期。",
-        "",
-        "## 日程活动与交付",
-        "",
-    ]
-    for day in sorted(days.keys()):
-        day_events = days[day]
-        lines.append(f"### {year}-{month}-{day}")
-        for ev in day_events:
-            summary = ev.get("summary") or ev.get("title") or "事件"
-            lines.append(f"- **[{ev['event_type']}]** {summary} (`{ev['occurred_at']}`)")
-        lines.append("")
-    return "\n".join(lines)
+def derive_timeline(project_root, *, now=None):
+    now = now or resolve_reference_time()
+    name = memory_timezone(project_root, now)
+    tz = zone(name, now)
+    events = list(derive_index(project_root, now=now).get('events', []))
+    for relative, record in list_notes(project_root):
+        work_path = resolve_work(project_root, record['work_ref'])
+        events.append({
+            'event_id': record['record_id'], 'event_type': 'daily_note',
+            'summary': record['summary'], 'title': record['title'],
+            'occurred_at': record['occurred_at'], 'date': record['date'],
+            'source_refs': [relative, *record['source_refs'], *([work_path] if work_path else [])],
+            'detail_ref': relative, 'work_ref': record['work_ref'],
+            'work_path': work_path, 'missing_work': bool(record['work_ref'] and not work_path),
+        })
+    grouped = {}
+    identities = set()
+    for event in sorted(events, key=lambda e: (e['occurred_at'], e['event_id'])):
+        if event['event_id'] in identities:
+            raise TimelineError('duplicate timeline event ID')
+        identities.add(event['event_id'])
+        day = event.get('date') or stamp(event['occurred_at']).astimezone(tz).date().isoformat()
+        y, m, d = valid_date(day).split('-')
+        grouped.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(event)
+    return {'event_count': len(events), 'years': grouped, 'timezone': name}
 
 
-def generate_year_summary(year: str, months: dict[str, dict[str, list[dict[str, Any]]]]) -> str:
-    total_events = sum(
-        sum(len(evs) for evs in days.values())
-        for days in months.values()
-    )
-    lines = [
-        f"# 项目记忆年度总览：{year}",
-        "",
-        f"{year} 年度共记录 **{total_events}** 项项目历程节点，跨越 {len(months)} 个月份。",
-        "",
-        "## 月度导航与重点",
-        "",
-    ]
-    for month in sorted(months.keys()):
-        m_events = sum(len(evs) for evs in months[month].values())
-        lines.append(f"- **[{month} 月]({month}/summary.md)**：共沉淀 {m_events} 个事件节点")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def generate_project_summary(years: dict[str, dict[str, dict[str, list[dict[str, Any]]]]]) -> str:
-    total_events = sum(
-        sum(
-            sum(len(evs) for evs in days.values())
-            for days in months.values()
-        )
-        for months in years.values()
-    )
-    lines = [
-        "# 项目经历总览 (Project Memory Timeline)",
-        "",
-        f"本项目自沉淀以来，已累计记录 **{total_events}** 项关键任务交付与里程碑决策，历经 {len(years)} 个活跃年度。",
-        "",
-        "## 历程总览与年度导航",
-        "",
-    ]
-    for year in sorted(years.keys(), reverse=True):
-        y_events = sum(
-            sum(len(evs) for evs in days.values())
-            for days in years[year].values()
-        )
-        lines.append(f"- **[{year} 年度总览](years/{year}/summary.md)**：包含 {y_events} 项关键事件")
-    lines.append("")
-    lines.append("> 提示：可通过按年、按月逐层下钻定位具体事件与原始 Task/Decision 证据。")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def derive_timeline(project_root: Path, *, now: datetime | None = None) -> dict[str, Any]:
-    """Derive hierarchical timeline from authoritative sources."""
-    activity_data = derive_index(project_root, now=now)
-    events = activity_data.get("events", [])
-
-    # Group events by year, month, day
-    # hierarchy: years -> months -> days -> list[event]
-    grouped: dict[str, dict[str, dict[str, list[dict[str, Any]]]]] = {}
-
-    for ev in events:
-        occurred_at = ev["occurred_at"]
-        date_str = occurred_at[:10]
-        match = DATE_PATTERN.match(date_str)
-        if not match:
-            continue
-        year, month, day = match.group(1), match.group(2), match.group(3)
-        if year not in grouped:
-            grouped[year] = {}
-        if month not in grouped[year]:
-            grouped[year][month] = {}
-        if day not in grouped[year][month]:
-            grouped[year][month][day] = []
-        grouped[year][month][day].append(ev)
-
-    return {
-        "event_count": len(events),
-        "years": grouped,
-    }
-
-
-def expected_timeline_files(derived: dict[str, Any]) -> dict[Path, str]:
-    """Return every generated file relative to the timeline directory."""
-    grouped = derived["years"]
-    files: dict[Path, str] = {Path("summary.md"): generate_project_summary(grouped)}
-    for year, months in grouped.items():
-        year_dir = Path("years") / year
-        files[year_dir / "summary.md"] = generate_year_summary(year, months)
-        for month, days in months.items():
-            month_dir = year_dir / month
-            files[month_dir / "summary.md"] = generate_month_summary(year, month, days)
-            for day, day_events in days.items():
-                date_str = f"{year}-{month}-{day}"
-                files[month_dir / f"{day}.yaml"] = dump_date_file_content(date_str, day_events)
+def expected_timeline_files(derived):
+    years = derived['years']
+    files = {}
+    root = ['# 项目经历总览 (Project Memory Timeline)', '', '## 年度导航与重点', '']
+    for y in sorted(years, reverse=True):
+        all_events = [e for days in years[y].values() for events in days.values() for e in events]
+        root.append(f'- [{y} 年度总览](years/{y}/summary.md)：{highlights(all_events)}')
+    if not years:
+        root.append('尚无已保存的日常记忆或项目事件。')
+    files[Path('summary.md')] = GENERATED + '\n'.join(root) + '\n'
+    for y, months in years.items():
+        year = [f'# 项目记忆年度总览：{y}', '', '## 月度导航与重点', '']
+        for m, days in sorted(months.items()):
+            all_events = [e for events in days.values() for e in events]
+            year.append(f'- [{m} 月]({m}/summary.md)：{highlights(all_events)}')
+            month = [f'# 项目记忆月度摘要：{y}-{m}', '', '## 每日讨论、决定与推进', '']
+            for d, events in sorted(days.items()):
+                day = f'{y}-{m}-{d}'
+                month.append(f'- [{day}]({d}/summary.md)：{highlights(events, 2)}')
+                daily = [f'# 项目记忆日详情：{day}', '', f'共 {len(events)} 项记录；下方最多展示 50 项。', '']
+                for event in events[:50]:
+                    detail = event.get('detail_ref')
+                    if detail:
+                        daily.append(f"- [{short(event['title'], 80)}](details/{Path(detail).name})：{event_summary(event)}")
+                        if event.get('work_path'):
+                            # Relative link from this day directory to the current canonical target.
+                            link = posixpath.relpath(event['work_path'], day_relative(day))
+                            daily.append(f"  - [{event['work_ref']['kind']} 详情]({quote(link, safe='/')})")
+                        elif event.get('missing_work'):
+                            daily.append('  - 原工作记录暂不可达；保留稳定 ID，不猜测替代任务。')
+                    else:
+                        daily.append(f"- **{event['event_type']}**：{event_summary(event)}")
+                        for ref in event.get('source_refs', [])[:3]:
+                            daily.append(f'- [来源]({quote(posixpath.relpath(ref, day_relative(day)), safe='/')})')
+                if len(events) > 50:
+                    daily.append(f'\n更多记录：events --date {day} --offset 50 --limit 50。')
+                prefix = Path('years') / y / m / d
+                files[prefix / 'summary.md'] = GENERATED + '\n'.join(daily) + '\n'
+                # A bounded derived machine view, not an authoritative daily journal.
+                rows = ['date: ' + json.dumps(day), 'events:']
+                for e in events[:50]:
+                    rows.append('  - event_id: ' + json.dumps(e['event_id']))
+                    rows.append('    event_type: ' + e['event_type'])
+                    rows.append('    summary: ' + json.dumps(event_summary(e), ensure_ascii=False))
+                    rows.append('    occurred_at: ' + e['occurred_at'])
+                    rows.append('    source_refs: ' + json.dumps(e.get('source_refs', []), ensure_ascii=False))
+                files[prefix / 'events.yaml'] = GENERATED.replace('<!-- ', '# ').replace(' -->', '') + '\n'.join(rows) + '\n'
+            files[Path('years') / y / m / 'summary.md'] = GENERATED + '\n'.join(month) + '\n'
+        files[Path('years') / y / 'summary.md'] = GENERATED + '\n'.join(year) + '\n'
+    if any(len(t.encode('utf-8')) > MAX_BYTES for t in files.values()):
+        raise TimelineError('navigation exceeds read budget; split large source summaries')
     return files
 
 
-def generated_files(timeline_dir: Path) -> set[Path]:
-    if not timeline_dir.is_dir():
-        return set()
-    return {
-        path.relative_to(timeline_dir)
-        for path in timeline_dir.rglob("*")
-        if path.is_file() and (
-            path.name == "summary.md" or
-            (path.suffix == ".yaml" and path.stem.isdigit() and len(path.stem) == 2)
-        )
-    }
+def generated_files(root):
+    directory = safe(root, ROOT.as_posix())
+    result = set()
+    if not directory.is_dir():
+        return result
+    for count, p in enumerate(directory.rglob('*'), 1):
+        if count > 10000:
+            raise TimelineError('timeline file scan budget exceeded')
+        relative = p.relative_to(directory).as_posix()
+        if MANAGED.fullmatch(relative) or LEGACY_DAY.fullmatch(relative):
+            safe(root, (ROOT / relative).as_posix())
+            if p.is_file():
+                result.add(Path(relative))
+        elif p.is_symlink():
+            raise TimelineError('symlink inside timeline')
+    return result
 
 
-def persist_timeline(project_root: Path, derived: dict[str, Any]) -> None:
-    timeline_dir = project_root / TIMELINE_ROOT
+def generated_owner(relative, text):
+    if text.startswith(GENERATED) or text.startswith('# xiaotao:timeline-generated:v2'):
+        return True
+    # Recognize only v1's exact path depth and heading; never claim a details/summary.md.
+    if relative.name == 'summary.md' and len(relative.parts) in (1, 3, 4):
+        return text.startswith(('# 项目经历总览', '# 项目记忆年度总览：', '# 项目记忆月度摘要：'))
+    return False
+
+
+def persist_timeline(root, derived):
     expected = expected_timeline_files(derived)
-    for relative_path, content in expected.items():
-        target = timeline_dir / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
-    for relative_path in generated_files(timeline_dir) - expected.keys():
-        (timeline_dir / relative_path).unlink()
-    years_dir = timeline_dir / "years"
-    if years_dir.is_dir():
-        for directory in sorted(years_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
-            if directory.is_dir() and not any(directory.iterdir()):
-                directory.rmdir()
+    existing = generated_files(root)
+    for relative in existing:
+        text = read_text(root, (ROOT / relative).as_posix())
+        if not LEGACY_DAY.fullmatch(relative.as_posix()) and not generated_owner(relative, text):
+            raise TimelineError('unmanaged navigation file; preserve/reconcile before build: ' + str(relative))
+    # Preserve recognized v1 navigation before replacing it too: manual additions
+    # cannot be distinguished from the old generator's output by heading alone.
+    for relative in existing:
+        original = read_text(root, (ROOT / relative).as_posix())
+        if relative.name == 'summary.md' and not original.startswith(GENERATED):
+            digest = hashlib.sha256(original.encode()).hexdigest()[:16]
+            name = '-'.join(relative.with_suffix('').parts) + '-' + digest + '.md'
+            snapshot = (ROOT / 'legacy-navigation' / name).as_posix()
+            if not safe(root, snapshot).exists():
+                atomic_text(root, snapshot, original)
+            elif read_text(root, snapshot) != original:
+                raise TimelineError('legacy navigation snapshot collision')
+    # Preserve v1 day files as audit snapshots, including files no longer derivable from sources.
+    for relative in existing:
+        match = LEGACY_DAY.fullmatch(relative.as_posix())
+        if match:
+            original = read_text(root, (ROOT / relative).as_posix())
+            day = valid_date('-'.join(match.groups()))
+            digest = hashlib.sha256(original.encode()).hexdigest()[:16]
+            snapshot = day_relative(day) + '/legacy-events-' + digest + '.yaml'
+            p = safe(root, snapshot)
+            if not p.exists():
+                atomic_text(root, snapshot, original)
+            elif read_text(root, snapshot) != original:
+                raise TimelineError('legacy snapshot collision')
+    for relative, content in expected.items():
+        atomic_text(root, (ROOT / relative).as_posix(), content)
+    for relative in existing - expected.keys():
+        safe(root, (ROOT / relative).as_posix()).unlink()
 
 
-def timeline_is_current(project_root: Path, derived: dict[str, Any]) -> bool:
-    timeline_dir = project_root / TIMELINE_ROOT
+def timeline_is_current(root, derived):
     expected = expected_timeline_files(derived)
-    if generated_files(timeline_dir) != expected.keys():
+    if generated_files(root) != expected.keys():
         return False
-    return all(
-        (timeline_dir / relative_path).read_text(encoding="utf-8") == content
-        for relative_path, content in expected.items()
-    )
+    return all(read_text(root, (ROOT / p).as_posix()) == text for p, text in expected.items())
 
 
-def read_drill_down_summary(
-    project_root: Path,
-    year: str | None = None,
-    month: str | None = None,
-) -> str:
-    """Read bounded summary at the specified hierarchy level."""
-    timeline_dir = project_root / TIMELINE_ROOT
-    if year and month:
-        target = timeline_dir / "years" / year / month / "summary.md"
-        label = f"Month summary ({year}-{month})"
-    elif year:
-        target = timeline_dir / "years" / year / "summary.md"
-        label = f"Year summary ({year})"
+def read_drill_down_summary(root, year=None, month=None, day=None):
+    if day:
+        target = day_relative(day) + '/summary.md'
     else:
-        target = timeline_dir / "summary.md"
-        label = "Project timeline summary"
-
-    if not target.is_file():
-        raise TimelineError(f"{label} not found at {target}")
-    return target.read_text(encoding="utf-8")
-
-
-def read_date_events(project_root: Path, date_str: str) -> list[dict[str, Any]]:
-    """Read daily events list for a given date YYYY-MM-DD."""
-    match = DATE_PATTERN.match(date_str)
-    if not match:
-        raise TimelineError(f"Invalid date format '{date_str}', expected YYYY-MM-DD")
-    year, month, day = match.group(1), match.group(2), match.group(3)
-    target = project_root / TIMELINE_ROOT / "years" / year / month / f"{day}.yaml"
-    if not target.is_file():
-        return []
-    lines = target.read_text(encoding="utf-8").splitlines()
-    events: list[dict[str, Any]] = []
-    current_event: dict[str, Any] | None = None
-    current_list: list[str] | None = None
-
-    for line in lines:
-        if not line.strip() or line.strip().startswith("#"):
-            continue
-        m_item = re.match(r"^\s*-\s+([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$", line)
-        if m_item:
-            if current_event:
-                events.append(current_event)
-            key, val = m_item.groups()
-            current_event = {key: parse_scalar_val(val)}
-            current_list = None
-            continue
-        m_subref = re.match(r"^\s*-\s+(.+?)\s*$", line)
-        if m_subref and current_list is not None and current_event:
-            current_list.append(parse_scalar_val(m_subref.group(1)))
-            continue
-        m_field = re.match(r"^\s+([A-Za-z_][A-Za-z0-9_-]*):\s*(.*?)\s*$", line)
-        if m_field and current_event:
-            k, v = m_field.groups()
-            if not v:
-                current_event[k] = []
-                current_list = current_event[k]
-            else:
-                current_event[k] = parse_scalar_val(v)
-                current_list = None
-    if current_event:
-        events.append(current_event)
-    return events
+        relative = ROOT
+        if year:
+            if not re.fullmatch(r'\d{4}', year):
+                raise TimelineError('invalid year')
+            relative = relative / 'years' / year
+        if month:
+            if not year or not re.fullmatch(r'0[1-9]|1[0-2]', month):
+                raise TimelineError('--month requires --year and a valid month')
+            relative = relative / month
+        target = (relative / 'summary.md').as_posix()
+    return read_text(root, target)
 
 
-def parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv):
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--project-root", type=Path, default=argparse.SUPPRESS)
-    common.add_argument(
-        "--now",
-        help="Fixed ISO-8601 timestamp for reproducible builds or tests",
-        default=argparse.SUPPRESS,
-    )
-
-    parser = argparse.ArgumentParser(
-        description="Maintain and query XiaoTao's derived Project Memory Timeline.",
-        parents=[common],
-    )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("build", parents=[common])
-    subparsers.add_parser("check", parents=[common])
-
-    summary_parser = subparsers.add_parser("summary", parents=[common])
-    summary_parser.add_argument("--year", help="Year YYYY for annual summary")
-    summary_parser.add_argument("--month", help="Month MM for monthly summary (requires --year)")
-
-    events_parser = subparsers.add_parser("events", parents=[common])
-    events_parser.add_argument("--date", required=True, help="Date YYYY-MM-DD to fetch events")
-
+    common.add_argument('--project-root', type=Path, default=argparse.SUPPRESS)
+    common.add_argument('--now', default=argparse.SUPPRESS)
+    parser = argparse.ArgumentParser(description=__doc__, parents=[common])
+    commands = parser.add_subparsers(dest='command', required=True)
+    for c in ('build', 'check', 'save'):
+        commands.add_parser(c, parents=[common])
+    summary = commands.add_parser('summary', parents=[common])
+    summary.add_argument('--year')
+    summary.add_argument('--month')
+    summary.add_argument('--date')
+    events = commands.add_parser('events', parents=[common])
+    events.add_argument('--date', required=True)
+    events.add_argument('--offset', type=int, default=0)
+    events.add_argument('--limit', type=int, default=20)
+    show = commands.add_parser('show', parents=[common])
+    show.add_argument('--date', required=True)
+    show.add_argument('--topic', required=True)
+    search = commands.add_parser('search', parents=[common])
+    search.add_argument('query')
+    search.add_argument('--from', dest='start')
+    search.add_argument('--to', dest='end')
+    search.add_argument('--limit', type=int, default=5)
     args = parser.parse_args(argv)
-    if not hasattr(args, "project_root"):
+    if not hasattr(args, 'project_root'):
         args.project_root = Path.cwd()
-    if not hasattr(args, "now"):
+    if not hasattr(args, 'now'):
         args.now = None
     return args
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        project_root = args.project_root.resolve(strict=True)
-        if not project_root.is_dir():
-            raise TimelineError(f"project root is not a directory: {project_root}")
-        ref_time = resolve_reference_time(args.now)
-
-        if args.command == "build":
-            derived = derive_timeline(project_root, now=ref_time)
-            persist_timeline(project_root, derived)
-            print(
-                json.dumps(
-                    {
-                        "status": "built",
-                        "event_count": derived["event_count"],
-                        "years": sorted(derived["years"].keys()),
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-            )
-            return 0
-
-        if args.command == "check":
-            if not timeline_is_current(project_root, derive_timeline(project_root, now=ref_time)):
-                print("Timeline is missing or stale", file=sys.stderr)
+        root = args.project_root.resolve(strict=True)
+        now = resolve_reference_time(args.now)
+        if args.command == 'save':
+            raw = sys.stdin.buffer.read(MAX_BYTES + 1)
+            if len(raw) > MAX_BYTES:
+                raise TimelineError('save input exceeds 32 KiB')
+            result = save_note(root, json.loads(raw), now)
+            try:
+                with timeline_lock(root):
+                    persist_timeline(root, derive_timeline(root, now=now))
+                result['navigation_status'] = 'current'
+            except (DailyError, OSError, ValueError) as error:
+                # The note has committed; retry the same request repairs only derived navigation.
+                result['navigation_status'] = 'pending'
+                result['navigation_error'] = str(error)
+            print(json.dumps(result, ensure_ascii=False))
+        elif args.command == 'build':
+            with timeline_lock(root):
+                derived = derive_timeline(root, now=now)
+                persist_timeline(root, derived)
+            print(json.dumps({'status': 'built', 'event_count': derived['event_count'], 'years': sorted(derived['years']), 'timezone': derived['timezone']}))
+        elif args.command == 'check':
+            with timeline_lock(root):
+                current = timeline_is_current(root, derive_timeline(root, now=now))
+            if not current:
+                print('Timeline is missing or stale', file=sys.stderr)
                 return 1
-            print(json.dumps({"status": "current"}, sort_keys=True))
-            return 0
-
-        if args.command == "summary":
-            if args.month and not args.year:
-                raise TimelineError("--month requires --year to be specified")
-            text = read_drill_down_summary(project_root, year=args.year, month=args.month)
-            print(text)
-            return 0
-
-        if args.command == "events":
-            evs = read_date_events(project_root, args.date)
-            print(json.dumps({"date": args.date, "events": evs}, ensure_ascii=False, indent=2))
-            return 0
-
-    except (TimelineError, OSError, RuntimeError, ValueError) as error:
-        print(f"timeline catalog error: {error}", file=sys.stderr)
+            print(json.dumps({'status': 'current'}))
+        elif args.command == 'summary':
+            if args.date and (args.year or args.month):
+                raise TimelineError('--date cannot be combined with --year/--month')
+            print(read_drill_down_summary(root, args.year, args.month, args.date))
+        elif args.command == 'events':
+            day = valid_date(args.date)
+            if not 1 <= args.limit <= 50 or args.offset < 0:
+                raise TimelineError('events limit must be 1..50 and offset nonnegative')
+            y, m, d = day.split('-')
+            all_events = derive_timeline(root, now=now)['years'].get(y, {}).get(m, {}).get(d, [])
+            print(json.dumps({'date': day, 'total': len(all_events), 'events': all_events[args.offset:args.offset + args.limit]}, ensure_ascii=False))
+        elif args.command == 'show':
+            relative = note_relative(args.date, args.topic)
+            record = load_note(root, relative)
+            work_path = resolve_work(root, record['work_ref'])
+            print(json.dumps({'path': relative, 'record': record, 'work_path': work_path,
+                              'missing_work': bool(record['work_ref'] and not work_path)}, ensure_ascii=False))
+        elif args.command == 'search':
+            if not 1 <= args.limit <= 20 or not args.query.strip():
+                raise TimelineError('search requires a query and limit 1..20')
+            today = now.astimezone(zone(memory_timezone(root, now), now)).date()
+            end = valid_date(args.end) if args.end else today.isoformat()
+            start = valid_date(args.start) if args.start else (date.fromisoformat(end) - timedelta(days=30)).isoformat()
+            if start > end:
+                raise TimelineError('--from is after --to')
+            candidates = []
+            for p, record in list_notes(root, start, end):
+                text = (record['title'] + ' ' + record['summary']).casefold()
+                if args.query.casefold() in text:
+                    candidates.append({'record_id': record['record_id'], 'date': record['date'],
+                                       'topic_id': record['topic_id'], 'title': record['title'],
+                                       'summary': short(record['summary']), 'path': p, 'revision': record['revision']})
+            candidates.sort(key=lambda x: (x['date'], x['record_id']), reverse=True)
+            print(json.dumps({'from': start, 'to': end, 'total': len(candidates), 'candidates': candidates[:args.limit]}, ensure_ascii=False))
+        return 0
+    except (DailyError, OSError, RuntimeError, ValueError, TypeError, KeyError, IndexError) as error:
+        print('timeline catalog error: ' + str(error), file=sys.stderr)
         return 2
 
-    return 0
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     raise SystemExit(main())

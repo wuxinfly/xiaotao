@@ -424,7 +424,7 @@ test('shipped hook command runs from an installed plugin path with spaces and sh
   const projectRoot = path.join(root, 'project');
   await project(projectRoot);
   const hooks = JSON.parse(await readFile(path.join(source, 'hooks/hooks.json'), 'utf8'));
-  assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart', 'SubagentStart', 'UserPromptSubmit', 'Stop']);
+  assert.deepEqual(Object.keys(hooks.hooks), ['SessionStart', 'SubagentStart', 'UserPromptSubmit', 'Stop', 'PreCompact']);
   const command = hooks.hooks.SessionStart[0].hooks[0].command;
   const stdout = execSync(command, {
     cwd: projectRoot, env: { ...process.env, PLUGIN_ROOT: source },
