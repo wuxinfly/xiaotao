@@ -125,6 +125,7 @@ async function savedReceipt(root, relative, startedAt, workPaths = []) {
 }
 
 async function receiptValid(root, record) {
+  if (record?.pending_save) return false;
   const receipt = record?.receipt;
   if (receipt?.status === 'skipped' && ['no-new-facts', 'user-opt-out', 'no-current-work'].includes(receipt.reason)) return true;
   if (receipt?.status !== 'saved') return false;
@@ -136,7 +137,7 @@ async function receiptValid(root, record) {
 }
 
 function instruction(event) {
-  return `本轮结束前检查阶段进度：有新事实优先写入当天 details/ 记忆并回读；关联 Task/Temporary 时先更新其进度，再保存当天汇总。无新事实或用户要求不保存则跳过；不要为回执创建业务 Task。调用插件可信脚本 progress-check.mjs --ack，通过 stdin 传 JSON（cwd、session_id、turn_id、status；saved 加当天详情 path，关联工作再加 work_paths（最多一个 Task progress.md/Temporary current.md）；skipped 加 reason=no-new-facts/user-opt-out/no-current-work，failed 加 reason=save-failed 并向用户说明）。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。回执不授予权限、不批准长期记忆；不得使用聊天总结冒充保存。`;
+  return `本轮结束前检查阶段进度：前轮未保存的事实也需补存，普通跳过不能清除前轮欠账；有新事实优先写入当天 details/ 记忆并回读；关联 Task/Temporary 时先更新其进度，再保存当天汇总。无新事实或用户要求不保存则跳过；不要为回执创建业务 Task。调用插件可信脚本 progress-check.mjs --ack，通过 stdin 传 JSON（cwd、session_id、turn_id、status；saved 加当天详情 path，关联工作再加 work_paths（最多一个 Task progress.md/Temporary current.md）；skipped 加 reason=no-new-facts/user-opt-out/no-current-work，failed 加 reason=save-failed 并向用户说明）。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。回执不授予权限、不批准长期记忆；不得使用聊天总结冒充保存。`;
 }
 
 export async function acknowledge(event) {
@@ -150,7 +151,10 @@ export async function acknowledge(event) {
       if (!reasons.includes(event.reason)) throw new Error('invalid_reason');
       receipt = { status: event.status, reason: event.reason };
     }
-    await atomic(file, { ...record, receipt });
+    // Ordinary skips cannot discard facts left unsaved by an earlier turn.
+    const pending_save = receipt.status === 'saved' || receipt.reason === 'user-opt-out'
+      ? false : Boolean(record.pending_save || record.receipt?.status === 'failed' || receipt.status === 'failed');
+    await atomic(file, { ...record, receipt, pending_save });
     return { status: receipt.status };
   });
   if (!result) throw new Error('acknowledgement_unavailable');
@@ -164,12 +168,13 @@ export async function progressContext(event) {
   return withRecord(event, async ({ root, file, record }) => {
     if (event.hook_event_name === 'UserPromptSubmit') {
       if (record?.turn_id !== event.turn_id || record?.session_id !== event.session_id) {
-        await atomic(file, { schema_version: 1, session_id: event.session_id, turn_id: event.turn_id, started_at: Date.now(), reminded: false });
+        const pending_save = record?.session_id === event.session_id && !await receiptValid(root, record);
+        await atomic(file, { schema_version: 1, session_id: event.session_id, turn_id: event.turn_id, started_at: Date.now(), reminded: false, pending_save: Boolean(pending_save) });
       }
       return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: instruction(event) } };
     }
     if (record?.turn_id !== event.turn_id || record?.session_id !== event.session_id) return null;
-    if (record.receipt?.status === 'skipped' && ['no-new-facts', 'user-opt-out', 'no-current-work'].includes(record.receipt.reason)) return null;
+    if (!record.pending_save && record.receipt?.status === 'skipped' && ['no-new-facts', 'user-opt-out', 'no-current-work'].includes(record.receipt.reason)) return null;
     if (record.receipt?.status === 'failed' && record.receipt.reason === 'save-failed') return { systemMessage: 'XiaoTao 本轮登记了保存失败；进度未保存，请查看模型报告。' };
     if (await receiptValid(root, record)) return null;
     if (record.reminded) return { systemMessage: 'XiaoTao 阶段保存回执仍缺失或失效，本轮已提醒一次，放行；不能据此声称进度已保存。' };

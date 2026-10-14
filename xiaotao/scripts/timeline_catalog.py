@@ -44,12 +44,12 @@ def highlights(events, limit=3):
     return '；'.join(values[:limit]) + ('…' if len(values) > limit else '')
 
 
-def derive_timeline(project_root, *, now=None):
+def derive_timeline(project_root, *, now=None, day=None):
     now = now or resolve_reference_time()
     name = memory_timezone(project_root, now)
     tz = zone(name, now)
     events = list(derive_index(project_root, now=now).get('events', []))
-    for relative, record in list_notes(project_root):
+    for relative, record in list_notes(project_root, start=day, end=day):
         work_path = resolve_work(project_root, record['work_ref'])
         events.append({
             'event_id': record['record_id'], 'event_type': 'daily_note',
@@ -62,13 +62,15 @@ def derive_timeline(project_root, *, now=None):
     grouped = {}
     identities = set()
     for event in sorted(events, key=lambda e: (e['occurred_at'], e['event_id'])):
+        event_day = event.get('date') or stamp(event['occurred_at']).astimezone(tz).date().isoformat()
+        if day is not None and event_day != day:
+            continue
         if event['event_id'] in identities:
             raise TimelineError('duplicate timeline event ID')
         identities.add(event['event_id'])
-        day = event.get('date') or stamp(event['occurred_at']).astimezone(tz).date().isoformat()
-        y, m, d = valid_date(day).split('-')
+        y, m, d = valid_date(event_day).split('-')
         grouped.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(event)
-    return {'event_count': len(events), 'years': grouped, 'timezone': name}
+    return {'event_count': len(identities), 'years': grouped, 'timezone': name}
 
 
 def expected_timeline_files(derived):
@@ -290,7 +292,7 @@ def main(argv=None):
             if not 1 <= args.limit <= 50 or args.offset < 0:
                 raise TimelineError('events limit must be 1..50 and offset nonnegative')
             y, m, d = day.split('-')
-            all_events = derive_timeline(root, now=now)['years'].get(y, {}).get(m, {}).get(d, [])
+            all_events = derive_timeline(root, now=now, day=day)['years'].get(y, {}).get(m, {}).get(d, [])
             print(json.dumps({'date': day, 'total': len(all_events), 'events': all_events[args.offset:args.offset + args.limit]}, ensure_ascii=False))
         elif args.command == 'show':
             relative = note_relative(args.date, args.topic)

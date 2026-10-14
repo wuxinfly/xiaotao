@@ -164,6 +164,8 @@ test('missing or failed compaction receipt pauses once and automatic mid-turn co
   assert.equal((await progressContext(compact(next))).continue, false);
   assert.match((await progressContext(compact(next, 'auto'))).systemMessage, /自动压缩.*放行/);
   await acknowledge({ ...next, status: 'skipped', reason: 'no-new-facts' });
+  assert.match((await progressContext(compact(next))).systemMessage, /缺少有效/);
+  await acknowledge({ ...next, status: 'skipped', reason: 'user-opt-out' });
   assert.equal(await progressContext(compact(next)), null);
 });
 
@@ -176,3 +178,23 @@ test('receipts reject generated summaries, mismatched daily identity and unrelat
   await put(e.cwd, target, before);
   await assert.rejects(acknowledge({ ...e, status: 'saved', path: target, work_paths: ['.xiaotao/tasks/other/progress.md'] }), /unrelated_work/);
 });
+
+for (const resolution of ['saved', 'user-opt-out']) {
+  test(`failed saves survive later ordinary skips until ${resolution}`, async t => {
+    const e = await fixture(t); await progressContext(e);
+    await acknowledge({ ...e, status: 'failed', reason: 'save-failed' });
+    let next = e;
+    for (const reason of ['no-new-facts', 'no-current-work']) {
+      next = { ...next, turn_id: reason }; await progressContext(next);
+      await acknowledge({ ...next, status: 'skipped', reason });
+      assert.equal((await progressContext({ ...next, hook_event_name: 'PreCompact', trigger: 'manual' })).continue, false);
+      assert.equal((await progressContext(stop(next))).decision, 'block');
+    }
+    next = { ...next, turn_id: 'resolved' }; await progressContext(next);
+    if (resolution === 'saved') {
+      await save(next); await acknowledge({ ...next, status: 'saved', path: target });
+    } else await acknowledge({ ...next, status: 'skipped', reason: 'user-opt-out' });
+    assert.equal(await progressContext({ ...next, hook_event_name: 'PreCompact', trigger: 'manual' }), null);
+    assert.equal(await progressContext(stop(next)), null);
+  });
+}

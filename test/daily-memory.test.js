@@ -184,3 +184,30 @@ test('save context freezes retry attribution across midnight and refuses to reti
   const incomplete = note(); delete incomplete.occurred_at;
   await assert.rejects(run(root, ['save'], incomplete), /requires occurred_at/);
 });
+
+test('identical Task and Temporary save retries survive archive without accepting changed stale paths', async t => {
+  const root = await fixture(t);
+  for (const [kind, active, archive] of [
+    ['task', '.xiaotao/tasks/work/progress.md', '.xiaotao/tasks/archive/work/progress.md'],
+    ['temporary', '.xiaotao/memory/temporary/active/work/current.md', '.xiaotao/memory/temporary/archive/work/current.md'],
+  ]) {
+    await put(root, active, 'progress');
+    const request = note({ topic_id: kind, work_path: active });
+    const saved = await json(root, ['save'], request);
+    const before = await readFile(path.join(root, saved.path));
+    await mkdir(path.dirname(path.join(root, archive)), { recursive: true });
+    await rename(path.join(root, active), path.join(root, archive));
+    assert.equal((await json(root, ['save'], request)).status, 'duplicate');
+    assert.deepEqual(await readFile(path.join(root, saved.path)), before);
+    await assert.rejects(run(root, ['save'], { ...request, summary: 'changed' }), /request_id reused/);
+    await assert.rejects(run(root, ['save'], { ...request, request_id: 'new', expected_revision: 0 }), /canonical path/);
+  }
+});
+
+test('date-scoped events ignore corrupt daily notes outside the requested day', async t => {
+  const root = await fixture(t); await json(root, ['save'], note());
+  await put(root, '.xiaotao/memory/timeline/years/2025/01/01/details/broken.md', 'broken note');
+  const events = await json(root, ['events', '--date', '2026-10-13', '--limit', '1']);
+  assert.equal(events.total, 1); assert.equal(events.events.length, 1);
+  await assert.rejects(run(root, ['events', '--date', '2025-01-01']), /daily-record block/);
+});

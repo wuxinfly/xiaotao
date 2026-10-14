@@ -288,8 +288,6 @@ def save_note(root, request, now):
                 raise DailyError('work_path must be a Task progress.md or Temporary current.md')
             kind = 'task' if match.group('task') else 'temporary'
             work = {'kind': kind, 'id': match.group(kind), 'path': work_path}
-            if resolve_work(root, work) != work_path:
-                raise DailyError('work_path is missing or not its current canonical path')
         record = {
             'schema_version': 1, 'record_id': 'daily-' + day + '-' + request['topic_id'],
             'topic_id': request['topic_id'], 'date': day, 'timezone': zone_name,
@@ -311,6 +309,9 @@ def save_note(root, request, now):
             return {'status': 'duplicate', 'path': relative, 'revision': old['revision']}
         if (old is None and expected is not None) or (old is not None and expected != old['revision']):
             raise DailyError('revision conflict; read current note before retrying')
+        # Mutable work locations must not invalidate an exact committed retry.
+        if work and resolve_work(root, work) != work_path:
+            raise DailyError('work_path is missing or not its current canonical path')
         if old and old['work_ref'] and (not work or old['work_ref']['kind'] != work['kind'] or old['work_ref']['id'] != work['id']):
             raise DailyError('cannot rebind a daily topic to different work')
         if old:
