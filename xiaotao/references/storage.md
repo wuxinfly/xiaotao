@@ -44,7 +44,10 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
         summary.md
         <month>/
           summary.md
-          <day>.yaml
+          <day>/
+          summary.md        # 派生日导航
+          events.yaml       # 有界派生事件
+          details/<topic>.md # 权威每日记忆
     knowledge/
       current.md
       entries/<entry-id>.md
@@ -89,6 +92,7 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 为减少 Git 冲突噪声并在分支之间同步共享知识，XiaoTao 将本地执行状态与团队共享 memory 分开：
 
 - **本地 Runtime 状态（不纳入 Git）：**
+  - `memory/timeline/`：每日讨论与任务汇总原文默认保留在本项目本地；`details/` 必须备份，年/月/日导航可重建。不要自动把私人对话加入 Git；共享需用户明确选择内容。
   - `memory/manifest.md` 和 `memory/index.json`：由正式 Memory 来源重建的派生 awareness 目录；
   - `memory/temporary/`：Task 前探索、scratchpad 和活动 Worker 状态；
   - `memory/pending/`：尚未压缩或解析的 Memory Worker 原始输入与待审任务工作池（`tasks/`）；
@@ -524,3 +528,9 @@ ID 并递增 revision；其他目标文件以各自递增的 revision 标为 `su
 移动目录或文件前，记录转换、时间戳、actor/reviewer、适用时的理由和来源路径。
 
 `.xiaotao/memory/imports/<import_id>/manifest.json` 存导入状态与确认事件，`sources/` 存原样字节副本；两者是权威来源并随项目版本管理。Activity index 和 Timeline 是其派生产物。格式与命令见 [external-memory.md](external-memory.md)。
+
+## 每日记忆写入
+
+每日记忆与 Task/Temporary 不是新授权来源。用 [daily-memory.md](daily-memory.md) 指定的可信 Core 脚本写入，而不是直接覆盖 Markdown。`details/<topic>.md` 是单文件权威记录，含独立 revision、updated_at、updated_by 与 `xiaotao-daily-record` JSON；正文是该记录的可读投影。检测到未管理的手工编辑时停止并保留原文。
+
+所有每日写入、时间线 build/check 共用 `.xiaotao/locks/timeline.lock`；独占创建锁，版本比较、临时文件 fsync、原子替换与回读在锁内完成。锁忙时明确失败，不能清除其他 writer 的锁。导航提交中断时可从已提交详情重建；导航失败不能伪报业务事实写入失败。重复 request ID 与相同请求不会写两次，不同请求复用同一 ID 会被拒绝。

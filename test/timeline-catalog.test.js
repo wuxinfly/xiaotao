@@ -75,7 +75,7 @@ test('builds hierarchical timeline with year, month, and day levels from archive
   assert.match(monthSummary, /2026-09-23/);
   assert.match(monthSummary, /优化登录体验/);
 
-  const dayYaml = await readFile(path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/09/23.yaml'), 'utf8');
+  const dayYaml = await readFile(path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/09/23/events.yaml'), 'utf8');
   assert.match(dayYaml, /event_type: task_completed/);
   assert.match(dayYaml, /2026-09-23T12:00:00Z/);
   assert.match(dayYaml, /\.xiaotao\/tasks\/archive\/20260923-login\/task\.yaml/);
@@ -112,7 +112,7 @@ test('handles projects with no events gracefully', async (t) => {
   assert.deepEqual(result.years, []);
 
   const rootSummary = await readFile(path.join(projectRoot, '.xiaotao/memory/timeline/summary.md'), 'utf8');
-  assert.match(rootSummary, /已累计记录 \*\*0\*\* 项关键任务交付/);
+  assert.match(rootSummary, /尚无已保存/);
 });
 
 test('enforces parameter constraints on drill-down queries', async (t) => {
@@ -146,7 +146,7 @@ test('check detects changed sources and missing files; rebuild removes obsolete 
   await writeProjectFile(projectRoot, taskPath, task('2026-09-23T12:00:00Z'));
   await runTimeline(projectRoot, ['build']);
 
-  const oldDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/09/23.yaml');
+  const oldDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/09/23/events.yaml');
   await writeProjectFile(projectRoot, taskPath, task('2026-10-01T12:00:00Z'));
   await assert.rejects(runTimeline(projectRoot, ['check']), /Timeline is missing or stale/);
   await runTimeline(projectRoot, ['build']);
@@ -154,7 +154,7 @@ test('check detects changed sources and missing files; rebuild removes obsolete 
   await assert.rejects(readFile(oldDay, 'utf8'), { code: 'ENOENT' });
   assert.equal(JSON.parse((await runTimeline(projectRoot, ['check'])).stdout).status, 'current');
 
-  const newDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/10/01.yaml');
+  const newDay = path.join(projectRoot, '.xiaotao/memory/timeline/years/2026/10/01/events.yaml');
   await rm(newDay);
   await assert.rejects(runTimeline(projectRoot, ['check']), /Timeline is missing or stale/);
 });

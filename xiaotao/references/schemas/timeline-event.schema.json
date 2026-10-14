@@ -13,7 +13,7 @@
   "properties": {
     "event_id": {
       "type": "string",
-      "pattern": "^activity-[0-9]{8}-[0-9a-f]{12}$"
+      "pattern": "^(activity-[0-9]{8}-[0-9a-f]{12}|daily-\\d{4}-\\d{2}-\\d{2}-[a-z0-9][a-z0-9_-]{0,79})$"
     },
     "event_type": {
       "enum": [
@@ -26,7 +26,8 @@
         "milestone",
         "checkpoint_recovered",
         "worker_approved",
-        "external_work"
+        "external_work",
+        "daily_note"
       ]
     },
     "summary": {

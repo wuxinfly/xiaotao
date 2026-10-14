@@ -2,7 +2,7 @@
 
 这是 XiaoTao Core Skill 的可选增强层，目标是 Codex 在 ChatGPT 桌面端的**本地项目**。
 当前接通 `SessionStart`（`startup / resume / clear / compact`）、单 Worker
-`SubagentStart`，以及阶段保存检查的 `UserPromptSubmit` / `Stop`。压缩后，SessionStart 可在下一次模型请求前提供精简规则和记忆入口；派出一个
+`SubagentStart`，以及阶段保存检查的 `UserPromptSubmit` / `Stop` 和压缩前检查 `PreCompact`。压缩后，SessionStart 可在下一次模型请求前提供精简规则和记忆入口；派出一个
 已准备好的持久 Worker 时，SubagentStart 可注入经过验证的 Delegation Packet。
 
 阶段进度由 Core 按方案确认、代码改动、验证或阻塞节点主动保存并回读；SessionStart 提醒与该规则对齐，Hook 本身不执行保存；Stop 检查显式回执，缺失或失效时最多提醒一次，仍不保证模型绝不漏存。
@@ -21,7 +21,7 @@
 
 **这不是自动 checkpoint，也不是完整的 subagent 隔离**：Codex 已提供真实 `PreCompact` 和
 `SessionEnd` Hook，但这些 Hook 本身没有当前 XiaoTao 的有界事实快照和目标选择结果；本插件不解析
-不稳定的 transcript 格式来猜状态，也不因此虚报保存。尚未实现压缩前总结、写入进度、失败补存，
+不稳定的 transcript 格式来猜状态，也不因此虚报保存。PreCompact 只检查回执，未实现由当前模型在压缩前自动总结、写入进度、失败补存，
 也没有工具白名单或权限的宿主级强制隔离。SubagentStart 只注入单 Worker Packet，并明确报告
 `degraded`；SessionStart reminder 仍负责澄清宿主工具选择。恢复 Hook 只能帮助重新找到已经保存的
 状态，无法恢复从未落盘的结论。因此这仍是 #14 / #26 的部分落地。
@@ -94,13 +94,14 @@ Packet 必须声明 `host_adapter.id: codex`、`status: degraded`，且
 依据 [Codex Hooks](https://learn.chatgpt.com/docs/hooks) 的 `UserPromptSubmit` / `Stop` 协议实现；`Stop` 的 block 会要求模型继续处理，不是拒绝用户回复。需要安装、启用并信任更新后的 Hooks，真实客户端验收仍待记录。
 
 - `UserPromptSubmit` 为有效 XiaoTao 项目登记 Session/Turn ID、开始时间，并注入简短回执要求。**每轮都检查，包括普通聊天**；无新事实时模型需登记 skipped，不应制造进度记录。
-- 模型按 Core 保存并回读，然后调用可信插件 `scripts/progress-check.mjs --ack`，stdin 输入 JSON：`cwd`、`session_id`、`turn_id`、`status`。`saved` 加项目相对 `path`；`skipped` 加 `reason`（`no-new-facts`、`user-opt-out`、`no-current-work`）；`failed` 加 `reason: save-failed`，同时如实向用户报告。
-- `saved` 只接受 Task `progress.md`（含 archive）或 Temporary `current.md`（active/archive），最多 32 KiB，包含有效 revision、updated_at、updated_by，更新时间不得早于本轮开始（2 秒时钟精度容差）。脚本读取实际 bytes 并记摘要；Stop 再核对文件和 revision。已完成轻任务先归档，再对归档路径登记。
+- 模型按 Core 保存并回读，然后调用可信插件 `scripts/progress-check.mjs --ack`，stdin 输入 JSON：`cwd`、`session_id`、`turn_id`、`status`。`saved` 加当天权威详情的项目相对 `path`，有关联工作则加 `work_paths`（最多 1 项）；`skipped` 加 `reason`（`no-new-facts`、`user-opt-out`、`no-current-work`）；`failed` 加 `reason: save-failed`，同时如实向用户报告。
+- `saved` 只接受 `.xiaotao/memory/timeline/years/<年>/<月>/<日>/details/<主题>.md`，最多 32 KiB，含有效每日记录 JSON 与 revision/updated_at/updated_by。脚本校验本轮更新时间、日期时区、主题身份并记录文件摘要；Stop/PreCompact 再核对。关联工作的 `work_paths` 必须匹配记录的 kind/id，并包含本轮保存的 Task progress.md 或 Temporary current.md（支持归档路径）。生成的 summary.md、仅工作进度或不相关路径不能冒充每日保存。
+- `PreCompact` 对 manual/auto 生效：有效 saved/skipped 放行；手动缺失/失效回执暂停一次并提示先保存，重复手动请求放行并警告，防止循环。auto 可能发生在未结束的一轮工作中，缺失回执时只警告，避免上下文上限处无法继续保存。Hook 不调用模型总结；自动压缩存在漏存风险，真实客户端仍需验收。
 - 状态仅在 `.xiaotao/runtime/codex/progress/<session-hash>.json` 中保存当前轮，每个 Session 一份；同轮开始事件重放不重置提醒，跨 Session 分开。不保存用户 prompt、回复或 transcript，也不读 Memory 全文、扫描旧任务或执行项目脚本。该文件是本地检查元数据，不是业务记忆，应排除 Git。
 - 回执缺失/目标改变时，Stop 只要求一次补查。`stop_hook_active` 或已提醒标记防止循环；失败、锁竞争、超时、缺少 ID、没有对应轮记录时放行并按可用情况诊断。保存失败回执只证明失败已报告，不能视为保存成功。
 - 回执是模型声明，文件摘要只证明文件存在且保持一致，**不能判断总结语义是否完整，也无法发现模型错误地选择 skipped**。不自动总结、创建 Task、批准长期记忆或扩大当前授权；不替代 pre-compaction 保存，进程中断也未必触发 Stop。
 
-在启动 Codex 的环境中设置 `XIAOTAO_CODEX_PROGRESS_CHECK=0` 可以关闭检查（保留恢复和 Worker Hooks）；也可在 Codex 中禁用这两个 Hook。更新后需要重新安装插件来源、审查 Hook 信任，并新开对话。首次测试应覆盖漏回执补查、无新事实跳过、保存失败、两次 Stop 不循环和归档路径保存。
+在启动 Codex 的环境中设置 `XIAOTAO_CODEX_PROGRESS_CHECK=0` 可以关闭检查（保留恢复和 Worker Hooks）；也可在 Codex 中禁用这三个 Hook。更新后需要重新安装插件来源、审查 Hook 信任，并新开对话。首次测试应覆盖漏回执补查、无新事实跳过、保存失败、两次 Stop 不循环和归档路径保存。
 
 ## 从源码安装到桌面端（无需 npm 发布）
 

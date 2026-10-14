@@ -408,6 +408,9 @@ try {
     Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-valid.json" 0
     Invoke-AjvCase $globalPreferenceSchema "$fixtureRoot/global-preference-invalid.json" 1
 
+    $dailyRecordSchema = "xiaotao/references/schemas/daily-record.schema.json"
+    Invoke-AjvCase $dailyRecordSchema "$fixtureRoot/daily-record-valid.json" 0
+    Invoke-AjvCase $dailyRecordSchema "$fixtureRoot/daily-record-invalid.json" 1
     $timelineEventSchema = "xiaotao/references/schemas/timeline-event.schema.json"
     Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-valid.json" 0
     Invoke-AjvCase $timelineEventSchema "$fixtureRoot/timeline-event-invalid.json" 1
