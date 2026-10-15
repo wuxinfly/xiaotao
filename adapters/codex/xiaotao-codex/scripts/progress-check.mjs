@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
+import { spawn } from 'node:child_process';
 
 const LIMIT = 32 * 1024;
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -130,14 +132,15 @@ async function receiptValid(root, record) {
   if (receipt?.status === 'skipped' && ['no-new-facts', 'user-opt-out', 'no-current-work'].includes(receipt.reason)) return true;
   if (receipt?.status !== 'saved') return false;
   try {
-    const current = await savedReceipt(root, receipt.path, record.started_at, receipt.work_states?.map(s => s.path) ?? []);
+    if (receipt.verified_at !== undefined && (!Number.isFinite(receipt.verified_at) || receipt.verified_at < record.started_at)) return false;
+    const current = await savedReceipt(root, receipt.path, receipt.verified_at === undefined ? record.started_at : 0, receipt.work_states?.map(s => s.path) ?? []);
     return current.sha256 === receipt.sha256 && current.revision === receipt.revision
       && JSON.stringify(current.work_states) === JSON.stringify(receipt.work_states ?? []);
   } catch { return false; }
 }
 
 function instruction(event) {
-  return `本轮结束前检查阶段进度，连续修改与验证合并保存一次，正常保存不逐步播报：前轮未保存的事实也需补存，普通跳过不能清除前轮欠账；有新事实优先写入当天 details/ 记忆并回读；关联 Task/Temporary 时先更新其进度，再保存当天汇总。无新事实或用户要求不保存则跳过；不要为回执创建业务 Task。调用插件可信脚本 progress-check.mjs --ack，通过 stdin 传 JSON（cwd、session_id、turn_id、status；saved 加当天详情 path，关联工作再加 work_paths（最多一个 Task progress.md/Temporary current.md）；skipped 加 reason=no-new-facts/user-opt-out/no-current-work，failed 加 reason=save-failed 并向用户说明）。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。回执不授予权限、不批准长期记忆；不得使用聊天总结冒充保存。`;
+  return `阶段结束交付前合并保存一次，连续修改与验证不分别保存；正常保存不逐步播报。有新事实时调用可信插件脚本 progress-check.mjs --save，stdin JSON 为 {cwd,session_id,turn_id,progress:{topic_id,title,summary,details?,validation?,next_steps?,work_path?,request_id?}}。脚本自动处理日期、版本、工作进度追加、当天汇总、导航与回执；普通讨论不传 work_path，不创建 Task/Temporary。不再手工拼锁、快照或单独登记 saved。长任务中途补存使用不同 request_id；失败重试保留原 JSON，不反复换写入方法。无新事实或用户明确不保存时仅用 --ack 登记 skipped，reason 为 no-new-facts/user-opt-out/no-current-work；普通跳过不清除前轮未保存事实。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。失败如实说明；回执不扩大授权，也不能证明模型总结涵盖所有事实。`;
 }
 
 export async function acknowledge(event) {
@@ -202,19 +205,74 @@ async function preCompact(event) {
   });
 }
 
-export async function run(input = process.stdin, output = process.stdout, errors = process.stderr, ack = false) {
+// CLI --save uses only a user-installed Core, never a project-provided executable.
+export async function saveProgress(event, options = {}) {
+  const root = await project(event.cwd);
+  if (!root || !identity(event.session_id) || !identity(event.turn_id)) throw new Error('save_context_unavailable');
+  const available = await withRecord(event, async ({ record }) => record?.turn_id === event.turn_id && record?.session_id === event.session_id);
+  if (!available) throw new Error('turn_mismatch');
+  const core = options.coreRoot || process.env.XIAOTAO_CORE_ROOT
+    || path.join(process.env.XIAOTAO_HOME || homedir(), '.agents', 'skills', 'xiaotao');
+  const script = path.join(core, 'scripts', 'save_progress.py');
+  const python = options.python || process.env.XIAOTAO_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  let result;
   try {
-    if (process.env.XIAOTAO_CODEX_PROGRESS_CHECK === '0') { if (!ack) output.write('{}\n'); return; }
+    const request = { ...event.progress, request_id: event.progress?.request_id || `stage-${digest(`${event.session_id}:${event.turn_id}`)}` };
+    result = await new Promise((resolve, reject) => {
+      const child = spawn(python, [script, '--project-root', root], { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '', stderr = '';
+      const timer = setTimeout(() => { child.kill(); reject(new Error('save_timeout; retry the same request')); }, 30000);
+      child.on('error', error => { clearTimeout(timer); reject(error); });
+      const collect = (key, chunk) => {
+        if (key === 'stdout') stdout += chunk; else stderr += chunk;
+        if (Buffer.byteLength(stdout) + Buffer.byteLength(stderr) > LIMIT) { child.kill(); clearTimeout(timer); reject(new Error('save_output_budget_exceeded')); }
+      };
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+      child.stdout.on('data', chunk => collect('stdout', chunk));
+      child.stderr.on('data', chunk => collect('stderr', chunk));
+      child.stdin.on('error', () => {}); // A missing Python/script is reported by error/close.
+      child.on('close', code => {
+        clearTimeout(timer);
+        try {
+          const parsed = JSON.parse(stdout);
+          if (code !== 0 && parsed.status !== 'failed') throw new Error(stderr || 'save_failed');
+          resolve(parsed);
+        } catch (error) { reject(new Error(stderr || error.message)); }
+      });
+      child.stdin.end(JSON.stringify(request));
+    });
+    if (!['saved', 'duplicate', 'unchanged'].includes(result.status)) throw new Error(result.error || 'save_failed');
+    await withRecord(event, async ({ root, file, record }) => {
+      if (record?.turn_id !== event.turn_id || record?.session_id !== event.session_id) throw new Error('turn_mismatch');
+      // The writer has verified the original or unchanged commit. Check its current
+      // bytes again instead of touching old files merely to freshen their timestamps.
+      const checked = await savedReceipt(root, result.path, 0, result.work_paths || []);
+      if (checked.sha256 !== result.daily_sha256 || checked.revision !== result.revision
+        || (checked.work_states.length && checked.work_states[0].sha256 !== result.work_sha256)) throw new Error('save_changed_before_receipt');
+      const receipt = { status: 'saved', ...checked, verified_at: Date.now() };
+      await atomic(file, { ...record, receipt, pending_save: false });
+    });
+    return { ...result, receipt_status: 'saved' };
+  } catch (error) {
+    await acknowledge({ ...event, status: 'failed', reason: 'save-failed' }).catch(() => {});
+    return { ...result, status: 'failed', error: error.message, receipt_status: 'failed' };
+  }
+}
+
+export async function run(input = process.stdin, output = process.stdout, errors = process.stderr, ack = false, save = false) {
+  try {
+    if (process.env.XIAOTAO_CODEX_PROGRESS_CHECK === '0' && !save) { if (!ack) output.write('{}\n'); return; }
     let text = '';
     for await (const chunk of input) { text += chunk; if (Buffer.byteLength(text) > LIMIT) throw new Error('input_budget_exceeded'); }
-    const result = ack ? await acknowledge(JSON.parse(text)) : await progressContext(JSON.parse(text));
+    const result = save ? await saveProgress(JSON.parse(text)) : ack ? await acknowledge(JSON.parse(text)) : await progressContext(JSON.parse(text));
     output.write(`${JSON.stringify(result ?? {})}\n`);
+    if (save && result.status === 'failed') process.exitCode = 1;
   } catch (error) {
     errors.write(`XiaoTao progress check skipped: ${error.message}\n`);
     output.write('{}\n');
-    if (ack) process.exitCode = 1; // CLI callers must observe a failed acknowledgement.
+    if (ack || save) process.exitCode = 1; // CLI callers must observe failures.
     // Hook failures never trap a turn. A failed ack remains missing.
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await run(undefined, undefined, undefined, process.argv[2] === '--ack');
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await run(undefined, undefined, undefined, process.argv[2] === '--ack', process.argv[2] === '--save');

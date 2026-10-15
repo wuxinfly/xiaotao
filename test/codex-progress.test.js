@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, cp } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable, Writable } from 'node:stream';
-import { progressContext, acknowledge, run } from '../adapters/codex/xiaotao-codex/scripts/progress-check.mjs';
+import { progressContext, acknowledge, saveProgress, run } from '../adapters/codex/xiaotao-codex/scripts/progress-check.mjs';
 const script = fileURLToPath(new URL('../adapters/codex/xiaotao-codex/scripts/progress-check.mjs', import.meta.url));
 const today = new Date().toISOString().slice(0, 10);
 const target = `.xiaotao/memory/timeline/years/${today.replaceAll('-', '/')}/details/topic.md`;
@@ -198,3 +198,42 @@ for (const resolution of ['saved', 'user-opt-out']) {
     assert.equal(await progressContext(stop(next)), null);
   });
 }
+
+test('one Codex call saves linked progress and registers a verified receipt including unchanged retries', async t => {
+  const e = await fixture(t); await progressContext(e);
+  const work = '.xiaotao/tasks/topic/progress.md';
+  await put(e.cwd, work, '---\nrevision: 0\nupdated_at: 2020-01-01T00:00:00Z\nupdated_by: test\n---\nOld facts\n');
+  const options = { coreRoot: path.resolve('xiaotao') };
+  const event = { ...e, progress: { topic_id: 'topic', title: 'Result', summary: 'Fixed', validation: 'Passed', work_path: work } };
+  const saved = await saveProgress(event, options);
+  assert.equal(saved.status, 'saved'); assert.equal(saved.receipt_status, 'saved');
+  assert.equal(await progressContext(stop(e)), null);
+  assert.equal(await progressContext(compact(e)), null);
+  const bytes = await readFile(path.join(e.cwd, work));
+  const next = { ...event, turn_id: 'next' }; await progressContext(next);
+  const unchanged = await saveProgress(next, options);
+  assert.equal(unchanged.status, 'unchanged'); assert.equal(unchanged.receipt_status, 'saved');
+  assert.deepEqual(await readFile(path.join(e.cwd, work)), bytes);
+  assert.equal(await progressContext(compact(next)), null);
+  await put(e.cwd, work, 'changed since receipt');
+  assert.equal((await progressContext(stop(next))).decision, 'block');
+});
+
+test('unified Codex save failure is reported and cannot claim a valid compaction receipt', async t => {
+  const e = await fixture(t); await progressContext(e);
+  const saved = await saveProgress({ ...e, progress: { topic_id: 'topic', title: 'Result', summary: 'Fixed', work_path: '../outside' } }, { coreRoot: path.resolve('xiaotao') });
+  assert.equal(saved.status, 'failed'); assert.equal(saved.receipt_status, 'failed');
+  assert.equal((await progressContext(compact(e))).continue, false);
+});
+
+test('unified save CLI uses a configured installed Core with spaces and Unicode, without shell redirection', async t => {
+  const e = await fixture(t); await progressContext(e);
+  const core = path.join(e.cwd, 'trusted install space & 中文');
+  await mkdir(core); await cp(path.resolve('xiaotao/scripts'), path.join(core, 'scripts'), { recursive: true });
+  const result = JSON.parse(execFileSync(process.execPath, [script, '--save'], {
+    input: JSON.stringify({ ...e, progress: { topic_id: 'topic', title: '结果', summary: '保存中文内容' } }), encoding: 'utf8',
+    env: { ...process.env, XIAOTAO_CORE_ROOT: core },
+  }));
+  assert.equal(result.status, 'saved'); assert.equal(result.receipt_status, 'saved');
+  assert.equal(await progressContext(compact(e)), null);
+});

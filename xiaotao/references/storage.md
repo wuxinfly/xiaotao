@@ -369,6 +369,8 @@ Temporary 和 Task 目录使用从 `topic`（`meta.yaml.topic`）或 `objective`
 
 ## 可变状态写入协议
 
+日常阶段进度默认调用 [progress-saving.md](progress-saving.md) 的统一写入器；以下协议供 writer 实现与生命周期操作使用，不要求模型每次收尾手工执行。统一入口按顺序提交独立的工作进度与日记，通过本地恢复记录重试部分失败，不声明跨文件原子事务。工作锁沿用 DSH 的规范路径扁平 key；不强制回收已有锁或释放墓碑，遇到其他 writer 留下的锁时明确报告冲突。
+
 可变状态包括 Temporary `meta.yaml` 和 `current.md`，Task `task.yaml`、`context.md`、
 `decisions.md`、`progress.md`，Worker `current-state.md`，项目 Worker `registry.yaml`，Long-term
 `entries/<entry-id>.md` 与 `history/<entry-id>.md`，以及每个规范正式 Playbook Markdown 或 YAML 文件。列出的可变 YAML 文件都携带

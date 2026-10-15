@@ -1,5 +1,7 @@
 # 每日项目记忆
 
+日常阶段保存先用 [progress-saving.md](progress-saving.md) 的统一入口；下文的底层请求用于协议排查与显式维护，不是每次收尾必读步骤。
+
 日常项目讨论、轻任务结论优先保存当天记忆，不为保存而创建 Temporary/Task。已有明确工作时先更新其权威进度，当天只写本日变化与链接。无新事实、纯寒暄、用户要求不保存时跳过；不保存秘密、完整聊天或无关个人信息。
 
 在一个阶段结束、交付结果前合并保存；连续修改和验证只保存一次。长任务在重要决策、阻塞或即将中断时补存。同一会话不反复读取未变化的规范；正常保存不逐步播报，失败简短说明。
@@ -60,7 +62,7 @@ python <core>/scripts/timeline_catalog.py --project-root <project> save < daily-
 - `source_refs` 仅项目内已存在的文件，可为空（本次日常对话的记录）；不从聊天擅自推导正式 Knowledge。
 - 关联当前工作时加 `work_path`，仅 Task `progress.md` 或 Temporary `current.md`。写入器保存 kind/id 与原路径；归档后按 ID 解析新路径。Temporary 晋升后，其归档原记录仍是可达来源；新 Task 的新进度用关联 Task 的日主题记录。
 - 此命令只写每日事实，不修改 Task/Temporary。有关联工作时先用原协议保存工作进度并回读，再提交每日汇总。工作成功、日记失败需要补齐日记；不得报告全部成功。
-- 返回 `saved`/`duplicate`/`unchanged`、`path`、`revision`；另有 `navigation_status`。`pending` 表示原文已提交但导航未修复，重复原请求或 build 可补齐。`unchanged` 不满足新轮“本轮写入”的回执要求，无新事实应登记 skipped。
+- 返回 `saved`/`duplicate`/`unchanged`、`path`、`revision`；另有 `navigation_status`。`pending` 表示原文已提交但导航未修复，重复原请求或 build 可补齐。手工 --ack saved 仍要求本轮写入；统一 --save 会重新核验成功结果的当前字节，因此 duplicate/unchanged 不必靠重写文件取得回执。无新事实且没有调用保存时登记 skipped。
 
 ## 原始记录与重建边界
 
@@ -72,6 +74,6 @@ python <core>/scripts/timeline_catalog.py --project-root <project> save < daily-
 
 ## Codex 回执与压缩
 
-模型保存、回读后登记当轮 saved：`path` 指向当天权威 details；关联 Task/Temporary 时加 `work_paths`（最多 1 项，当前活动或归档路径）。脚本核对每日身份、元数据、文件字节及关联工作本轮进度；单独 Task/Temporary 或派生 summary.md 不能冒充新协议的每日保存。
+默认使用插件 --save 一次保存并核验回执，见 [progress-saving.md](progress-saving.md)。底层 --ack saved 仅供已有写入流程使用：`path` 指向当天权威 details；关联 Task/Temporary 时加 `work_paths`（最多 1 项，当前活动或归档路径）。脚本核对每日身份、元数据、文件字节及关联工作本轮进度；单独 Task/Temporary 或派生 summary.md 不能冒充新协议的每日保存。
 
 Stop 有界补查一次。PreCompact 对手动压缩在回执缺失/失效时暂停一次并提示先保存，再次手动压缩放行并警告；有效 saved/skipped 直接放行。自动压缩可能发生在模型尚未结束的本轮中，缺失回执时只警告而不把模型困在上下文上限。Hook 不调用模型总结，也不自动写业务记忆；客户端真实行为还需验收，不能保证模型没有遗漏事实。

@@ -192,11 +192,11 @@ ID 和状态，保存到恢复所需的活动 Session、Temporary 或 Task 上�
 
 同一会话已读且未变化的保存规范不反复加载。正常保存不逐步播报读规范、查样例与落盘过程；失败时简短说明已保存和未保存的部分。环境禁止所需操作时停止并登记失败，不反复拼接 shell 或手工替代锁与事务协议。
 
-1. **当天优先**：按 [daily-memory.md](daily-memory.md) 保存当天主题详情。普通讨论或轻任务不因保存而创建 Temporary/Task；明确绑定的 Task 或 Temporary 仍保留其详细进度。
-2. **关联工作**：先按现有 revision、锁、CAS 与原子替换协议保存 Task `progress.md` / Temporary `current.md` 并回读，再用 `timeline_catalog.py save` 保存简短本日汇总与 `work_path`。不另造第二份完整任务进度。无绑定时不要猜测旧任务。
+1. **当天优先**：按 [progress-saving.md](progress-saving.md) 一次提交阶段事实，脚本保存当天主题详情。普通讨论或轻任务不因保存而创建 Temporary/Task；明确绑定的 Task 或 Temporary 仍保留其详细进度。
+2. **关联工作**：在统一请求中附上已有 Task `progress.md` / Temporary `current.md` 的 `work_path`；由脚本保留旧事实、追加进度并生成当天汇总和链接，内部完成版本/hash 检查、锁、原子写入与回读。不要为一次阶段保存手工构造锁、快照或多文件事务。不另造第二份完整任务进度。无绑定时不要猜测旧任务。
 3. **事实与授权**：记录当前目标、已确认结论/改动、验证、剩余事项、下一步与来源；区分已改未测、通过、失败与未知。保存工作事实不代表批准 Knowledge/Playbook，也不提供新执行权限。没有启用 XiaoTao 的项目不静默初始化。
 4. **失败与重试**：工作进度成功但当天记录失败时，明确报告部分成功，使用同一 request ID 补齐；当天记录成功但导航重建失败时，报告 `navigation_status: pending`，重试修复导航，不回滚原文。聊天总结不代表已落盘。
-5. **结束与恢复**：Task/Temporary 按原生命周期归档/晋升；当天链接按 kind/id 解析活动或归档路径，操作后重建导航。普通讨论没有独立任务生命周期，不制造活动 Temporary。Codex 回执登记当天详情 path，有关联工作时同时登记 `work_paths`；具体见插件说明。
+5. **结束与恢复**：Task/Temporary 按原生命周期归档/晋升；当天链接按 kind/id 解析活动或归档路径，操作后重建导航。普通讨论没有独立任务生命周期，不制造活动 Temporary。Codex 默认用插件 --save 一并登记回执，不再单独 --ack saved；只有跳过时单独登记 skipped。
 
 
 ## Delegation Packet
