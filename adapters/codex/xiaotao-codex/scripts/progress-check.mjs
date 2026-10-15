@@ -137,7 +137,7 @@ async function receiptValid(root, record) {
 }
 
 function instruction(event) {
-  return `本轮结束前检查阶段进度：前轮未保存的事实也需补存，普通跳过不能清除前轮欠账；有新事实优先写入当天 details/ 记忆并回读；关联 Task/Temporary 时先更新其进度，再保存当天汇总。无新事实或用户要求不保存则跳过；不要为回执创建业务 Task。调用插件可信脚本 progress-check.mjs --ack，通过 stdin 传 JSON（cwd、session_id、turn_id、status；saved 加当天详情 path，关联工作再加 work_paths（最多一个 Task progress.md/Temporary current.md）；skipped 加 reason=no-new-facts/user-opt-out/no-current-work，failed 加 reason=save-failed 并向用户说明）。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。回执不授予权限、不批准长期记忆；不得使用聊天总结冒充保存。`;
+  return `本轮结束前检查阶段进度，连续修改与验证合并保存一次，正常保存不逐步播报：前轮未保存的事实也需补存，普通跳过不能清除前轮欠账；有新事实优先写入当天 details/ 记忆并回读；关联 Task/Temporary 时先更新其进度，再保存当天汇总。无新事实或用户要求不保存则跳过；不要为回执创建业务 Task。调用插件可信脚本 progress-check.mjs --ack，通过 stdin 传 JSON（cwd、session_id、turn_id、status；saved 加当天详情 path，关联工作再加 work_paths（最多一个 Task progress.md/Temporary current.md）；skipped 加 reason=no-new-facts/user-opt-out/no-current-work，failed 加 reason=save-failed 并向用户说明）。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。回执不授予权限、不批准长期记忆；不得使用聊天总结冒充保存。`;
 }
 
 export async function acknowledge(event) {

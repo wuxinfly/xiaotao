@@ -5,7 +5,7 @@
 `SubagentStart`，以及阶段保存检查的 `UserPromptSubmit` / `Stop` 和压缩前检查 `PreCompact`。压缩后，SessionStart 可在下一次模型请求前提供精简规则和记忆入口；派出一个
 已准备好的持久 Worker 时，SubagentStart 可注入经过验证的 Delegation Packet。
 
-阶段进度由 Core 按方案确认、代码改动、验证或阻塞节点主动保存并回读；SessionStart 提醒与该规则对齐，Hook 本身不执行保存；Stop 检查显式回执，缺失或失效时最多提醒一次，仍不保证模型绝不漏存。
+阶段进度由 Core 在阶段结束交付前合并保存并回读，连续修改与验证只保存一次，长任务在重要决策、阻塞或即将中断时补存；SessionStart 提醒与该规则对齐，Hook 本身不执行保存；Stop 检查显式回执，缺失或失效时最多提醒一次，仍不保证模型绝不漏存。
 
 ## 已实现的范围
 

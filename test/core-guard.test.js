@@ -134,7 +134,7 @@ test('Codex SessionStart reminder satisfies Core Guard invariants and length bud
   assert.match(context, /单会话明确小改动默认由小涛直通/);
   assert.match(context, /工具隔离或缺失能力.*明确要求委派.*有界 Worker/);
 
-  assert.match(context, /有阶段新事实时先保存并回读简短进度/);
+  assert.match(context, /阶段结束交付前合并保存并回读简短进度/);
   assert.match(context, /聊天总结不等于落盘/);
 
   // Authorization

@@ -1,6 +1,6 @@
 ---
-revision: 4
-updated_at: 2026-10-13T09:42:44Z
+revision: 5
+updated_at: 2026-10-15T03:10:00Z
 updated_by: xiao-tao/maintainer
 ---
 
@@ -46,7 +46,7 @@ updated_by: xiao-tao/maintainer
   ],
   "code_fingerprints": {
     "package.json": "27d5c7420be49bf6b04fbee8598e88c36815b9ad7e51165a41f833c230fae60d",
-    "xiaotao/SKILL.md": "a70427ae2984684352092f5951a2bee0eceb354f3bd2dc1e8a8c63089a68a333",
+    "xiaotao/SKILL.md": "f02731ca5c2db235e79766ecc4725203c07fe24adfd52478ba96734a01f1efe0",
     "bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb"
   },
   "status": "active"
