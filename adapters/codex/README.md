@@ -5,7 +5,7 @@
 `SubagentStart`，以及阶段保存检查的 `UserPromptSubmit` / `Stop` 和压缩前检查 `PreCompact`。压缩后，SessionStart 可在下一次模型请求前提供精简规则和记忆入口；派出一个
 已准备好的持久 Worker 时，SubagentStart 可注入经过验证的 Delegation Packet。
 
-阶段进度由 Core 按方案确认、代码改动、验证或阻塞节点主动保存并回读；SessionStart 提醒与该规则对齐，Hook 本身不执行保存；Stop 检查显式回执，缺失或失效时最多提醒一次，仍不保证模型绝不漏存。
+阶段进度由 Core 在阶段结束交付前合并保存并回读，连续修改与验证只保存一次，长任务在重要决策、阻塞或即将中断时补存；SessionStart 提醒与该规则对齐，Hook 本身不执行保存；Stop 检查显式回执，缺失或失效时最多提醒一次，仍不保证模型绝不漏存。
 
 ## 已实现的范围
 
@@ -94,8 +94,9 @@ Packet 必须声明 `host_adapter.id: codex`、`status: degraded`，且
 依据 [Codex Hooks](https://learn.chatgpt.com/docs/hooks) 的 `UserPromptSubmit` / `Stop` 协议实现；`Stop` 的 block 会要求模型继续处理，不是拒绝用户回复。需要安装、启用并信任更新后的 Hooks，真实客户端验收仍待记录。
 
 - `UserPromptSubmit` 为有效 XiaoTao 项目登记 Session/Turn ID、开始时间，并注入简短回执要求。**每轮都检查，包括普通聊天**；无新事实时模型需登记 skipped，不应制造进度记录。
-- 模型按 Core 保存并回读，然后调用可信插件 `scripts/progress-check.mjs --ack`，stdin 输入 JSON：`cwd`、`session_id`、`turn_id`、`status`。`saved` 加当天权威详情的项目相对 `path`，有关联工作则加 `work_paths`（最多 1 项）；`skipped` 加 `reason`（`no-new-facts`、`user-opt-out`、`no-current-work`）；`failed` 加 `reason: save-failed`，同时如实向用户报告。
-- `saved` 只接受 `.xiaotao/memory/timeline/years/<年>/<月>/<日>/details/<主题>.md`，最多 32 KiB，含有效每日记录 JSON 与 revision/updated_at/updated_by。脚本校验本轮更新时间、日期时区、主题身份并记录文件摘要；Stop/PreCompact 再核对。关联工作的 `work_paths` 必须匹配记录的 kind/id，并包含本轮保存的 Task progress.md 或 Temporary current.md（支持归档路径）。生成的 summary.md、仅工作进度或不相关路径不能冒充每日保存。
+- 阶段保存默认调用可信插件 `scripts/progress-check.mjs --save`，stdin 为 `{cwd, session_id, turn_id, progress: {topic_id, title, summary, details?, validation?, next_steps?, work_path?, request_id?}}`。一次调用完成工作进度追加、当天汇总、局部导航、回读和回执，不再单独 --ack saved。默认调用用户级 `.agents/skills/xiaotao/scripts/save_progress.py`；自定义安装可由用户设置 `XIAOTAO_CORE_ROOT`、`XIAOTAO_PYTHON`，不执行项目脚本。
+- `saved`/`duplicate`/`unchanged` 都重新核验每日原文及关联工作当前字节，记录本轮核验时间与摘要；Stop/PreCompact 再核对，后续改动会使回执失效。导航 `pending` 时原文仍可能保存成功，按返回状态说明。失败自动登记 failed，CLI 返回非零退出码。底层 `--ack saved` 仍校验本轮更新时间，不改变其兼容行为。
+- 无新事实或用户要求不保存时仅用 `--ack` 登记 `skipped`，输入 `cwd/session_id/turn_id/status/reason`；reason 为 `no-new-facts`、`user-opt-out`、`no-current-work`。普通跳过不清除前轮未保存状态。详见 Core 的 `references/progress-saving.md`。
 - `PreCompact` 对 manual/auto 生效：有效 saved/skipped 放行；手动缺失/失效回执暂停一次并提示先保存，重复手动请求放行并警告，防止循环。auto 可能发生在未结束的一轮工作中，缺失回执时只警告，避免上下文上限处无法继续保存。Hook 不调用模型总结；自动压缩存在漏存风险，真实客户端仍需验收。
 - 状态仅在 `.xiaotao/runtime/codex/progress/<session-hash>.json` 中保存当前轮，每个 Session 一份；同轮开始事件重放不重置提醒，跨 Session 分开。不保存用户 prompt、回复或 transcript，也不读 Memory 全文、扫描旧任务或执行项目脚本。该文件是本地检查元数据，不是业务记忆，应排除 Git。
 - 回执缺失/目标改变时，Stop 只要求一次补查。`stop_hook_active` 或已提醒标记防止循环；失败、锁竞争、超时、缺少 ID、没有对应轮记录时放行并按可用情况诊断。保存失败回执只证明失败已报告，不能视为保存成功。

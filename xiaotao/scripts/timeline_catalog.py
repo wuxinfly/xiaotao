@@ -39,11 +39,6 @@ def event_summary(event):
     return short(event.get('summary') or event.get('title') or '事件')
 
 
-def highlights(events, limit=3):
-    values = list(dict.fromkeys(event_summary(e) for e in reversed(events)))
-    return '；'.join(values[:limit]) + ('…' if len(values) > limit else '')
-
-
 def derive_timeline(project_root, *, now=None, day=None):
     now = now or resolve_reference_time()
     name = memory_timezone(project_root, now)
@@ -73,25 +68,50 @@ def derive_timeline(project_root, *, now=None, day=None):
     return {'event_count': len(identities), 'years': grouped, 'timezone': name}
 
 
+def highlight_values(events, limit=3):
+    return list(dict.fromkeys(event_summary(e) for e in reversed(events)))[:limit]
+
+
+def navigation_summary(level, label, children):
+    """Parents use only bounded highlights from direct child summaries."""
+    values = list(dict.fromkeys(v for _, highlights_ in reversed(children) for v in highlights_))[:3]
+    meta = '<!-- xiaotao:timeline-highlights:' + json.dumps(values, ensure_ascii=False) + ' -->\n'
+    if level == 'root':
+        lines = ['# 项目经历总览 (Project Memory Timeline)', '', '## 年度导航与重点', '']
+        for key, hints in reversed(children):
+            lines.append(f'- [{key} 年度总览](years/{key}/summary.md)：' + '；'.join(hints))
+        if not children:
+            lines.append('尚无已保存的日常记忆或项目事件。')
+    elif level == 'year':
+        lines = [f'# 项目记忆年度总览：{label}', '', '## 月度导航与重点', '']
+        lines.extend(f'- [{key} 月]({key}/summary.md)：' + '；'.join(hints) for key, hints in children)
+    else:
+        lines = [f'# 项目记忆月度摘要：{label}', '', '## 每日讨论、决定与推进', '']
+        lines.extend(f'- [{label}-{key}]({key}/summary.md)：' + '；'.join(hints[:2]) for key, hints in children)
+    return GENERATED + meta + '\n'.join(lines) + '\n'
+
+
+def summary_highlights(text):
+    match = re.search(r'^<!-- xiaotao:timeline-highlights:(.*?) -->$', text, re.M)
+    if not text.startswith(GENERATED) or not match:
+        raise TimelineError('navigation needs one full build before incremental refresh')
+    values = json.loads(match[1])
+    if not isinstance(values, list) or len(values) > 3 or any(not isinstance(v, str) for v in values):
+        raise TimelineError('invalid navigation highlights')
+    return values
+
+
 def expected_timeline_files(derived):
     years = derived['years']
     files = {}
-    root = ['# 项目经历总览 (Project Memory Timeline)', '', '## 年度导航与重点', '']
-    for y in sorted(years, reverse=True):
-        all_events = [e for days in years[y].values() for events in days.values() for e in events]
-        root.append(f'- [{y} 年度总览](years/{y}/summary.md)：{highlights(all_events)}')
-    if not years:
-        root.append('尚无已保存的日常记忆或项目事件。')
-    files[Path('summary.md')] = GENERATED + '\n'.join(root) + '\n'
-    for y, months in years.items():
-        year = [f'# 项目记忆年度总览：{y}', '', '## 月度导航与重点', '']
+    root_children = []
+    for y, months in sorted(years.items()):
+        month_children = []
         for m, days in sorted(months.items()):
-            all_events = [e for events in days.values() for e in events]
-            year.append(f'- [{m} 月]({m}/summary.md)：{highlights(all_events)}')
-            month = [f'# 项目记忆月度摘要：{y}-{m}', '', '## 每日讨论、决定与推进', '']
+            day_children = []
             for d, events in sorted(days.items()):
                 day = f'{y}-{m}-{d}'
-                month.append(f'- [{day}]({d}/summary.md)：{highlights(events, 2)}')
+                day_children.append((d, highlight_values(events)))
                 daily = [f'# 项目记忆日详情：{day}', '', f'共 {len(events)} 项记录；下方最多展示 50 项。', '']
                 for event in events[:50]:
                     detail = event.get('detail_ref')
@@ -110,7 +130,7 @@ def expected_timeline_files(derived):
                 if len(events) > 50:
                     daily.append(f'\n更多记录：events --date {day} --offset 50 --limit 50。')
                 prefix = Path('years') / y / m / d
-                files[prefix / 'summary.md'] = GENERATED + '\n'.join(daily) + '\n'
+                files[prefix / 'summary.md'] = GENERATED + '<!-- xiaotao:timeline-highlights:' + json.dumps(highlight_values(events), ensure_ascii=False) + ' -->\n' + '\n'.join(daily) + '\n'
                 # A bounded derived machine view, not an authoritative daily journal.
                 rows = ['date: ' + json.dumps(day), 'events:']
                 for e in events[:50]:
@@ -120,8 +140,13 @@ def expected_timeline_files(derived):
                     rows.append('    occurred_at: ' + e['occurred_at'])
                     rows.append('    source_refs: ' + json.dumps(e.get('source_refs', []), ensure_ascii=False))
                 files[prefix / 'events.yaml'] = GENERATED.replace('<!-- ', '# ').replace(' -->', '') + '\n'.join(rows) + '\n'
-            files[Path('years') / y / m / 'summary.md'] = GENERATED + '\n'.join(month) + '\n'
-        files[Path('years') / y / 'summary.md'] = GENERATED + '\n'.join(year) + '\n'
+            month_text = navigation_summary('month', f'{y}-{m}', day_children)
+            files[Path('years') / y / m / 'summary.md'] = month_text
+            month_children.append((m, summary_highlights(month_text)))
+        year_text = navigation_summary('year', y, month_children)
+        files[Path('years') / y / 'summary.md'] = year_text
+        root_children.append((y, summary_highlights(year_text)))
+    files[Path('summary.md')] = navigation_summary('root', '', root_children)
     if any(len(t.encode('utf-8')) > MAX_BYTES for t in files.values()):
         raise TimelineError('navigation exceeds read budget; split large source summaries')
     return files
@@ -190,6 +215,65 @@ def persist_timeline(root, derived):
         atomic_text(root, (ROOT / relative).as_posix(), content)
     for relative in existing - expected.keys():
         safe(root, (ROOT / relative).as_posix()).unlink()
+
+
+def _refresh_day(root, day, *, now=None):
+    """Refresh one day and its parents; never scan other days' detail records."""
+    y, m, d = valid_date(day).split('-')
+    with timeline_lock(root):
+        expected = expected_timeline_files(derive_timeline(root, now=now, day=day))
+        prefix = Path('years') / y / m / d
+        updates = {p: t for p, t in expected.items() if p.parent == prefix}
+        def children(parent, pattern):
+            directory = safe(root, (ROOT / parent).as_posix())
+            result = []
+            if directory.is_dir():
+                for child in sorted(directory.iterdir()):
+                    if not re.fullmatch(pattern, child.name):
+                        continue
+                    relative = parent / child.name / 'summary.md'
+                    text = updates.get(relative)
+                    if text is None:
+                        file = safe(root, (ROOT / relative).as_posix())
+                        if not file.is_file():
+                            raise TimelineError('missing child navigation; run build once')
+                        text = read_text(root, (ROOT / relative).as_posix())
+                    result.append((child.name, summary_highlights(text)))
+                    if len(result) > 256:
+                        raise TimelineError('navigation child budget exceeded')
+            return result
+        # Include the newly saved day even before its navigation exists on disk.
+        def with_current(items, key, relative):
+            values = dict(items)
+            values[key] = summary_highlights(updates[relative])
+            return sorted(values.items())
+        month = Path('years') / y / m
+        month_items = with_current(children(month, r'\d{2}'), d, prefix / 'summary.md')
+        updates[month / 'summary.md'] = navigation_summary('month', f'{y}-{m}', month_items)
+        year = Path('years') / y
+        year_items = with_current(children(year, r'\d{2}'), m, month / 'summary.md')
+        updates[year / 'summary.md'] = navigation_summary('year', y, year_items)
+        root_items = with_current(children(Path('years'), r'\d{4}'), y, year / 'summary.md')
+        updates[Path('summary.md')] = navigation_summary('root', '', root_items)
+        if any(len(text.encode('utf-8')) > MAX_BYTES for text in updates.values()):
+            raise TimelineError('navigation exceeds read budget; split large source summaries')
+        for relative in updates:
+            p = safe(root, (ROOT / relative).as_posix())
+            if p.exists() and not (read_text(root, (ROOT / relative).as_posix()).startswith(GENERATED) or read_text(root, (ROOT / relative).as_posix()).startswith('# xiaotao:timeline-generated:v2')):
+                raise TimelineError('unmanaged navigation; preserve it before build')
+        for relative, text in updates.items():
+            atomic_text(root, (ROOT / relative).as_posix(), text)
+
+
+def refresh_day(root, day, *, now=None):
+    try:
+        _refresh_day(root, day, now=now)
+    except TimelineError as error:
+        # Upgrade pre-highlight navigation once; routine saves take the local path.
+        if not str(error).startswith(('navigation needs one full build', 'missing child navigation')):
+            raise
+        with timeline_lock(root):
+            persist_timeline(root, derive_timeline(root, now=now))
 
 
 def timeline_is_current(root, derived):

@@ -56,7 +56,7 @@ Open questions 和可达的项目相对 source refs。这只是覆盖已提交�
 ## Temporary Memory
 
 
-Temporary Memory 表示值得保留的讨论或无需正式 Task 的轻任务阶段进度。保持 `current.md` 简短：
+Temporary Memory 承载需要独立目标、状态或跨会话接续的临时工作。普通讨论与单会话轻任务的结论保存到当天记忆，不因保存而创建 Temporary。已有 Temporary 时保持 `current.md` 简短：
 
 ```markdown
 ---

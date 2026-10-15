@@ -41,7 +41,7 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
 | 长 Session 极简底线守卫、Turn 常驻或 Hook 恢复提醒 | [guard.md](references/guard.md) |
 | 解释或暴露 XiaoTao 的跨宿主输入输出契约 | [contract.md](references/contract.md) |
 | 开始、恢复、晋升、协调、委派或结束实质工作 | [coordination.md](references/coordination.md) |
-| 日常项目对话、阶段保存与按日期回顾 | [daily-memory.md](references/daily-memory.md)； [coordination.md](references/coordination.md) 的阶段进度保存与 [storage.md](references/storage.md) |
+| 日常项目对话、阶段保存与按日期回顾 | [progress-saving.md](references/progress-saving.md)；日期检索与底层每日协议按需见 [daily-memory.md](references/daily-memory.md) |
 | 创建或修改 `.xiaotao/` 状态 | [storage.md](references/storage.md) |
 | 浏览、查询、压缩、恢复、归档或晋升项目 Memory | [memory.md](references/memory.md) |
 | 查询某段时间完成过什么或回顾项目活动 | [activity.md](references/activity.md) |
@@ -64,7 +64,7 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
 
 ## 核心约束
 
-- 阶段进度保存：已启用 XiaoTao 的项目中，方案确定或重要调整、一批相关代码改完、验证结束或遇到阻塞时，若产生值得接续的新事实，必须在向用户交付该阶段结果前保存简短进度并回读核验；本轮仍有未完成工作时补查是否漏存。优先写入当天 `timeline/years/<年>/<月>/<日>/details/<主题>.md`，由日详情汇总并逐层进入月、年总结。有关联工作时先更新当前 Task `progress.md` 或 Temporary `current.md`，再在当天写本日汇总与稳定工作引用；普通讨论与轻任务不因保存而创建 Temporary/Task。无新事实、纯寒暄或用户明确要求不保存时跳过。具体流程见 [coordination.md](references/coordination.md)；聊天总结不代表已落盘，保存失败必须说明。
+- 阶段进度保存：已启用 XiaoTao 的项目中，在一个阶段结束、交付结果前合并保存值得接续的新事实并回读；连续修改与验证只保存一次。长任务在重要决策、阻塞或即将中断时补存。普通讨论与轻任务优先存当天记忆，不为保存创建 Temporary/Task；已有明确关联工作时同一次请求附上 work_path。默认只用 [progress-saving.md](references/progress-saving.md) 的统一入口，脚本处理任务进度、当天汇总、导航和回读；Codex 用 --save 同时完成回执，不手工拼存储协议。无新事实、纯寒暄或用户明确要求不保存时跳过。正常保存不逐步播报；保存失败简短说明，聊天总结不代表已落盘。
 
 - 对话、澄清与单会话明确小改动由小涛直接处理。单会话小改动默认轻任务直通，不创建 Task、快照或持久 Handoff；出现跨会话继续、长时间运行、多执行单元协作或中途变复杂时，才创建/升级为正式 Task 并委派 Worker。无需持久化但确需工具隔离、补充小涛缺失能力或用户明确要求委派时，可以使用 Session Worker；不得仅因技术执行或存在可用子代理就委派普通轻任务。直通路径与 Task 路径遵守完全相同的授权边界与必要验证要求；直通中途变复杂时先保存已确认工作再升级。子代理不可用时如实降级为直接执行，不得声称运行了独立 Worker。
 - Memory Worker 仅负责整理记忆与经验审查。工具白名单严格限制为只读工具，输出严格限定为
