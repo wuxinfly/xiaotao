@@ -230,7 +230,7 @@ def save_progress(root, raw, now=None):
             current = load_note(root, saved['path'])
             if current['revision'] != saved['revision'] or any(current[k] != journal['daily'][k] for k in ('title', 'summary', 'details', 'source_refs')):
                 raise DailyError('daily changed before final readback; reconcile newer progress')
-            result['daily_sha256'] = digest(render_note(current))
+            result['daily_sha256'] = hashlib.sha256(safe(root, saved['path']).read_bytes()).hexdigest()
             if snapshot:
                 result['work_paths'] = [relative]
                 expected_hash = snapshot['before_hash'] if journal['unchanged'] else snapshot['after_hash']
@@ -238,10 +238,12 @@ def save_progress(root, raw, now=None):
                     raise DailyError('work changed before final readback; reconcile newer progress')
                 result['work_sha256'] = expected_hash
             try:
-                refresh_day(root, journal['day'], now=now)
-                result['navigation_status'] = 'current'
+                issues = refresh_day(root, journal['day'], now=now)
+                result['navigation_status'] = 'partial' if issues else 'current'
+                result['navigation_issues'] = issues
             except (DailyError, OSError, ValueError) as error:
                 result['navigation_error'] = str(error)
+                result['navigation_next_command'] = 'python .agents/skills/xiaotao/scripts/timeline_catalog.py build'
         except (DailyError, OSError, ValueError) as error:
             result['status'] = 'failed'
             result['error'] = str(error)

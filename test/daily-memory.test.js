@@ -209,5 +209,49 @@ test('date-scoped events ignore corrupt daily notes outside the requested day', 
   await put(root, '.xiaotao/memory/timeline/years/2025/01/01/details/broken.md', 'broken note');
   const events = await json(root, ['events', '--date', '2026-10-13', '--limit', '1']);
   assert.equal(events.total, 1); assert.equal(events.events.length, 1);
-  await assert.rejects(run(root, ['events', '--date', '2025-01-01']), /daily-record block/);
+  const broken = await json(root, ['events', '--date', '2025-01-01']);
+  assert.equal(broken.total, 0); assert.equal(broken.issues.length, 1);
+  assert.match(broken.issues[0].error, /daily-record block/);
+});
+
+test('CRLF notes can be shown, retried and rebuilt without rewriting their bytes', async t => {
+  const root = await fixture(t); const saved = await json(root, ['save'], note());
+  const crlf = (await readFile(path.join(root, saved.path), 'utf8')).replaceAll('\n', '\r\n');
+  await put(root, saved.path, crlf);
+  assert.equal((await json(root, ['show', '--date', '2026-10-13', '--topic', 'daily-design'])).record.summary, note().summary);
+  assert.equal((await json(root, ['save'], note())).status, 'duplicate');
+  assert.equal((await json(root, ['build'])).status, 'built');
+  assert.equal(await readFile(path.join(root, saved.path), 'utf8'), crlf);
+});
+
+test('build isolates edited notes, reports paths, and reconcile preserves bytes and imports appended facts once', async t => {
+  const root = await fixture(t); const saved = await json(root, ['save'], note());
+  const edited = ((await readFile(path.join(root, saved.path), 'utf8')).replace('revision: 0', 'revision: 3') + '\n第四轮新增结论\n').replaceAll('\n', '\r\n');
+  await put(root, saved.path, edited);
+  const other = await json(root, ['save'], note({ topic_id: 'other-day', request_id: 'other', occurred_at: '2026-10-14T08:00:00Z' }));
+  assert.equal(other.navigation_status, 'partial');
+  const build = await json(root, ['build']);
+  assert.equal(build.status, 'partial'); assert.equal(build.event_count, 1);
+  assert.equal(build.issues[0].path, saved.path); assert.match(build.issues[0].repair_command, /reconcile/);
+  assert.match(await run(root, ['summary', '--date', '2026-10-13']), /待修复记录/);
+  await assert.rejects(run(root, ['check']));
+  const repaired = await json(root, ['reconcile', saved.path]);
+  assert.equal(repaired.status, 'reconciled'); assert.equal(repaired.revision, 4);
+  assert.equal(await readFile(path.join(root, repaired.backup), 'utf8'), edited);
+  const show = await json(root, ['show', '--date', '2026-10-13', '--topic', 'daily-design']);
+  assert.match(show.record.details, /保留当前方案.*\n\n第四轮新增结论/s);
+  assert.equal((await json(root, ['reconcile', saved.path])).status, 'unchanged');
+  assert.equal((await json(root, ['build'])).event_count, 2);
+  assert.equal((await json(root, ['check'])).status, 'current');
+  await assert.rejects(run(root, ['save'], note()), /revision conflict/);
+});
+
+test('reconcile refuses ambiguous summary or heading edits without changing the file', async t => {
+  const root = await fixture(t); const saved = await json(root, ['save'], note());
+  const text = await readFile(path.join(root, saved.path), 'utf8');
+  for (const edited of [text.replace('# 每日记忆方案', '# 手改标题'), text.replace('\n\n确认按年、月、日逐层检索\n', '\n\n手改汇总\n')]) {
+    await put(root, saved.path, edited);
+    await assert.rejects(run(root, ['reconcile', saved.path]));
+    assert.equal(await readFile(path.join(root, saved.path), 'utf8'), edited);
+  }
 });

@@ -69,7 +69,9 @@
             },
             "id": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$"
+              "minLength": 1,
+              "description": "与 Temporary/Task 目录名一致且文件系统安全的 ID。可以包含 CJK 和其他非 ASCII Unicode；只允许字母、数字、'_'、'.'、'-'，拒绝路径分隔符、空白、控制字符、shell 元字符、文件系统不安全标点，以及开头或结尾的点。",
+              "pattern": "^(?!\\.)(?!.*[.]$)[\\p{L}\\p{N}._-]+$"
             },
             "path": {
               "type": "string",
