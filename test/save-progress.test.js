@@ -137,3 +137,32 @@ test('pre-highlight navigation is upgraded once and later local refresh remains 
   assert.equal(saved.navigation_status, 'current');
   await command(root, 'check');
 });
+
+test('Chinese task IDs append linked progress, survive archive and produce byte-accurate CRLF retry receipts', async t => {
+  const root = await fixture(t); const id = '20260928-定时任务迁移app-center';
+  const work = `.xiaotao/tasks/${id}/progress.md`;
+  await put(root, work, original);
+  const input = request({ work_path: work });
+  const saved = await invoke(root, input);
+  assert.equal(saved.work_status, 'saved'); assert.equal(saved.navigation_status, 'current');
+  const crlf = (await readFile(path.join(root, saved.path), 'utf8')).replaceAll('\n', '\r\n');
+  await put(root, saved.path, crlf);
+  await mkdir(path.join(root, '.xiaotao/tasks/archive'), { recursive: true });
+  await rename(path.join(root, `.xiaotao/tasks/${id}`), path.join(root, `.xiaotao/tasks/archive/${id}`));
+  const retry = await invoke(root, input);
+  assert.equal(retry.status, 'duplicate'); assert.equal(retry.work_status, 'duplicate');
+  assert.match(retry.work_paths[0], /archive/);
+  const { createHash } = await import('node:crypto');
+  assert.equal(retry.daily_sha256, createHash('sha256').update(crlf).digest('hex'));
+});
+
+test('incremental navigation fallback skips historical edited notes and provides repair commands', async t => {
+  const root = await fixture(t); const first = await invoke(root, request());
+  await put(root, first.path, (await readFile(path.join(root, first.path), 'utf8')) + '\n手工追加\n');
+  // Force the normal incremental fallback through a missing historical summary.
+  await rm(path.join(root, '.xiaotao/memory/timeline/years/2026/10/15/summary.md'));
+  const next = await invoke(root, request({ request_id: 'day-two' }), '2026-10-16T08:00:00Z');
+  assert.equal(next.status, 'saved'); assert.equal(next.navigation_status, 'partial');
+  assert.equal(next.navigation_issues[0].path, first.path);
+  assert.match(next.navigation_issues[0].repair_command, /reconcile/);
+});

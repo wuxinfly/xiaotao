@@ -15,7 +15,7 @@ from pathlib import Path
 from activity_catalog import derive_index, resolve_reference_time
 from daily_memory import (DailyError, ROOT, MAX_BYTES, atomic_text, day_relative, list_notes,
                           load_note, memory_timezone, note_relative, read_text, resolve_work,
-                          safe, save_note, stamp, timeline_lock, valid_date, zone)
+                          safe, save_note, reconcile_note, stamp, timeline_lock, valid_date, zone)
 
 TIMELINE_ROOT = ROOT
 GENERATED = '<!-- xiaotao:timeline-generated:v2 -->\n'
@@ -44,7 +44,8 @@ def derive_timeline(project_root, *, now=None, day=None):
     name = memory_timezone(project_root, now)
     tz = zone(name, now)
     events = list(derive_index(project_root, now=now).get('events', []))
-    for relative, record in list_notes(project_root, start=day, end=day):
+    issues = []
+    for relative, record in list_notes(project_root, start=day, end=day, issues=issues):
         work_path = resolve_work(project_root, record['work_ref'])
         events.append({
             'event_id': record['record_id'], 'event_type': 'daily_note',
@@ -65,7 +66,7 @@ def derive_timeline(project_root, *, now=None, day=None):
         identities.add(event['event_id'])
         y, m, d = valid_date(event_day).split('-')
         grouped.setdefault(y, {}).setdefault(m, {}).setdefault(d, []).append(event)
-    return {'event_count': len(identities), 'years': grouped, 'timezone': name}
+    return {'event_count': len(identities), 'years': grouped, 'timezone': name, 'issues': issues}
 
 
 def highlight_values(events, limit=3):
@@ -104,6 +105,10 @@ def summary_highlights(text):
 def expected_timeline_files(derived):
     years = derived['years']
     files = {}
+    for issue in derived.get('issues', []):
+        parts = Path(issue['path']).parts
+        y, m, d = parts[-5:-2]
+        years.setdefault(y, {}).setdefault(m, {}).setdefault(d, [])
     root_children = []
     for y, months in sorted(years.items()):
         month_children = []
@@ -113,6 +118,9 @@ def expected_timeline_files(derived):
                 day = f'{y}-{m}-{d}'
                 day_children.append((d, highlight_values(events)))
                 daily = [f'# 项目记忆日详情：{day}', '', f'共 {len(events)} 项记录；下方最多展示 50 项。', '']
+                for issue in derived.get('issues', []):
+                    if issue['path'].startswith(day_relative(day) + '/'):
+                        daily.append('- 待修复记录：' + issue['path'] + '；运行 reconcile 后重新 build。')
                 for event in events[:50]:
                     detail = event.get('detail_ref')
                     if detail:
@@ -221,7 +229,8 @@ def _refresh_day(root, day, *, now=None):
     """Refresh one day and its parents; never scan other days' detail records."""
     y, m, d = valid_date(day).split('-')
     with timeline_lock(root):
-        expected = expected_timeline_files(derive_timeline(root, now=now, day=day))
+        derived = derive_timeline(root, now=now, day=day)
+        expected = expected_timeline_files(derived)
         prefix = Path('years') / y / m / d
         updates = {p: t for p, t in expected.items() if p.parent == prefix}
         def children(parent, pattern):
@@ -263,17 +272,20 @@ def _refresh_day(root, day, *, now=None):
                 raise TimelineError('unmanaged navigation; preserve it before build')
         for relative, text in updates.items():
             atomic_text(root, (ROOT / relative).as_posix(), text)
+        return derived.get('issues', [])
 
 
 def refresh_day(root, day, *, now=None):
     try:
-        _refresh_day(root, day, now=now)
+        return _refresh_day(root, day, now=now)
     except TimelineError as error:
         # Upgrade pre-highlight navigation once; routine saves take the local path.
         if not str(error).startswith(('navigation needs one full build', 'missing child navigation')):
             raise
         with timeline_lock(root):
-            persist_timeline(root, derive_timeline(root, now=now))
+            derived = derive_timeline(root, now=now)
+            persist_timeline(root, derived)
+            return derived.get('issues', [])
 
 
 def timeline_is_current(root, derived):
@@ -308,6 +320,8 @@ def parse_args(argv):
     commands = parser.add_subparsers(dest='command', required=True)
     for c in ('build', 'check', 'save', 'context'):
         commands.add_parser(c, parents=[common])
+    reconcile = commands.add_parser('reconcile', parents=[common])
+    reconcile.add_argument('path')
     summary = commands.add_parser('summary', parents=[common])
     summary.add_argument('--year')
     summary.add_argument('--month')
@@ -341,6 +355,8 @@ def main(argv=None):
             name = memory_timezone(root, now)
             print(json.dumps({'timezone': name, 'occurred_at': now.isoformat(timespec='seconds').replace('+00:00', 'Z'),
                               'date': now.astimezone(zone(name, now)).date().isoformat()}))
+        elif args.command == 'reconcile':
+            print(json.dumps(reconcile_note(root, args.path, now), ensure_ascii=False))
         elif args.command == 'save':
             raw = sys.stdin.buffer.read(MAX_BYTES + 1)
             if len(raw) > MAX_BYTES:
@@ -348,21 +364,25 @@ def main(argv=None):
             result = save_note(root, json.loads(raw), now)
             try:
                 with timeline_lock(root):
-                    persist_timeline(root, derive_timeline(root, now=now))
-                result['navigation_status'] = 'current'
+                    derived = derive_timeline(root, now=now)
+                    persist_timeline(root, derived)
+                result['navigation_status'] = 'partial' if derived['issues'] else 'current'
+                result['navigation_issues'] = derived['issues']
             except (DailyError, OSError, ValueError) as error:
                 # The note has committed; retry the same request repairs only derived navigation.
                 result['navigation_status'] = 'pending'
                 result['navigation_error'] = str(error)
+                result['navigation_next_command'] = 'python .agents/skills/xiaotao/scripts/timeline_catalog.py build'
             print(json.dumps(result, ensure_ascii=False))
         elif args.command == 'build':
             with timeline_lock(root):
                 derived = derive_timeline(root, now=now)
                 persist_timeline(root, derived)
-            print(json.dumps({'status': 'built', 'event_count': derived['event_count'], 'years': sorted(derived['years']), 'timezone': derived['timezone']}))
+            print(json.dumps({'status': 'partial' if derived['issues'] else 'built', 'issues': derived['issues'], 'event_count': derived['event_count'], 'years': sorted(derived['years']), 'timezone': derived['timezone']}))
         elif args.command == 'check':
             with timeline_lock(root):
-                current = timeline_is_current(root, derive_timeline(root, now=now))
+                derived = derive_timeline(root, now=now)
+                current = not derived['issues'] and timeline_is_current(root, derived)
             if not current:
                 print('Timeline is missing or stale', file=sys.stderr)
                 return 1
@@ -376,8 +396,9 @@ def main(argv=None):
             if not 1 <= args.limit <= 50 or args.offset < 0:
                 raise TimelineError('events limit must be 1..50 and offset nonnegative')
             y, m, d = day.split('-')
-            all_events = derive_timeline(root, now=now, day=day)['years'].get(y, {}).get(m, {}).get(d, [])
-            print(json.dumps({'date': day, 'total': len(all_events), 'events': all_events[args.offset:args.offset + args.limit]}, ensure_ascii=False))
+            derived = derive_timeline(root, now=now, day=day)
+            all_events = derived['years'].get(y, {}).get(m, {}).get(d, [])
+            print(json.dumps({'date': day, 'issues': derived['issues'], 'total': len(all_events), 'events': all_events[args.offset:args.offset + args.limit]}, ensure_ascii=False))
         elif args.command == 'show':
             relative = note_relative(args.date, args.topic)
             record = load_note(root, relative)

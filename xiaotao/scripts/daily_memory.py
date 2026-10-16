@@ -188,23 +188,79 @@ def validate_record(record, relative):
         match = WORK.fullmatch(work['path']) if isinstance(work['path'], str) else None
         if work.get('kind') not in {'task', 'temporary'} or not match or match.group(work['kind']) != work.get('id'):
             raise DailyError('invalid work identity')
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,159}', work['id']):
-            raise DailyError('unsafe work ID')
+        if (not work['id'] or work['id'].startswith('.') or work['id'].endswith('.')
+                or not all(c.isalnum() or c in '._-' for c in work['id'])):
+            raise DailyError('unsafe work ID: use letters/numbers (CJK allowed), _, -, .; no leading/trailing dot')
     if not re.fullmatch(r'[0-9a-f]{64}', record.get('request_hash', '')):
         raise DailyError('invalid request hash')
     required_string(record, 'request_id', 128)
 
 
-def load_note(root, relative):
-    text = read_text(root, relative)
+def load_note(root, relative, *, allow_edits=False):
+    text = read_text(root, relative).replace('\r\n', '\n').replace('\r', '\n')
     blocks = list(FENCE.finditer(text))
     if len(blocks) != 1:
-        raise DailyError('daily note must contain one xiaotao-daily-record block')
+        raise DailyError(relative + ': daily note must contain one xiaotao-daily-record block')
     record = json.loads(blocks[0].group(1))
     validate_record(record, relative)
-    if render_note(record) != text:
-        raise DailyError('daily note has unmanaged edits; reconcile them before replacing')
+    if not allow_edits and render_note(record) != text:
+        raise DailyError(relative + ': daily note has unmanaged edits; run timeline_catalog.py reconcile ' + relative)
     return record
+
+
+def reconcile_note(root, relative, now):
+    """Preserve the original bytes and import edited prose without guessing structure."""
+    with timeline_lock(root):
+        record = load_note(root, relative, allow_edits=True)
+        text = read_text(root, relative).replace('\r\n', '\n').replace('\r', '\n')
+        if render_note(record) == text:
+            return {'status': 'unchanged', 'path': relative, 'revision': record['revision']}
+        block = list(FENCE.finditer(text))[0]
+        canonical = render_note(record)
+        canonical_block = list(FENCE.finditer(canonical))[0]
+        # Only revision/update frontmatter edits and prose after the block are supported.
+        prefix = text[:block.start()]
+        expected_prefix = canonical[:canonical_block.start()]
+        def strip_updates(value):
+            return re.sub(r'^(revision|updated_at|updated_by):[^\n]*$', '', value, flags=re.M)
+        if strip_updates(prefix) != strip_updates(expected_prefix):
+            raise DailyError(relative + ': unsupported heading/frontmatter edits; original preserved, reconcile manually')
+        body = text[block.end():].strip('\n')
+        summary = record['summary']
+        if body == summary:
+            details = ''
+        elif body.startswith(summary + '\n\n'):
+            details = body[len(summary) + 2:]
+        else:
+            raise DailyError(relative + ': edited summary is ambiguous; original preserved, reconcile manually')
+        revision_match = re.search(r'^revision: (\d+)$', prefix, re.M)
+        revision = max(record['revision'], int(revision_match[1]) if revision_match else record['revision']) + 1
+        record.update(details=details, revision=revision,
+                      updated_at=now.isoformat(timespec='seconds').replace('+00:00', 'Z'),
+                      updated_by='xiaotao/reconcile')
+        # Invalidate the previous request receipt after importing external facts.
+        record['request_id'] = 'reconcile-' + hashlib.sha256(text.encode()).hexdigest()[:32]
+        semantic = {k: v for k, v in record.items() if k not in {'revision', 'updated_at', 'request_id', 'request_hash'}}
+        record['request_hash'] = hashlib.sha256(json.dumps(semantic, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        validate_record(record, relative)
+        content = render_note(record)
+        if len(content.encode()) > MAX_BYTES:
+            raise DailyError('reconciled note exceeds 32 KiB; original preserved')
+        original = safe(root, relative).read_bytes()
+        backup = relative + '.reconcile-' + hashlib.sha256(original).hexdigest()[:16] + '.bak'
+        target = safe(root, backup)
+        if target.exists():
+            if target.read_bytes() != original:
+                raise DailyError('reconcile backup collision')
+        else:
+            with target.open('xb') as stream:
+                stream.write(original)
+                stream.flush()
+                os.fsync(stream.fileno())
+        atomic_text(root, relative, content)
+        load_note(root, relative)
+        return {'status': 'reconciled', 'path': relative, 'backup': backup, 'revision': revision,
+                'next_command': 'python .agents/skills/xiaotao/scripts/timeline_catalog.py build'}
 
 
 def resolve_work(root, work):
@@ -220,7 +276,7 @@ def resolve_work(root, work):
     return found[0] if found else None
 
 
-def list_notes(root, start=None, end=None):
+def list_notes(root, start=None, end=None, *, issues=None):
     years = safe(root, (ROOT / 'years').as_posix())
     total = count = 0
     if not years.exists():
@@ -252,11 +308,18 @@ def list_notes(root, start=None, end=None):
                     if p.suffix != '.md':
                         continue
                     relative = p.relative_to(root).as_posix()
-                    record = load_note(root, relative)
                     count += 1
                     total += p.stat().st_size
                     if count > MAX_NOTES or total > MAX_TOTAL_BYTES:
                         raise DailyError('daily scan budget exceeded; archive/split scope explicitly')
+                    try:
+                        record = load_note(root, relative)
+                    except (DailyError, ValueError, OSError) as error:
+                        if issues is None:
+                            raise
+                        issues.append({'path': relative, 'error': str(error),
+                                       'repair_command': 'python .agents/skills/xiaotao/scripts/timeline_catalog.py reconcile ' + relative})
+                        continue
                     yield relative, record
 
 

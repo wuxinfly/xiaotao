@@ -77,3 +77,19 @@ python <core>/scripts/timeline_catalog.py --project-root <project> save < daily-
 默认使用插件 --save 一次保存并核验回执，见 [progress-saving.md](progress-saving.md)。底层 --ack saved 仅供已有写入流程使用：`path` 指向当天权威 details；关联 Task/Temporary 时加 `work_paths`（最多 1 项，当前活动或归档路径）。脚本核对每日身份、元数据、文件字节及关联工作本轮进度；单独 Task/Temporary 或派生 summary.md 不能冒充新协议的每日保存。
 
 Stop 有界补查一次。PreCompact 对手动压缩在回执缺失/失效时暂停一次并提示先保存，再次手动压缩放行并警告；有效 saved/skipped 直接放行。自动压缩可能发生在模型尚未结束的本轮中，缺失回执时只警告而不把模型困在上下文上限。Hook 不调用模型总结，也不自动写业务记忆；客户端真实行为还需验收，不能保证模型没有遗漏事实。
+
+## 导航 pending / partial 的修复
+
+`pending` 表示每日事实已保存、导航未完成，先执行返回的 `navigation_next_command`（`timeline_catalog.py build`）。`partial` 表示正常记录已生成导航，但 `navigation_issues` / build 的 `issues` 中仍有待修复记录；不能报告全部完成。每项包含具体路径、错误和 `repair_command`。`check` 在仍有异常记录时返回失败。
+
+```bash
+python <core>/scripts/timeline_catalog.py --project-root <project> build
+python <core>/scripts/timeline_catalog.py --project-root <project> reconcile .xiaotao/memory/timeline/years/2026/10/15/details/example.md
+python <core>/scripts/timeline_catalog.py --project-root <project> build
+```
+
+`reconcile` 支持 JSON record 完整时的正文 details 修改/追加和 revision/update 元数据修改：先在原文件旁保留字节完全相同的 `.reconcile-<hash>.bak`，再把正文并入 record，revision 递增、更新时间及保存身份重置，原子写回并验证。重复执行不重复追加。标题、汇总或其他结构改动无法可靠判断时拒绝写入，保留原文件交由人工核对；损坏/缺失 JSON 块也需人工修复。修复后使用新的请求 ID 保存下一阶段，旧请求不得覆盖导入的事实。
+
+daily note 读取兼容 CRLF/LF，内部写入固定 LF；外部工具需写文件时使用 `Path.open('w', encoding='utf-8', newline='\n')`。CRLF 本身不算手改冲突。关联工作的 ID 与 Task/Temporary 存储 ID 规则一致：允许 Unicode 字母、数字和 `_ . -`，禁止开头/结尾的点及路径分隔符。
+
+build 跳过异常详情、在对应日导航显示待修复提示，并继续生成正常记录；不覆盖异常原文。扫描预算、安全路径和非生成导航文件保护仍生效。单天刷新只检查当天详情；需要补齐缺失导航时退回全量构建并报告历史问题。
