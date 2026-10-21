@@ -69,6 +69,13 @@ export const SCENES = Object.freeze({
     }),
     detect: async (environment) => exists(path.join(resolveUserHome(environment), '.gemini')),
   }),
+  zcode: Object.freeze({
+    id: 'zcode', name: 'ZCode',
+    description: '准备 ZCode 本地插件市场（需在客户端安装启用）',
+    resolveTarget: environment => ({ kind: 'zcode-marketplace', path: path.join(resolveUserHome(environment), '.xiaotao', 'hosts', 'zcode') }),
+    detect: async environment => exists(path.join(resolveUserHome(environment), '.zcode')),
+  }),
+
 });
 
 export async function detectScenes(environment = process.env) {
