@@ -12,7 +12,8 @@
     "xiaotao/",
     "!xiaotao/**/__pycache__/**",
     "!xiaotao/**/*.pyc",
-    "README.md"
+    "README.md",
+    "adapters/zcode/"
   ],
   "scripts": {
     "test": "node --test test/*.test.js",

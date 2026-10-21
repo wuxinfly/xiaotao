@@ -1,5 +1,5 @@
 ---
-revision: 7
+revision: 8
 updated_at: 2026-10-21T00:00:00Z
 updated_by: xiao-tao/maintainer
 ---
@@ -45,7 +45,7 @@ updated_by: xiao-tao/maintainer
     "bin/xiaotao.js"
   ],
   "code_fingerprints": {
-    "package.json": "8d23b87d721cbf0af8349d89ab42ebd41d6934ae2ae01e4ed7a2927825380509",
+    "package.json": "9894df3f1c720c75abe61340d82cd2ee73518f40800e7cc2e6f0fd5b3d3345fe",
     "xiaotao/SKILL.md": "dab3fd826cb57fd41243feea2130437f293a8337992c227394d262f8807bdd1e",
     "bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb"
   },

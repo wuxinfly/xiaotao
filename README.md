@@ -89,3 +89,9 @@ npm run test:contracts
 ```
 
 DSH Adapter、Codex Desktop 插件和 Skill 内部协议的详细说明在 [`adapters/`](adapters/) 与 [`docs/`](docs/) 下。CLI 只负责安装、更新和诊断，绝不调度 Worker 或直接运行工作流。
+
+### ZCode
+
+`xiaotao init` 可选择 ZCode，准备本地插件市场；随后需在 ZCode 客户端安装启用。
+支持 Core、共享项目记忆、一层原生 Worker 和每轮结束前的进度检查提醒。
+安装、更新步骤与尚未验收的限制见 [ZCode 适配说明](adapters/zcode/README.md)。

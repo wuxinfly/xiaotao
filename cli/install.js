@@ -94,6 +94,18 @@ export async function installAntigravity({ packageRoot, target, skillSource, ver
   await writeFile(path.join(target.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'antigravity', version }, null, 2)}\n`);
 }
 
+export async function installZcode({ packageRoot, target, skillSource, version }) {
+  const plugin = path.join(target.path, 'plugins', 'xiaotao-zcode');
+  await mkdir(plugin, { recursive: true });
+  await cp(path.join(packageRoot, 'adapters', 'zcode', 'plugin'), plugin, { recursive: true, force: true });
+  await cp(skillSource, path.join(plugin, 'skills', 'xiaotao'), { recursive: true, force: true });
+  const manifestPath = path.join(plugin, '.zcode-plugin', 'plugin.json');
+  const manifest = await readJson(manifestPath);
+  await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n');
+  await writeFile(path.join(target.path, 'marketplace.json'), JSON.stringify({ name: 'xiaotao-local', plugins: [{ name: 'xiaotao-zcode', source: './plugins/xiaotao-zcode', version }] }, null, 2) + '\n');
+  await writeFile(path.join(target.path, MARKER_NAME), JSON.stringify({ package: MANAGED_PACKAGE, scene: 'zcode', version }) + '\n');
+}
+
 export async function installScenes({ projectRoot, packageRoot, sceneIds, force = false, environment = process.env, command = execFileAsync }) {
   const resolvedPackage = path.resolve(packageRoot);
   const { version, skillSource } = await packageInfo(resolvedPackage);
@@ -110,6 +122,7 @@ export async function installScenes({ projectRoot, packageRoot, sceneIds, force 
   for (const id of scenes) {
     const target = targets[id];
     if (id === 'dsh') { await installDsh({ packageRoot: resolvedPackage, target, environment, command }); continue; }
+    if (id === 'zcode') { await installZcode({ packageRoot: resolvedPackage, target, skillSource, version }); continue; }
     if (id === 'antigravity') {
       await installAntigravity({ packageRoot: resolvedPackage, target, skillSource, version });
       continue;
@@ -150,6 +163,16 @@ export async function doctorInstallation(projectRoot, environment = process.env,
     const target = metadata.targets[id];
     if (!SCENES[id] || !target) { checks.push({ code: 'scene_unknown', ok: false, scene: id }); continue; }
     if (id === 'dsh') { const result = await verifyDsh(target, environment, command); checks.push({ code: result.ok ? 'dsh_active' : 'dsh_inactive', ...result, scene: id }); continue; }
+    if (id === 'zcode') {
+      for (const relative of ['marketplace.json', 'plugins/xiaotao-zcode/.zcode-plugin/plugin.json', 'plugins/xiaotao-zcode/hooks/hooks.json', 'plugins/xiaotao-zcode/hooks/context.mjs', 'plugins/xiaotao-zcode/skills/xiaotao/SKILL.md', MARKER_NAME]) {
+        const file = path.join(target.path, relative);
+        let ok = false;
+        try { const text = await readFile(file, 'utf8'); if (relative.endsWith('.json')) JSON.parse(text); ok = true; } catch {}
+        checks.push({ code: ok ? 'zcode_file_present' : 'zcode_file_invalid', ok, scene: id, path: file });
+      }
+      checks.push({ code: 'zcode_activation_unverified', ok: true, scene: id, message: `插件文件已准备；请在 ZCode 设置 → 插件 → 添加插件市场中加入 ${target.path} 并安装启用 xiaotao-zcode。更新后刷新市场、更新插件并新建会话。这里只检查文件，不证明客户端已启用。` });
+      continue;
+    }
     if (id === 'antigravity') {
       const pluginManifest = path.join(target.path, 'plugin.json');
       const hooksJson = path.join(target.path, 'hooks.json');
