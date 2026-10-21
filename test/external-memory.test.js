@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -15,6 +15,7 @@ test('external document survives duplicate import, rebuild and project move', ()
   const source = join(root, 'external.md');
   writeFileSync(source, 'Historical delivery');
   const first = run('external_memory.py', ['import', source], root)[0];
+  assert.match(first.source_ref, /^\.xiaotao\/memory\/imports\/\d{4}\/\d{2}\/import-[a-f0-9]{20}\/sources\/external\.md$/);
   assert.equal(run('external_memory.py', ['import', source], root)[0].status, 'duplicate');
   const proposal = join(root, 'proposal.json');
   writeFileSync(proposal, JSON.stringify({events:[{occurred_at:'2026-01-02T10:00:00+08:00', title:'交付', summary:'完成历史交付',source_refs:[first.source_ref]}]}));
@@ -27,4 +28,33 @@ test('external document survives duplicate import, rebuild and project move', ()
   cpSync(join(root, '.xiaotao'), join(moved, '.xiaotao'), {recursive:true});
   assert.equal(run('activity_catalog.py', ['build'], moved).events, 1);
   assert.equal(readFileSync(join(moved, first.source_ref), 'utf8'), 'Historical delivery');
+});
+
+test('imports locate IDs and deduplicate across months; skip and list use nested layout', () => {
+  const root = mkdtempSync(join(tmpdir(), 'xiaotao-months-'));
+  const source = join(root, 'old.md');
+  writeFileSync(source, 'Earlier source');
+  const first = run('external_memory.py', ['import', source], root)[0];
+  const oldDirectory = first.source_ref.slice(0, first.source_ref.lastIndexOf('/sources/'));
+  const newDirectory = `.xiaotao/memory/imports/2020/01/${first.import_id}`;
+  mkdirSync(join(root, '.xiaotao/memory/imports/2020/01'), {recursive:true});
+  renameSync(join(root, oldDirectory), join(root, newDirectory));
+  const manifestPath = join(root, newDirectory, 'manifest.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.imported_at = '2020-01-01T00:00:00Z';
+  manifest.sources[0].ref = `${newDirectory}/sources/old.md`;
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const duplicate = run('external_memory.py', ['import', source], root)[0];
+  assert.equal(duplicate.status, 'duplicate');
+  assert.equal(duplicate.import_id, first.import_id);
+  assert.equal(run('external_memory.py', ['list'], root).length, 1);
+  const proposal = join(root, 'proposal.json');
+  writeFileSync(proposal, JSON.stringify({events:[{occurred_at:'2019-12-01T00:00:00Z', title:'Earlier work', summary:'Delivered', source_refs:[manifest.sources[0].ref]}]}));
+  run('external_memory.py', ['confirm', first.import_id, proposal], root);
+  assert.equal(run('activity_catalog.py', ['build'], root).events, 1);
+  writeFileSync(source, 'Another version');
+  const second = run('external_memory.py', ['import', source], root)[0];
+  assert.notEqual(second.import_id, first.import_id);
+  assert.equal(run('external_memory.py', ['skip', second.import_id, '--reason', 'No events'], root).status, 'skipped');
+  assert.equal(run('external_memory.py', ['list'], root).length, 2);
 });

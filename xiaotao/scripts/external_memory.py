@@ -9,7 +9,7 @@ import re
 import sys
 from datetime import datetime, timezone
 
-from activity_catalog import normalize_utc, atomic_write, CatalogError
+from activity_catalog import normalize_utc, atomic_write, CatalogError, external_source_files
 
 ROOT = Path('.xiaotao/memory/imports')
 MAX_SIZE = 20 * 1024 * 1024
@@ -26,10 +26,17 @@ def safe_file(path, root):
 
 
 def manifests(root):
-    for path in sorted((root / ROOT).glob('*/manifest.json')):
-        if path.is_symlink():
-            raise CatalogError(f'unsafe import manifest: {path}')
-        yield path, json.loads(path.read_text(encoding='utf-8'))
+    for path in external_source_files(root):
+        yield path, json.loads(safe_file(path, root).read_text(encoding='utf-8'))
+
+
+def find_manifest(root, import_id):
+    if not re.fullmatch(r'import-[0-9a-f]{20}', import_id):
+        raise CatalogError('invalid import ID')
+    matches = [path for path, manifest in manifests(root) if path.parent.name == import_id]
+    if len(matches) != 1:
+        raise CatalogError(f'expected one manifest for {import_id}, found {len(matches)}')
+    return matches[0]
 
 
 def import_files(root, sources):
@@ -44,7 +51,8 @@ def import_files(root, sources):
             results.append({'status': 'duplicate', 'import_id': existing[digest][0], 'sha256': digest})
             continue
         import_id = 'import-' + digest[:20]
-        directory = root / ROOT / import_id
+        imported_at = datetime.now(timezone.utc)
+        directory = root / ROOT / imported_at.strftime("%Y/%m") / import_id
         target = directory / 'sources' / source.name
         if directory.exists():
             raise CatalogError(f'import ID collision: {directory}')
@@ -52,7 +60,7 @@ def import_files(root, sources):
         target.write_bytes(data)
         ref = target.relative_to(root).as_posix()
         save(directory / 'manifest.json', {'schema_version': 1, 'import_id': import_id,
-             'imported_at': datetime.now(timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z'),
+             'imported_at': imported_at.isoformat(timespec='seconds').replace('+00:00', 'Z'),
              'status': 'pending', 'sources': [{'name': source.name, 'sha256': digest, 'ref': ref}]})
         existing[digest] = (import_id, {})
         results.append({'status': 'pending', 'import_id': import_id, 'source_ref': ref})
@@ -62,8 +70,8 @@ def import_files(root, sources):
 def confirm(root, import_id, proposal_path):
     if not re.fullmatch(r'import-[0-9a-f]{20}', import_id):
         raise CatalogError('invalid import ID')
-    directory = root / ROOT / import_id
-    manifest_path = directory / 'manifest.json'
+    manifest_path = find_manifest(root, import_id)
+    directory = manifest_path.parent
     manifest = json.loads(safe_file(manifest_path, root).read_text(encoding='utf-8'))
     if manifest['import_id'] != import_id:
         raise CatalogError('manifest ID mismatch')
@@ -75,7 +83,7 @@ def confirm(root, import_id, proposal_path):
     allowed = set()
     for source in manifest['sources']:
         ref = source['ref']
-        if not ref.startswith((ROOT / import_id / 'sources').as_posix() + '/'):
+        if not ref.startswith((directory.relative_to(root) / 'sources').as_posix() + '/'):
             raise CatalogError('source path is outside import')
         target = safe_file(root / ref, root)
         if target.resolve().relative_to(root.resolve()).as_posix() != ref:
@@ -132,7 +140,7 @@ def main():
         elif args.command == 'list': result = [m for _, m in manifests(root)]
         else:
             if not re.fullmatch(r'import-[0-9a-f]{20}', args.import_id): raise CatalogError('invalid import ID')
-            path = root / ROOT / args.import_id / 'manifest.json'
+            path = find_manifest(root, args.import_id)
             m = json.loads(safe_file(path, root).read_text(encoding='utf-8'))
             if m['status'] != 'pending': raise CatalogError('only pending imports can be skipped')
             m['status'] = 'skipped'; m['reason'] = args.reason; save(path, m); result = m

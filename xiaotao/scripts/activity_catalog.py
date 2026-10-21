@@ -259,7 +259,7 @@ def external_source_files(project_root: Path) -> list[Path]:
     root = project_root / IMPORTS_ROOT
     if root.exists() and not root.is_dir():
         raise CatalogError(f"Import root must be a directory: {root}")
-    files = sorted(root.glob("*/manifest.json"))
+    files = sorted(root.glob("[0-9][0-9][0-9][0-9]/[0-9][0-9]/import-*/manifest.json"))
     for path in files:
         if path.is_symlink():
             raise CatalogError(f"Import manifest must not be a symlink: {path}")
@@ -276,7 +276,7 @@ def derive_external_events(project_root: Path, sources: list[Path]) -> list[dict
             raise CatalogError(f"invalid import manifest {path}")
         for source in record.get("sources", []):
             ref = source["ref"]
-            expected = (IMPORTS_ROOT / path.parent.name / "sources").as_posix() + "/"
+            expected = (path.parent.relative_to(project_root) / "sources").as_posix() + "/"
             if not isinstance(ref, str) or not ref.startswith(expected):
                 raise CatalogError(f"invalid managed source: {ref}")
             file = project_root / ref
