@@ -44,10 +44,27 @@ def exclusive(root, relative, owner):
 
 def normalize(request):
     allowed = {'request_id', 'topic_id', 'title', 'summary', 'details', 'validation',
-               'next_steps', 'source_refs', 'work_path', 'actor'}
+               'next_steps', 'source_refs', 'work_path', 'actor',
+               'record_type', 'project_id', 'module_id', 'group_id'}
     if not isinstance(request, dict) or set(request) - allowed:
         raise DailyError('invalid save-progress fields')
     result = dict(request)
+    kind = result.get('record_type', 'standalone')
+    if kind not in ('standalone', 'minor'):
+        raise DailyError('record_type must be standalone or minor')
+    grouping = ('project_id', 'module_id', 'group_id')
+    if kind == 'minor':
+        for key in grouping:
+            required_string(result, key, 64)
+            if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,63}', result[key]):
+                raise DailyError('invalid ' + key)
+        identity = json.dumps([result[key] for key in grouping], separators=(',', ':'))
+        # A reserved prefix and full digest keep different project/module/group tuples apart.
+        result['topic_id'] = 'minor-' + digest(identity)
+    elif any(key in result for key in grouping):
+        raise DailyError('group fields require record_type minor')
+    elif str(result.get('topic_id', '')).startswith('minor-'):
+        raise DailyError('minor- topic prefix is reserved for grouped records')
     result.setdefault('actor', 'xiao-tao/progress')
     for key, limit in [('request_id', 128), ('topic_id', 80), ('title', 160),
                        ('summary', 1000), ('actor', 128)]:
@@ -59,6 +76,12 @@ def normalize(request):
     result.setdefault('source_refs', [])
     result.setdefault('work_path', None)
     return result
+
+
+def record_title(request):
+    if request.get('record_type') == 'minor':
+        return request['module_id'] + ' / ' + request['group_id'] + ' 小修'
+    return request['title']
 
 
 def facts(request):
@@ -110,16 +133,24 @@ def prepare(root, request, now):
     if old and old['work_ref'] and work_path is None:
         raise DailyError('existing topic is linked to work; supply its work_path')
     body = daily_facts(request)
+    title = record_title(request)
+    heading = request['title']
+    if request.get('record_type') == 'minor':
+        heading = now.astimezone(zone(name, now)).isoformat(timespec='seconds') + ' ' + heading
     refs = list(dict.fromkeys([*(old['source_refs'] if old else []), *request['source_refs']]))
     # Same stage facts can be submitted in a later turn without manufacturing writes.
-    same = bool(old and old['title'] == request['title'] and old['summary'] == request['summary']
+    same = bool(old and old['title'] == title and old['summary'] == request['summary']
                 and old['details'].endswith(body) and old['source_refs'] == refs
+                and (request.get('record_type') != 'minor'
+                     or old['details'].endswith(request['title'] + '\n\n' + body))
                 and (old['work_ref']['path'] if old['work_ref'] else None) == work_path)
-    details = body if not old else old['details'] + ('\n\n## ' + request['title'] + '\n\n' + body)
+    details = ('## ' + heading + '\n\n' + body) if request.get('record_type') == 'minor' else body
+    if old:
+        details = old['details'] + '\n\n## ' + heading + '\n\n' + body
     if same:
         details = old['details']
     occurred = old['occurred_at'] if old else now.isoformat(timespec='seconds').replace('+00:00', 'Z')
-    daily = {'topic_id': request['topic_id'], 'title': request['title'],
+    daily = {'topic_id': request['topic_id'], 'title': title,
              'summary': request['summary'], 'details': details, 'source_refs': refs,
              'actor': request['actor'], 'request_id': request['request_id'],
              'occurred_at': occurred, 'timezone': old['timezone'] if old else name,
@@ -153,13 +184,26 @@ def prepare(root, request, now):
         current = read_text(root, work_path)
         same = current.rstrip().endswith('## ' + request['title'] + '\n\n' + facts(request))
         if not same:
-            daily['details'] = old['details'] + '\n\n## ' + request['title'] + '\n\n' + body
+            daily['details'] = old['details'] + '\n\n## ' + heading + '\n\n' + body
             if len(daily['details']) > 6000:
                 raise DailyError('daily details exceed 6000 characters; split the topic')
     return {'daily': daily, 'work': snapshot, 'day': day, 'unchanged': same}
 
 
 def save_progress(root, raw, now=None):
+    request = normalize(raw)
+    if request.get('record_type') == 'minor':
+        # Serialize prepare + commit across distinct request IDs for the same group.
+        # Keep the lock date-independent so cross-midnight recovery uses the same lock.
+        if not safe(root, '.xiaotao').is_dir():
+            raise DailyError('project has no .xiaotao; do not silently initialize')
+        lock = '.xiaotao/locks/progress-group-' + request['topic_id'] + '.lock'
+        with exclusive(root, lock, request['actor']):
+            return _save_progress(root, request, now)
+    return _save_progress(root, request, now)
+
+
+def _save_progress(root, raw, now=None):
     now = now or datetime.now(timezone.utc)
     request = normalize(raw)
     if not safe(root, '.xiaotao').is_dir():
@@ -183,7 +227,7 @@ def save_progress(root, raw, now=None):
             atomic_text(root, journal_path, encoded)
         # A recovery journal is project data, never authority for a new write target.
         daily = journal['daily']
-        if (daily['topic_id'] != request['topic_id'] or daily['title'] != request['title']
+        if (daily['topic_id'] != request['topic_id'] or daily['title'] != record_title(request)
                 or daily['summary'] != request['summary'] or daily['request_id'] != request['request_id']
                 or daily.get('work_path') != request['work_path'] or daily['actor'] != request['actor']
                 or not daily['details'].endswith(daily_facts(request))):

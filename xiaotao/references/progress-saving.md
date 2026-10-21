@@ -24,13 +24,34 @@ python <core>/scripts/save_progress.py --project-root <project>
 }
 ```
 
-- `topic_id` 为稳定小写主题 ID；同日后续进度沿用它。`title`、`summary` 必填，其他事实字段可省略。
+- 默认独立记录：`topic_id` 为稳定小写主题 ID；同日后续进度沿用它。`title`、`summary` 必填，其他事实字段可省略。
 - `request_id` 每个不同阶段唯一；结果不确定或部分失败时重试原 JSON，不换 ID。脚本固定首次请求的日期、时区与待提交版本，跨午夜重试仍回到原日期。
 - 有明确关联工作时添加 `work_path`，仅限已有 Task `progress.md` 或 Temporary `current.md`。脚本保留原文，追加本阶段进度，内部检查版本/hash、加锁并原子写入和回读；不修改任务生命周期或创建任务。当天只保留汇总、验证、下一步和工作链接，详细说明留在工作记录。
 - 无关联工作时仅写当天详情；同日更新保留旧事实并追加新进展，完全相同的内容不制造新 revision。详情达到容量上限时明确失败，由用户决定整理或拆分，不截断历史。
 - 返回 `status`、`path`、`revision`、`work_status`、`daily_status` 和 `navigation_status`。`saved`/`duplicate`/`unchanged` 表示每日事实可回读；导航 `pending` 不代表事实丢失。`failed` 时看各阶段状态，已提交部分不会回滚。
 - 恢复记录在 `.xiaotao/runtime/progress-saves/`；它包含日期、请求摘要及必要的工作前后快照，属于本地记忆数据，不自动共享。不要在请求未解决前删除恢复记录。重试遇到更新版本会停止，不覆盖较新进度。
 - 常规导航只读当天详情与相邻层的有界摘要，更新当天、月、年和根入口。升级缺少摘要元数据的旧导航时自动完整重建一次。手工正文仍受保护；需要明确修复历史导航时才用 `timeline_catalog.py build`。底层每日协议见 [daily-memory.md](daily-memory.md)，不是日常收尾的必读清单。
+
+## 同模块小修归并
+
+对齐、文案、间距、颜色等连续小修，使用 `record_type: "minor"`，明确传入稳定的 `project_id`、`module_id`、`group_id`，不要每修一个问题就换分组。三个 ID 均为 1–64 位小写字母、数字、连字符或下划线，首位为字母或数字。UI 和调度逻辑等不同类别使用不同分组。
+
+```json
+{
+  "request_id": "session-switch-align",
+  "record_type": "minor",
+  "project_id": "app-center",
+  "module_id": "scheduled-tasks",
+  "group_id": "ui-fixes",
+  "title": "开关顶部对齐",
+  "summary": "修正长标题下开关的对齐。",
+  "validation": "长短标题下均显示正常。"
+}
+```
+
+小修无需 `topic_id`；脚本按日期和上述三个 ID 定位同一份 detail，文件名为 `minor-<分组摘要>.md`，不根据标题或文件名前缀猜模块。分组标题固定，每次正文按本地时间、修改标题追加；导航摘要显示最新进展，历史事实保留在正文。不同日期自动分开；重要排查、架构变更、阶段完成使用独立记录（省略 `record_type` 或填 `standalone`），不传分组字段。`minor-` 为保留的 topic 前缀。
+
+并发写同分组会返回 busy，保留原 JSON 重试；重复请求不重复追加。分组必须保持同一 `work_path` 关联；不同任务需要不同分组。单份详情仍受 6000 字符和 32 KiB 限制，达到上限会明确失败并保留原文，不自动截断或拆文件；需要整理或明确启用新的分组。已有历史碎片不自动合并，不手改生成的 detail、summary。
 
 ## Codex：保存与回执一次完成
 

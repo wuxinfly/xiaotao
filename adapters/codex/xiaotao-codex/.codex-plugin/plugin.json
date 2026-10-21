@@ -1,6 +1,6 @@
 {
   "name": "xiaotao-codex",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "恢复 XiaoTao、注入有界 Worker Packet，并在结束回复时检查阶段保存回执。",
   "author": {
     "name": "IHongTaoI"
