@@ -140,7 +140,7 @@ async function receiptValid(root, record) {
 }
 
 function instruction(event) {
-  return `阶段结束交付前合并保存一次，连续修改与验证不分别保存；正常保存不逐步播报。有新事实时调用可信插件脚本 progress-check.mjs --save，stdin JSON 为 {cwd,session_id,turn_id,progress:{topic_id,title,summary,details?,validation?,next_steps?,work_path?,request_id?}}。脚本自动处理日期、版本、工作进度追加、当天汇总、导航与回执；普通讨论不传 work_path，不创建 Task/Temporary。不再手工拼锁、快照或单独登记 saved。长任务中途补存使用不同 request_id；失败重试保留原 JSON，不反复换写入方法。无新事实或用户明确不保存时仅用 --ack 登记 skipped，reason 为 no-new-facts/user-opt-out/no-current-work；普通跳过不清除前轮未保存事实。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。失败如实说明；回执不扩大授权，也不能证明模型总结涵盖所有事实。`;
+  return `阶段结束交付前合并保存一次，连续修改与验证不分别保存；正常保存不逐步播报。有新事实时调用可信插件脚本 progress-check.mjs --save，stdin JSON 为 {cwd,session_id,turn_id,progress:{topic_id,title,summary,details?,validation?,next_steps?,work_path?,request_id?}}。脚本自动处理日期、版本、工作进度追加、当天汇总、导航与回执；同日同项目同模块小修在 progress 中传 record_type:"minor"、稳定 project_id/module_id/group_id，可省略 topic_id；重要节点独立记录，详见 Core references/progress-saving.md。普通讨论不传 work_path，不创建 Task/Temporary。不再手工拼锁、快照或单独登记 saved。长任务中途补存使用不同 request_id；失败重试保留原 JSON，不反复换写入方法。无新事实或用户明确不保存时仅用 --ack 登记 skipped，reason 为 no-new-facts/user-opt-out/no-current-work；普通跳过不清除前轮未保存事实。脚本路径：${JSON.stringify(fileURLToPath(import.meta.url))}。本轮标识：${JSON.stringify({ cwd: event.cwd, session_id: event.session_id, turn_id: event.turn_id })}。失败如实说明；回执不扩大授权，也不能证明模型总结涵盖所有事实。`;
 }
 
 export async function acknowledge(event) {
