@@ -70,7 +70,7 @@ export async function installLocal({
   );
   await writeFile(
     path.join(targetDir, '.xiaotao-managed.json'),
-    `${JSON.stringify({ package: 'xiaotao-ai-workflow', scene: 'antigravity', version: '0.3.0' }, null, 2)}\n`
+    `${JSON.stringify({ package: 'xiaotao-ai-workflow', scene: 'antigravity', version: '0.4.0' }, null, 2)}\n`
   );
 
   return { targetDir, pluginName: PLUGIN_NAME };
