@@ -1,11 +1,13 @@
 package proxy
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"strings"
 	"sync"
 	"time"
@@ -138,6 +140,10 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	id := "chatcmpl-" + randHex()
 	created := time.Now().Unix()
 	ctx := r.Context()
+	if body.Stream {
+		s.streamLive(w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream)
+		return
+	}
 	result, err := trae.CollectChat(ctx, &cred, acct.MachineID, acct.DeviceID, model, upstream)
 	if err != nil {
 		writeError(w, 502, "upstream_error", redact(err.Error()))
@@ -174,6 +180,82 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		"choices": []any{map[string]any{"index": 0, "message": message, "finish_reason": finish}},
 		"usage":   result.Usage,
 	})
+}
+
+// streamLive proxies the upstream SSE stream incrementally: each upstream
+// delta is converted to an OpenAI chunk and flushed immediately, so
+// downstream clients see tokens as they are generated.
+func (s *Service) streamLive(w http.ResponseWriter, id string, created int64, model string, cred *providers.Credential, acct storage.Account, machineID, deviceID, modelID string, upstream map[string]any) {
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	flusher, _ := w.(http.Flusher)
+	writeChunk := func(payload map[string]any) {
+		b, _ := json.Marshal(payload)
+		fmt.Fprintf(w, "data: %s\n\n", b)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	chunk := func(delta map[string]any, finish any) {
+		writeChunk(map[string]any{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": model,
+			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
+		})
+	}
+	chunk(map[string]any{"role": "assistant", "content": ""}, nil)
+	var usage atomic.Value
+	var upstreamErr atomic.Value
+	ev := &trae.StreamEvents{
+		OnDelta: func(delta map[string]any) { chunk(delta, nil) },
+		OnError: func(code any, msg string) {
+			upstreamErr.Store(struct {
+				code any
+				msg  string
+			}{code, msg})
+		},
+		OnUsage: func(u map[string]any) {
+			prev, _ := usage.Load().(map[string]any)
+			next := map[string]any{}
+			for k, v := range prev {
+				next[k] = v
+			}
+			for k, v := range u {
+				next[k] = v
+			}
+			usage.Store(next)
+		},
+	}
+	err := trae.StreamChat(context.Background(), cred, machineID, deviceID, modelID, upstream, ev)
+	if err != nil {
+		// Headers are already sent; surface the failure as a terminal
+		// error chunk so clients do not hang.
+		chunk(map[string]any{"content": "\n\n[upstream error: " + redact(err.Error()) + "]"}, nil)
+	}
+	if v, ok := upstreamErr.Load().(struct {
+		code any
+		msg  string
+	}); ok && v.msg != "" {
+		chunk(map[string]any{"content": "\n\n[" + redact(v.msg) + "]"}, nil)
+	}
+	final, _ := usage.Load().(map[string]any)
+	chunk(map[string]any{}, "stop")
+	if len(final) > 0 {
+		writeChunk(map[string]any{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": model,
+			"choices": []any{}, "usage": final,
+		})
+	}
+	fmt.Fprint(w, "data: [DONE]\n\n")
+	if prompt, ok := final["prompt_tokens"].(int64); ok {
+		var completion int64
+		if v, ok := final["completion_tokens"].(int64); ok {
+			completion = v
+		}
+		_ = s.store.UpdateAccount(acct.ID, func(a *storage.Account) {
+			a.UsageTokens += prompt + completion
+			a.UsageCalls++
+		})
+	}
 }
 
 func (s *Service) refreshCredential(acct *storage.Account, cred *providers.Credential) error {
