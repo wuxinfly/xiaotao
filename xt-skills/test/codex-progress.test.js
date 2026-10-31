@@ -113,7 +113,8 @@ test('installed Hook launcher and ack CLI work with special-character paths', as
   await put(plugins, 'scripts/progress-check.mjs', await readFile(script));
   const hooks = JSON.parse(await readFile('adapters/codex/xiaotao-codex/hooks/hooks.json'));
   const command = hooks.hooks.UserPromptSubmit[0].hooks[0].command;
-  const execute = event => execFileSync(process.env.ComSpec || '/bin/sh', process.platform === 'win32' ? ['/d', '/s', '/c', command] : ['-c', command], { input: JSON.stringify(event), encoding: 'utf8', env: { ...process.env, PLUGIN_ROOT: plugins } });
+  // cmd.exe needs a raw, outer-quoted command; Node argv escaping targets C runtimes.
+  const execute = event => execFileSync(process.env.ComSpec || '/bin/sh', process.platform === 'win32' ? ['/d', '/s', '/c', `"${command}"`] : ['-c', command], { windowsVerbatimArguments: process.platform === 'win32', input: JSON.stringify(event), encoding: 'utf8', env: { ...process.env, PLUGIN_ROOT: plugins } });
   assert.equal(JSON.parse(execute(e)).hookSpecificOutput.hookEventName, 'UserPromptSubmit');
   execFileSync(process.execPath, [path.join(plugins, 'scripts/progress-check.mjs'), '--ack'], { input: JSON.stringify({ ...e, status: 'skipped', reason: 'no-current-work' }) });
   assert.deepEqual(JSON.parse(execute(stop(e))), {});

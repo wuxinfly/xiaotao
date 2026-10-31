@@ -148,12 +148,12 @@ test('shipped project overview is indexed from the project memory directory', as
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-shipped-overview-'));
   t.after(() => rm(projectRoot, { recursive: true, force: true }));
   for (const relativePath of [
-    'package.json',
-    'xiaotao/SKILL.md',
-    'bin/xiaotao.js',
+    'xt-skills/package.json',
+    'xt-skills/xiaotao/SKILL.md',
+    'xt-skills/bin/xiaotao.js',
     '.xiaotao/memory/knowledge/entries/project.overview.md',
   ]) {
-    const source = path.join(repositoryRoot, ...relativePath.split('/'));
+    const source = path.join(repositoryRoot, '..', ...relativePath.split('/'));
     const destination = path.join(projectRoot, ...relativePath.split('/'));
     await mkdir(path.dirname(destination), { recursive: true });
     await cp(source, destination);

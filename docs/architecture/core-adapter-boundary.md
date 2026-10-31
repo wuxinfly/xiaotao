@@ -48,12 +48,12 @@ XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 
 代码与证据入口：
 
-- DSH 激活入口：[adapters/deepseek-harness/src/index.ts](../../adapters/deepseek-harness/src/index.ts)
-- DSH 当前能力与降级：[adapters/deepseek-harness/README.md](../../adapters/deepseek-harness/README.md)
+- DSH 激活入口：[adapters/deepseek-harness/src/index.ts](../../xt-skills/adapters/deepseek-harness/src/index.ts)
+- DSH 当前能力与降级：[adapters/deepseek-harness/README.md](../../xt-skills/adapters/deepseek-harness/README.md)
 - Checkpoint 契约：[checkpoint-contract.md](checkpoint-contract.md)
 - 自动 checkpoint 能力矩阵：[automatic-checkpoint.md](automatic-checkpoint.md)
-- Codex 当前范围：[adapters/codex/README.md](../../adapters/codex/README.md)
-- Antigravity 插件与适配器：[adapters/antigravity/README.md](../../adapters/antigravity/README.md)
+- Codex 当前范围：[adapters/codex/README.md](../../xt-skills/adapters/codex/README.md)
+- Antigravity 插件与适配器：[adapters/antigravity/README.md](../../xt-skills/adapters/antigravity/README.md)
 - 真实宿主证据格式：[manual-acceptance.md](../manual-acceptance.md)
 
 ## 4. Model-facing 工具的边界

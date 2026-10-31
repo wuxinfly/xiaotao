@@ -55,4 +55,4 @@ Reference: [official Codex Hooks documentation](https://learn.chatgpt.com/docs/h
 
 ## Codex Stop receipt checks
 
-Stop checks explicit turn receipts and can request one focused model continuation. It does not read transcripts, select a progress target or write snapshots. The model still applies Core milestone rules and declares saved/skipped/failed. File hashes verify the saved file, not semantic completeness. See [Codex adapter](../../adapters/codex/README.md#阶段保存漏存检查). Real desktop acceptance is unverified.
+Stop checks explicit turn receipts and can request one focused model continuation. It does not read transcripts, select a progress target or write snapshots. The model still applies Core milestone rules and declares saved/skipped/failed. File hashes verify the saved file, not semantic completeness. See [Codex adapter](../../xt-skills/adapters/codex/README.md#阶段保存漏存检查). Real desktop acceptance is unverified.

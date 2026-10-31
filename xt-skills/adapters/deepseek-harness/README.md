@@ -1,7 +1,7 @@
 # @xiaotao-ai/dsh-adapter
 
 Checkpoint M1 的接入证据、拟定协议与后续验收见
-[checkpoint contract](../../docs/architecture/checkpoint-contract.md)。可在仓库根目录运行
+[checkpoint contract](../../../docs/architecture/checkpoint-contract.md)。可在 `xt-skills/` 目录运行
 `node adapters/deepseek-harness/scripts/audit-checkpoint.mjs` 复核已安装 DSH 声明与 lockfile。
 该检查不访问 Session、不启动宿主，也不代表功能启用。现已有默认按当前 Session 绑定项目的 snapshot checkpoint
 工具；真实模型提供方与持久文件系统的端到端验收仍未完成。
@@ -47,7 +47,7 @@ dsh 的 `ctx.fs` 原语之上提供确定性的状态写协议。这是 [Issue #
 
 ### 本地仓库一键安装（无需发布 npm）
 
-在仓库根目录运行：
+在`xt-skills/` 目录运行：
 
 ```powershell
 npm run dsh:install:local -- --profile web
@@ -267,7 +267,7 @@ Session 事件，模型忽略或保存失败时不会在同一 turn 无限循环
 这不是 transcript 备份，也不保证卡在宿主压缩阈值之后仍来得及保存。阈值必须通过真实模型逐步
 校准。自动提醒只负责“什么时候检查”；目标选择、事实摘要和是否值得保存仍由 Core/当前 Agent 决定，
 不能创建新 Task、恢复无关任务或扩大权限。能力矩阵见
-[自动 checkpoint 架构说明](../../docs/architecture/automatic-checkpoint.md)。
+[自动 checkpoint 架构说明](../../../docs/architecture/automatic-checkpoint.md)。
 
 设 `checkpoint: false` 可禁用工具。原有固定项目配置仍兼容，指定 `projectRoot` 时
 `recoveryRoot` 保持原来的精确目录语义（可省略）：

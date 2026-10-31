@@ -80,7 +80,7 @@ embeds those bytes in ONE exclusive JSON request, eliminating orphan preparation
   <request-id>.json                 # optional identical write-ahead copy
 ```
 
-The request follows [checkpoint.schema.json](../../xiaotao/references/schemas/checkpoint.schema.json).
+The request follows [checkpoint.schema.json](../../xt-skills/xiaotao/references/schemas/checkpoint.schema.json).
 It contains project/target/Session binding, input hash, base Core revision/hash, bounded source
 facts/hash and exact proposal/hash. Recovery rereads and validates the schema, hashes, binding,
 revision and receipt. Hashes detect mismatch/corruption; they are not signatures or extra authority.
@@ -98,7 +98,7 @@ No Long-term entries, task lifecycle metadata or multi-file business state chang
 Hold metadata and state locks in lexical path order, recheck active lifecycle and base revision/hash,
 and use host FsVersion CAS. FsVersion and Core revision are distinct. Re-read the committed
 bytes before publishing the immutable committed observation. New observations follow
-[checkpoint-observation.schema.json](../../xiaotao/references/schemas/checkpoint-observation.schema.json)
+[checkpoint-observation.schema.json](../../xt-skills/xiaotao/references/schemas/checkpoint-observation.schema.json)
 and contain request hash, proposal hash, revision, `completion` (`save` or `recovery`) and the
 first-publication `committed_at`; legacy four-field observations remain readable. Only the explicit
 `retry` entry point writes `completion: recovery`; a repeated `save` remains `completion: save`.
@@ -142,7 +142,7 @@ If project writes fail it tries the configured secondary directory. failure_reco
 whether that diagnostic was confirmed. It does not replace the request or prove the summary
 was committed. Cancellation stops new diagnostic writes; status and inspect never write them.
 
-The [Memory](../../xiaotao/references/memory.md) and [storage](../../xiaotao/references/storage.md)
+The [Memory](../../xt-skills/xiaotao/references/memory.md) and [storage](../../xt-skills/xiaotao/references/storage.md)
 references describe optional checkpoint recovery. Read the selected target's managed snapshot
 alongside its user-authored context; refresh the Memory catalog after successful formal writes.
 Catalog failure does not roll back the committed checkpoint. Bare Core remains usable.
