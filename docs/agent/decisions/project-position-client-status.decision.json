@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_type": "agent-rule-decision",
+  "decision_id": "project-position-client-status",
+  "candidate_id": "project-position-client-status",
+  "action": "update",
+  "section_id": "project-position",
+  "rule_id": "project-position.summary",
+  "kind": "fact",
+  "outcome": "approved",
+  "decided_at": "2026-10-31T06:50:37.724Z",
+  "decided_by": "user-confirmed",
+  "reason": "xt-client 已包含 Go 本地服务与 WebView2 客户端原型，根入口中“客户端尚未实现”的描述已过期。",
+  "source_refs": [
+    "README.md",
+    "xt-client/README.md",
+    "docs/architecture/xt-client-overview.md"
+  ],
+  "before": {
+    "id": "project-position.summary",
+    "kind": "fact",
+    "text": "XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill、安装管理 CLI 和多宿主适配，并非传统后端服务；客户端尚未实现。",
+    "source_refs": [
+      "README.md",
+      "xt-skills/package.json",
+      "xt-client/README.md"
+    ]
+  },
+  "after": {
+    "id": "project-position.summary",
+    "kind": "fact",
+    "text": "XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill、安装管理 CLI、多宿主适配和客户端原型，不是传统后端服务。",
+    "source_refs": [
+      "README.md",
+      "xt-client/README.md",
+      "docs/architecture/xt-client-overview.md"
+    ]
+  }
+}

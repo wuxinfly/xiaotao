@@ -51,12 +51,16 @@ func Window(url, data, token string) error {
 	if _, err := webviewloader.GetInstalledVersion(); err != nil {
 		return fmt.Errorf("WebView2 unavailable: %w", err)
 	}
-	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "小涛", Width: 1180, Height: 780, Center: true}})
+
+	closeSplash := playNativeSplash()
+	defer closeSplash()
+
+	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "小涛", Width: 1280, Height: 720, Center: true}})
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
 	defer w.Destroy()
-	cleanup := chrome(w, url, token)
+	cleanup := chrome(w, url, token, closeSplash)
 	defer cleanup()
 	w.Navigate(url)
 	done := make(chan struct{})

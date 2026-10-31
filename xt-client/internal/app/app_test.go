@@ -49,6 +49,14 @@ func TestConfigAndOrigin(t *testing.T) {
 	if w := call("GET", "/", "", host, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "小涛") {
 		t.Fatal("page missing")
 	}
+	// WebView video playback needs byte ranges for seeking and metadata reads.
+	r := httptest.NewRequest("GET", s.URL+"/startup.mp4", nil)
+	r.Header.Set("Range", "bytes=0-31")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 206 || w.Body.Len() != 32 || w.Header().Get("Content-Type") != "video/mp4" {
+		t.Fatalf("startup video range: %d %s (%d bytes)", w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+	}
 	if w := call("GET", "/v1/models", "", host, ""); w.Code != 501 {
 		t.Fatal("model endpoint must not pretend to work")
 	}

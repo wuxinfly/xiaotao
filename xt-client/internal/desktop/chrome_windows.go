@@ -8,7 +8,9 @@ import (
 	"golang.org/x/sys/windows"
 	"image/png"
 	"net/http"
+	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -16,6 +18,14 @@ import (
 var iconPNG []byte
 var user = windows.NewLazySystemDLL("user32.dll")
 var shell = windows.NewLazySystemDLL("shell32.dll")
+var gdi = windows.NewLazySystemDLL("gdi32.dll")
+var kernel = windows.NewLazySystemDLL("kernel32.dll")
+
+
+
+
+
+
 
 func win(name string, args ...uintptr) uintptr { v, _, _ := user.NewProc(name).Call(args...); return v }
 
@@ -63,8 +73,13 @@ func appIcon() uintptr {
 	}
 	return win("CreateIconFromResourceEx", uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x30000, n, n, 0)
 }
-func chrome(w webview.WebView, url, token string) func() {
+func chrome(w webview.WebView, url, token string, onReady func()) func() {
 	hwnd := uintptr(w.Window())
+	const bgRGB = 0x00231707
+	brush, _, _ := gdi.NewProc("CreateSolidBrush").Call(bgRGB)
+	if brush != 0 {
+		user.NewProc("SetClassLongPtrW").Call(hwnd, uintptr(uint32(0xfffffff6)), brush)
+	}
 	icon := appIcon()
 	win("SendMessageW", hwnd, 0x80, 0, icon)
 	win("SendMessageW", hwnd, 0x80, 1, icon)
@@ -76,7 +91,35 @@ func chrome(w webview.WebView, url, token string) func() {
 	n.Size = uint32(unsafe.Sizeof(n))
 	copy(n.Tip[:], syscall.StringToUTF16("小涛 · 双击打开，右键菜单"))
 	tray, _, _ := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
-	show := func() { win("ShowWindow", hwnd, 9); win("SetForegroundWindow", hwnd) }
+	var readyOnce sync.Once
+	startTime := time.Now()
+	reveal := func() {
+		readyOnce.Do(func() {
+			elapsed := time.Since(startTime)
+			const minDuration = 3900 * time.Millisecond
+			if elapsed < minDuration {
+				time.AfterFunc(minDuration-elapsed, func() {
+					w.Dispatch(func() {
+						if onReady != nil {
+							onReady()
+						}
+						win("ShowWindow", hwnd, 9)
+						win("SetForegroundWindow", hwnd)
+					})
+				})
+				return
+			}
+			if onReady != nil {
+				onReady()
+			}
+			win("ShowWindow", hwnd, 9)
+			win("SetForegroundWindow", hwnd)
+		})
+	}
+	time.AfterFunc(5500*time.Millisecond, func() {
+		w.Dispatch(reveal)
+	})
+	show := func() { reveal(); win("ShowWindow", hwnd, 9); win("SetForegroundWindow", hwnd) }
 	exit := func() {
 		go func() {
 			req, _ := http.NewRequest("POST", url+"/api/shutdown", nil)
@@ -91,6 +134,14 @@ func chrome(w webview.WebView, url, token string) func() {
 	taskbar := win("RegisterWindowMessageW", uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("TaskbarCreated"))))
 	callback := syscall.NewCallback(func(h uintptr, msg uint32, wp, lp uintptr) uintptr {
 		switch msg {
+		case 0x14:
+			if brush != 0 {
+				hdc := wp
+				var r struct{ Left, Top, Right, Bottom int32 }
+				user.NewProc("GetClientRect").Call(hwnd, uintptr(unsafe.Pointer(&r)))
+				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&r)), brush)
+				return 1
+			}
 		case 0x83: // Let WebView cover the entire client area, including the old top frame.
 			if wp != 0 {
 				return 0
@@ -167,6 +218,8 @@ func chrome(w webview.WebView, url, token string) func() {
 	win("SetWindowPos", hwnd, 0, 0, 0, 0, 0, 0x37)
 	dark := uint32(1)
 	windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute").Call(hwnd, 20, uintptr(unsafe.Pointer(&dark)), 4)
+	captionColor := uint32(bgRGB)
+	windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute").Call(hwnd, 35, uintptr(unsafe.Pointer(&captionColor)), 4)
 	transitionsDisabled := uint32(0)
 	windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute").Call(hwnd, 3, uintptr(unsafe.Pointer(&transitionsDisabled)), 4)
 	w.Bind("xtWindow", func(action string) {
@@ -180,6 +233,8 @@ func chrome(w webview.WebView, url, token string) func() {
 				return
 			}
 			switch action {
+			case "ready":
+				reveal()
 			case "minimize":
 				win("PostMessageW", hwnd, 0x112, 0xf020, 0)
 			case "maximize":
@@ -199,6 +254,9 @@ func chrome(w webview.WebView, url, token string) func() {
 	return func() {
 		shell.NewProc("Shell_NotifyIconW").Call(2, uintptr(unsafe.Pointer(&n)))
 		win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), old)
+		if brush != 0 {
+			gdi.NewProc("DeleteObject").Call(brush)
+		}
 		if icon != 0 {
 			win("DestroyIcon", icon)
 		}
