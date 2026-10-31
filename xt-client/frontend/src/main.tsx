@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import './style.css';
+import {AccountsPage} from './features/accounts/AccountsPage';
 
 declare global {interface Window {xtWindow?: (action:string)=>Promise<void>}}
 type Page='agent'|'dashboard'|'accounts';
@@ -31,7 +32,7 @@ function App(){
    </nav>
    <div className="title-right">{desktop&&<div className="window-buttons">{[['minimize','−','最小化'],['maximize','□','最大化或还原'],['close','×','收起到托盘']].map(([action,label,title])=><button key={action} aria-label={title} title={title} onClick={()=>window.xtWindow?.(action)}>{label}</button>)}</div>}</div>
   </header>
-  <main aria-label={page} />
+  <main aria-label={page}>{page === 'accounts' && <AccountsPage />}</main>
   </div>
  </div>
 }

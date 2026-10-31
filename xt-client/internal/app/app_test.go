@@ -57,8 +57,8 @@ func TestConfigAndOrigin(t *testing.T) {
 	if w.Code != 206 || w.Body.Len() != 32 || w.Header().Get("Content-Type") != "video/mp4" {
 		t.Fatalf("startup video range: %d %s (%d bytes)", w.Code, w.Header().Get("Content-Type"), w.Body.Len())
 	}
-	if w := call("GET", "/v1/models", "", host, ""); w.Code != 501 {
-		t.Fatal("model endpoint must not pretend to work")
+	if w := call("GET", "/v1/models", "", host, ""); w.Code != 401 {
+		t.Fatalf("model endpoint without key: %d", w.Code)
 	}
 }
 func TestCorruptConfigPreserved(t *testing.T) {
