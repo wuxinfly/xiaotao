@@ -182,21 +182,18 @@ func (s *Service) expireWatch(sess *Session, server *http.Server) {
 			ctx, cancel := contextWithTimeout()
 			_ = server.Shutdown(ctx)
 			cancel()
-			s.mu.Lock()
-			delete(s.sessions, sess.ID)
-			s.mu.Unlock()
 			return
 		}
 		if expired {
 			s.mu.Lock()
 			sess.Status = "expired"
 			s.mu.Unlock()
+			s.mu.Lock()
+			sess.Status = "expired"
+			s.mu.Unlock()
 			ctx, cancel := contextWithTimeout()
 			_ = server.Shutdown(ctx)
 			cancel()
-			s.mu.Lock()
-			delete(s.sessions, sess.ID)
-			s.mu.Unlock()
 			return
 		}
 	}

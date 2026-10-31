@@ -136,6 +136,7 @@ export function AccountsPage() {
           <div className="flow-actions">
             <button className="btn" onClick={cancelLogin}>取消</button>
           </div>
+          {notice && <div className={`notice ${notice.kind}`} role="status" style={{ marginTop: 16 }}>{notice.text}</div>}
         </div>
       </section>
     );
@@ -150,6 +151,7 @@ export function AccountsPage() {
           <h2>还没有接入账号</h2>
           <p>添加 Trae 国内版账号后，可以在这里查看真实配额，并把它接入本地模型代理。API 配置接入会在后续版本提供。</p>
           <button className="btn primary" onClick={startLogin}>添加 Trae 账号</button>
+          {notice && <div className={`notice ${notice.kind}`} role="status" style={{ marginTop: 16 }}>{notice.text}</div>}
         </div>
       </section>
     );
