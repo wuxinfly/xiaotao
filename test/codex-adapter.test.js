@@ -455,7 +455,9 @@ test('local installer prepares a hooks-only personal source without activation o
   assert.equal(catalog.plugins[0].source.path, './.codex/plugins/xiaotao-codex');
   assert.equal(catalog.plugins[0].policy.installation, 'AVAILABLE');
   assert.equal(manifest.skills, undefined);
-  assert.match(manifest.version, /^0\.4\.0\+codex\.[a-f0-9]{16}$/);
+  const sourceManifest = JSON.parse(await readFile(path.join(pluginSource, '.codex-plugin/plugin.json'), 'utf8'));
+  assert.equal(manifest.version.split('+')[0], sourceManifest.version);
+  assert.match(manifest.version.split('+')[1], /^codex\.[a-f0-9]{16}$/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/handoff-contract.mjs'), 'utf8'), /isValidHandoffShape/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/subagent-start.mjs'), 'utf8'), /subagentContext/);
   assert.match(await readFile(path.join(result.pluginDir, 'scripts/delegation-contract.mjs'), 'utf8'), /validDelegationPacket/);

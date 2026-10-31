@@ -1,6 +1,6 @@
 {
   "name": "xiaotao-ai-workflow",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "面向结果的 AI 协作 Skill，支持动态 Worker 和多宿主安装 CLI",
   "type": "module",
   "bin": {

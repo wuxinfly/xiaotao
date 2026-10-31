@@ -237,3 +237,16 @@ test('unified save CLI uses a configured installed Core with spaces and Unicode,
   assert.equal(result.status, 'saved'); assert.equal(result.receipt_status, 'saved');
   assert.equal(await progressContext(compact(e)), null);
 });
+
+test('Codex minor saves forward grouping fields and verify receipts for the shared detail', async t => {
+  const e = await fixture(t); await progressContext(e);
+  const options = { coreRoot: path.resolve('xiaotao') };
+  const progress = { record_type: 'minor', project_id: 'app', module_id: 'scheduled-tasks', group_id: 'ui-fixes', title: 'Align switch', summary: 'Aligned', validation: 'Passed' };
+  const first = await saveProgress({ ...e, progress }, options);
+  assert.equal(first.status, 'saved'); assert.equal(first.receipt_status, 'saved');
+  assert.equal(await progressContext(compact(e)), null);
+  const next = { ...e, turn_id: 'next-minor' }; await progressContext(next);
+  const second = await saveProgress({ ...next, progress: { ...progress, title: 'Hover color', summary: 'Fixed color' } }, options);
+  assert.equal(second.status, 'saved'); assert.equal(second.path, first.path);
+  assert.equal(second.receipt_status, 'saved'); assert.equal(await progressContext(compact(next)), null);
+});

@@ -166,3 +166,94 @@ test('incremental navigation fallback skips historical edited notes and provides
   assert.equal(next.navigation_issues[0].path, first.path);
   assert.match(next.navigation_issues[0].repair_command, /reconcile/);
 });
+
+const minor = extra => {
+  const input = request({ record_type: 'minor', project_id: 'app-center', module_id: 'scheduled-tasks', group_id: 'ui-fixes', ...extra });
+  delete input.topic_id;
+  return input;
+};
+
+test('minor fixes share one daily detail, retain timestamped entries and keep navigation current', async t => {
+  const root = await fixture(t);
+  let saved;
+  for (let i = 0; i < 13; i++) {
+    saved = await invoke(root, minor({ request_id: `fix-${i}`, title: `修改 ${i}`, summary: `事实 ${i}` }), `2026-10-15T08:${String(i).padStart(2, '0')}:00Z`);
+    assert.equal(saved.status, 'saved'); assert.equal(saved.navigation_status, 'current');
+  }
+  const files = await readdir(path.dirname(path.join(root, saved.path)));
+  assert.equal(files.length, 1);
+  const text = await readFile(path.join(root, saved.path), 'utf8');
+  for (let i = 0; i < 13; i++) assert.match(text, new RegExp(`修改 ${i}\\n`));
+  assert.match(text, /08:00:00\+00:00 修改 0/);
+  assert.match(text, /scheduled-tasks \/ ui-fixes 小修/);
+  assert.equal((await invoke(root, minor({ request_id: 'same', title: '修改 12', summary: '事实 12' }))).status, 'unchanged');
+  await command(root, 'check');
+});
+
+test('minor grouping separates project, module, group, day and standalone milestones', async t => {
+  const root = await fixture(t); const paths = [];
+  for (const extra of [{}, { project_id: 'other' }, { module_id: 'other' }, { group_id: 'logic-fixes' }]) {
+    const saved = await invoke(root, minor({ ...extra, request_id: `save-${paths.length}` }));
+    assert.equal(saved.status, 'saved'); paths.push(saved.path);
+  }
+  paths.push((await invoke(root, minor({ request_id: 'next-day' }), '2026-10-16T08:00:00Z')).path);
+  paths.push((await invoke(root, request({ request_id: 'milestone' }))).path);
+  assert.equal(new Set(paths).size, 6);
+  for (const extra of [{ module_id: '../escape' }, { project_id: '' }, { record_type: 'auto' }]) {
+    assert.equal((await invoke(root, minor({ request_id: 'invalid', ...extra }))).status, 'failed');
+  }
+  assert.equal((await invoke(root, request({ project_id: 'app' }))).status, 'failed');
+});
+
+test('minor retry across midnight is idempotent and different titles with identical facts append', async t => {
+  const root = await fixture(t); const input = minor();
+  const first = await invoke(root, input);
+  const bytes = await readFile(path.join(root, first.path));
+  const retry = await invoke(root, input, '2026-10-16T09:00:00Z');
+  assert.equal(retry.status, 'duplicate'); assert.equal(retry.path, first.path);
+  assert.deepEqual(await readFile(path.join(root, first.path)), bytes);
+  const second = await invoke(root, minor({ request_id: 'other-title', title: '不同的小修' }));
+  assert.equal(second.status, 'saved'); assert.equal(second.path, first.path);
+  assert.match(await readFile(path.join(root, first.path), 'utf8'), /不同的小修/);
+});
+
+test('group locks, manual edits, work rebinding and capacity failures preserve prior facts', async t => {
+  const root = await fixture(t); const input = minor();
+  const saved = await invoke(root, input);
+  const topic = path.basename(saved.path, '.md');
+  const lock = `.xiaotao/locks/progress-group-${topic}.lock`;
+  await put(root, lock, 'held');
+  assert.match((await invoke(root, minor({ request_id: 'busy' }))).error, /busy/);
+  await rm(path.join(root, lock));
+  const before = await readFile(path.join(root, saved.path), 'utf8');
+  const full = await invoke(root, minor({ request_id: 'full', details: 'x'.repeat(4000), validation: 'v'.repeat(4000) }));
+  assert.equal(full.status, 'failed');
+  assert.equal(await readFile(path.join(root, saved.path), 'utf8'), before);
+  await put(root, saved.path, before + '\n人工修改\n');
+  assert.equal((await invoke(root, minor({ request_id: 'edited', summary: '新事实' }))).status, 'failed');
+  assert.equal(await readFile(path.join(root, saved.path), 'utf8'), before + '\n人工修改\n');
+
+  const linkedRoot = await fixture(t); await put(linkedRoot, work, original);
+  const first = await invoke(linkedRoot, minor({ work_path: work }));
+  const otherWork = '.xiaotao/tasks/other/progress.md'; await put(linkedRoot, otherWork, original);
+  assert.equal((await invoke(linkedRoot, minor({ request_id: 'rebind', work_path: otherWork }))).status, 'failed');
+  assert.equal(await readFile(path.join(linkedRoot, otherWork), 'utf8'), original);
+  assert.equal((await invoke(linkedRoot, minor({ request_id: 'more', work_path: work, summary: '另一个修复' }))).path, first.path);
+});
+
+test('concurrent minor requests can retry without losing either entry', async t => {
+  const root = await fixture(t);
+  const inputs = [minor({ request_id: 'parallel-a', summary: '并发 A' }), minor({ request_id: 'parallel-b', summary: '并发 B' })];
+  const results = await Promise.all(inputs.map(input => invoke(root, input)));
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].status === 'failed') {
+      assert.match(results[i].error, /busy/);
+      results[i] = await invoke(root, inputs[i]);
+    }
+    assert.equal(results[i].status, 'saved');
+  }
+  assert.equal(results[0].path, results[1].path);
+  const text = await readFile(path.join(root, results[0].path), 'utf8');
+  assert.match(text, /并发 A/); assert.match(text, /并发 B/);
+  assert.equal((await readdir(path.dirname(path.join(root, results[0].path)))).length, 1);
+});
