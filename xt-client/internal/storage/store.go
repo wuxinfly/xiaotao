@@ -44,7 +44,6 @@ type Account struct {
 }
 
 type ProxySettings struct {
-	Enabled          bool   `json:"enabled"`
 	DefaultAccountID string `json:"defaultAccountId"`
 }
 
@@ -222,7 +221,16 @@ func (s *Store) LoadSecret(id string, dec func([]byte) ([]byte, error)) ([]byte,
 func (s *Store) Proxy() ProxySettings {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.data.Proxy
+	p := s.data.Proxy
+	if p.DefaultAccountID == "" {
+		for _, a := range s.data.Accounts {
+			if a.Enabled {
+				p.DefaultAccountID = a.ID
+				break
+			}
+		}
+	}
+	return p
 }
 
 func (s *Store) SetProxy(p ProxySettings) error {

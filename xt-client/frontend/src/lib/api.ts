@@ -29,7 +29,6 @@ export interface Account {
 }
 
 export interface ProxySettings {
-  enabled: boolean;
   defaultAccountId: string;
 }
 
@@ -76,6 +75,6 @@ export const api = {
   refreshQuota: (id: string) => request<QuotaSnapshot>(`/api/accounts/${id}/quota`, { method: 'POST' }),
   proxyKey: () => request<{ key: string }>('/api/proxy/key'),
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
-  saveProxy: (body: { enabled?: boolean; defaultAccountId?: string }) =>
+  saveProxy: (body: { defaultAccountId?: string }) =>
     request<ProxySettings>('/api/proxy/settings', { method: 'PUT', body: JSON.stringify(body) }),
 };

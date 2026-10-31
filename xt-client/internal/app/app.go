@@ -26,6 +26,8 @@ import (
 
 const Version = "0.1.0-dev"
 
+const defaultPort = "5455"
+
 //go:embed web/*
 var assets embed.FS
 
@@ -290,6 +292,13 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				apiError(w, 500, "save credential failed")
 				return
 			}
+			if p := store.Proxy(); p.DefaultAccountID == "" {
+				p.DefaultAccountID = id
+				if err := store.SetProxy(p); err != nil {
+					apiError(w, 500, "save default account failed")
+					return
+				}
+			}
 			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
 			return
 		}
@@ -309,7 +318,6 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		var body struct {
-			Enabled          *bool  `json:"enabled"`
 			DefaultAccountID string `json:"defaultAccountId"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
@@ -317,25 +325,6 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		next := store.Proxy()
-		if body.Enabled != nil {
-			if *body.Enabled {
-				if body.DefaultAccountID == "" && next.DefaultAccountID == "" {
-					apiError(w, 409, "select a default account first")
-					return
-				}
-				id := body.DefaultAccountID
-				if id == "" {
-					id = next.DefaultAccountID
-				}
-				acct, ok := store.Account(id)
-				if !ok || !acct.Enabled || acct.AuthState != "valid" {
-					apiError(w, 409, "default account is not ready")
-					return
-				}
-				next.DefaultAccountID = id
-			}
-			next.Enabled = *body.Enabled
-		}
 		if body.DefaultAccountID != "" {
 			if _, ok := store.Account(body.DefaultAccountID); !ok {
 				apiError(w, 404, "account not found")
@@ -426,10 +415,6 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		send(w, map[string]any{"object": "list", "data": models})
 	})
 	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		if p := store.Proxy(); !p.Enabled {
-			writeProxyError(w, 409, "proxy_disabled", "统一模型入口未启用")
-			return
-		}
 		proxySvc.HandleChat(w, r)
 	})
 	sub, _ := fs.Sub(assets, "web")
@@ -437,6 +422,13 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != s.URL[len("http://"):] {
 			http.Error(w, "invalid host", 403)
+			return
+		}
+		// The OpenAI-compatible proxy authenticates with its own bearer key
+		// and must accept non-browser clients, so it is exempt from the
+		// same-origin guard below.
+		if r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" {
+			mux.ServeHTTP(w, r)
 			return
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -461,9 +453,12 @@ func Serve(ctx context.Context, data string) error {
 		return e
 	}
 	defer release()
-	l, e := net.Listen("tcp4", "127.0.0.1:0")
+	l, e := net.Listen("tcp4", "127.0.0.1:"+defaultPort)
 	if e != nil {
-		return e
+		l, e = net.Listen("tcp4", "127.0.0.1:0")
+		if e != nil {
+			return e
+		}
 	}
 	defer l.Close()
 	token := make([]byte, 32)

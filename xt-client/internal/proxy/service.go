@@ -94,7 +94,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	p := s.store.Proxy()
 	acct, ok := s.store.Account(p.DefaultAccountID)
 	if !ok || !acct.Enabled {
-		writeError(w, 409, "no_ready_account", "未启用反代或缺少可用账号")
+		writeError(w, 409, "no_ready_account", "缺少可用账号，请在账号页启用并设为默认")
 		return
 	}
 	credBytes, err := s.secret(acct.ID)

@@ -3,6 +3,43 @@ import { api, type Account, type LoginSession, type ProxySettings } from '../../
 
 type Flow = 'idle' | 'waiting' | 'error';
 
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+    ta.remove();
+    return ok;
+  }
+}
+
+function CopyField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    if (await copyText(value)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  };
+  return (
+    <div className="copy-field">
+      <span className="copy-label">{label}</span>
+      <button type="button" className={`copy-value${mono ? ' mono' : ''}`} onClick={doCopy} title="点击复制">
+        <span className="copy-text">{value}</span>
+        <span className={`copy-hint${copied ? ' done' : ''}`}>{copied ? '已复制' : '复制'}</span>
+      </button>
+    </div>
+  );
+}
+
 function formatQuota(item: { used?: number | null; total?: number | null; unit: string }) {
   if (item.used == null || item.total == null) return '额度未知';
   const fmt = (n: number) => (item.unit === 'dollar' ? `$${n.toFixed(2)}` : `${Math.round(n)} 积分`);
@@ -11,7 +48,8 @@ function formatQuota(item: { used?: number | null; total?: number | null; unit: 
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [proxy, setProxy] = useState<ProxySettings>({ enabled: false, defaultAccountId: '' });
+  const [proxy, setProxy] = useState<ProxySettings>({ defaultAccountId: '' });
+  const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [flow, setFlow] = useState<Flow>('idle');
   const [session, setSession] = useState<LoginSession | null>(null);
@@ -33,6 +71,9 @@ export function AccountsPage() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => clearInterval(pollRef.current), []);
+  useEffect(() => {
+    api.proxyKey().then(r => setApiKey(r.key)).catch(() => setApiKey(''));
+  }, []);
 
   const startLogin = async () => {
     setFlow('waiting');
@@ -117,10 +158,11 @@ export function AccountsPage() {
     }
   };
 
-  const toggleProxy = async () => {
+  const rotateKey = async () => {
     try {
-      const next = await api.saveProxy({ enabled: !proxy.enabled });
-      setProxy(next);
+      const r = await api.rotateProxyKey();
+      setApiKey(r.key);
+      setNotice({ kind: 'ok', text: '代理密钥已重新生成，外部工具需要更新 API Key' });
     } catch (e) {
       setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
     }
@@ -160,12 +202,22 @@ export function AccountsPage() {
   return (
     <section className="accounts-page">
       {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
-      <div className="proxy-bar">
-        <label className="switch">
-          <input type="checkbox" checked={proxy.enabled} onChange={toggleProxy} />
-          <span>统一模型入口</span>
-        </label>
-        <small>{proxy.enabled ? '外部工具可通过本地 API 调用已接入模型' : '当前关闭，仅管理账号'}</small>
+      <div className="endpoint-card">
+        <div className="endpoint-head">
+          <strong>模型接入</strong>
+          <small>在支持 OpenAI 接口的工具中填写以下信息即可调用已接入账号的模型</small>
+        </div>
+        <CopyField label="接口地址" value={`${window.location.origin}/v1`} mono />
+        <CopyField label="API 密钥" value={apiKey ?? '加载中…'} mono />
+        <div className="copy-field">
+          <span className="copy-label">支持协议</span>
+          <span className="copy-value static">OpenAI Chat Completions 兼容（/v1/chat/completions · /v1/models）</span>
+        </div>
+        {apiKey && (
+          <div className="endpoint-foot">
+            <button className="btn" onClick={rotateKey}>重新生成密钥</button>
+          </div>
+        )}
       </div>
       <ul className="account-list">
         {accounts.map(a => {
