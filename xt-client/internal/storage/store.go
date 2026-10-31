@@ -1,14 +1,18 @@
 package storage
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
+
+const secretPrefix = "b64:"
 
 type QuotaItem struct {
 	Label    string   `json:"label"`
@@ -202,9 +206,12 @@ func (s *Store) SaveSecret(id string, plain []byte, enc func([]byte) ([]byte, er
 	if err != nil {
 		return err
 	}
+	// Encrypted blobs are binary; encode them so they survive the JSON
+	// round-trip (Go replaces invalid UTF-8 bytes with U+FFFD).
+	stored := secretPrefix + base64.StdEncoding.EncodeToString(blob)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.data.Secrets[id] = string(blob)
+	s.data.Secrets[id] = stored
 	return s.save()
 }
 
@@ -215,6 +222,15 @@ func (s *Store) LoadSecret(id string, dec func([]byte) ([]byte, error)) ([]byte,
 	if !ok {
 		return nil, fmt.Errorf("secret for %q not found", id)
 	}
+	if rest, ok := strings.CutPrefix(v, secretPrefix); ok {
+		raw, err := base64.StdEncoding.DecodeString(rest)
+		if err != nil {
+			return nil, fmt.Errorf("secret for %q is malformed", id)
+		}
+		return dec(raw)
+	}
+	// Legacy entries stored raw binary as JSON strings are corrupted and
+	// will fail decryption; surface the decoder error.
 	return dec([]byte(v))
 }
 
