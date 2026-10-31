@@ -116,7 +116,11 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	authSvc := authsessions.NewService(s.URL)
 	var proxyKey string
 	if b, err := store.LoadSecret("proxy", keyring.Decrypt); err == nil {
+		// Keys are always stored as their hex-string form.
 		proxyKey = string(b)
+		if len(b) != 48 {
+			proxyKey = hex.EncodeToString(b)
+		}
 	} else {
 		key := make([]byte, 24)
 		if _, err = rand.Read(key); err != nil {

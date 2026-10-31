@@ -126,7 +126,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request_error", "messages 无效")
 		return
 	}
-	upstream["messages"] = msgs
+	upstream["messages"] = trae.NativeMessages(msgs)
 	if len(body.Tools) > 0 {
 		var tools []map[string]any
 		if err := json.Unmarshal(body.Tools, &tools); err != nil {
