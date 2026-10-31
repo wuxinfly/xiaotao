@@ -45,7 +45,7 @@ updated_by: xiao-tao/maintainer
     "bin/xiaotao.js"
   ],
   "code_fingerprints": {
-    "package.json": "52988eb61eb78d4fbfdbaab1ca682685de23a6960098c5610909f4ae3f3d1ac7",
+    "package.json": "6f6a75595f4796e573855f38a7bcadba791d5c3a2031b0003514c77a3aa95acc",
     "xiaotao/SKILL.md": "d7ad076039b4e2317e40bd4a7bd5425b5c891be3e8c2c6770eaea5ff46a8f758",
     "bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb"
   },

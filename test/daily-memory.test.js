@@ -55,7 +55,7 @@ test('project timezone attributes UTC midnight boundaries to the correct local d
   assert.equal(record.occurred_at, '2026-12-31T18:00:00Z'); assert.equal(record.timezone, 'Asia/Shanghai');
   assert.equal((await json(root, ['events', '--date', '2027-01-01'])).total, 1);
   await assert.rejects(run(root, ['save'], note({ timezone: 'Unknown/Timezone' })), /timezone/);
-  await assert.rejects(run(root, ['events', '--date', '2026-02-30']), /day is out of range/);
+  await assert.rejects(run(root, ['events', '--date', '2026-02-30']), /day (?:is out of range|30 must be in range 1\.\.28 for month 2 in year 2026)/);
 });
 
 test('stable Task and Temporary identities resolve after archive and report missing work honestly', async t => {
