@@ -1,47 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" fill="none" role="img" aria-label="仪表盘">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" role="img" aria-label="仪表盘">
   <title>仪表盘</title>
-  <defs>
-    <linearGradient id="cyan-body" x1="0" y1="302" x2="0" y2="994" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#32F8FD"/>
-      <stop offset=".25" stop-color="#05F4FE"/>
-      <stop offset=".65" stop-color="#00E4FE"/>
-      <stop offset="1" stop-color="#00C7FF"/>
-    </linearGradient>
-    <linearGradient id="cyan-sheen" x1="0" y1="302" x2="0" y2="994" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#A2FFFF" stop-opacity=".75"/>
-      <stop offset=".14" stop-color="#7AFFFF" stop-opacity=".24"/>
-      <stop offset=".48" stop-color="#5BFFFF" stop-opacity=".06"/>
-      <stop offset=".83" stop-color="#1FD9FF" stop-opacity=".02"/>
-      <stop offset="1" stop-color="#2FAFFF" stop-opacity=".3"/>
-    </linearGradient>
-    <linearGradient id="cyan-edge" x1="0" y1="302" x2="0" y2="994" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#0FFBFC"/>
-      <stop offset=".6" stop-color="#00BDF4"/>
-      <stop offset="1" stop-color="#007AFB"/>
-    </linearGradient>
-    <filter id="soft-glow" x="-12%" y="-12%" width="124%" height="124%">
-      <feGaussianBlur stdDeviation="3.5"/>
-    </filter>
-  </defs>
-  <!-- Shapes calibrated to the source PNG: transparent center, 37px outer stroke. -->
-  <g stroke-linejoin="round">
-    <g stroke="url(#cyan-edge)" opacity=".45" filter="url(#soft-glow)">
-      <rect x="303" y="319" width="663" height="656" rx="139" stroke-width="45"/>
-      <rect x="411" y="655" width="104" height="191" rx="36" stroke-width="40"/>
-      <rect x="583" y="487" width="105" height="359" rx="38" stroke-width="40"/>
-      <rect x="756" y="589" width="104" height="257" rx="37" stroke-width="40"/>
-    </g>
-    <g stroke="url(#cyan-body)">
-      <rect x="303" y="319" width="663" height="656" rx="139" stroke-width="37"/>
-      <rect x="411" y="655" width="104" height="191" rx="36" stroke-width="34"/>
-      <rect x="583" y="487" width="105" height="359" rx="38" stroke-width="34"/>
-      <rect x="756" y="589" width="104" height="257" rx="37" stroke-width="34"/>
-    </g>
-    <g stroke="url(#cyan-sheen)" opacity=".55">
-      <rect x="303" y="319" width="663" height="656" rx="139" stroke-width="26"/>
-      <rect x="411" y="655" width="104" height="191" rx="36" stroke-width="23"/>
-      <rect x="583" y="487" width="105" height="359" rx="38" stroke-width="23"/>
-      <rect x="756" y="589" width="104" height="257" rx="37" stroke-width="23"/>
-    </g>
+  <g stroke="#14DDFB" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2.6"/>
+    <path d="M8 15.5V11"/>
+    <path d="M12 15.5V8.5"/>
+    <path d="M16 15.5V12.5"/>
   </g>
 </svg>

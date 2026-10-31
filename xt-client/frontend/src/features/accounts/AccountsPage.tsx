@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type Account, type LoginSession, type ProxySettings } from '../../lib/api';
+import { toast } from '../../components/toast';
 
 type Flow = 'idle' | 'waiting' | 'error';
 
@@ -53,7 +54,6 @@ export function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [flow, setFlow] = useState<Flow>('idle');
   const [session, setSession] = useState<LoginSession | null>(null);
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -63,7 +63,7 @@ export function AccountsPage() {
       setAccounts(data.accounts ?? []);
       setProxy(data.proxy);
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setLoading(false);
     }
@@ -77,7 +77,6 @@ export function AccountsPage() {
 
   const startLogin = async () => {
     setFlow('waiting');
-    setNotice(null);
     try {
       const sess = await api.startLogin();
       setSession(sess);
@@ -89,18 +88,18 @@ export function AccountsPage() {
             clearInterval(pollRef.current);
             setFlow('idle');
             setSession(null);
-            setNotice({ kind: 'ok', text: '账号添加成功' });
+            toast.success('账号添加成功');
             void load();
           } else if (state.status !== 'waiting') {
             clearInterval(pollRef.current);
             setFlow('error');
-            setNotice({ kind: 'err', text: state.error ?? '登录未完成' });
+            toast.error(state.error ?? '登录未完成');
           }
         } catch { /* keep polling */ }
       }, 1500);
     } catch (e) {
       setFlow('error');
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
@@ -117,7 +116,7 @@ export function AccountsPage() {
       await api.updateAccount(a.id, { enabled: !a.enabled });
       await load();
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setBusyId(null);
     }
@@ -129,9 +128,9 @@ export function AccountsPage() {
     try {
       await api.deleteAccount(a.id);
       await load();
-      setNotice({ kind: 'ok', text: '账号已移除' });
+      toast.success('账号已移除');
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setBusyId(null);
     }
@@ -142,8 +141,9 @@ export function AccountsPage() {
     try {
       await api.refreshQuota(a.id);
       await load();
+      toast.success('配额已刷新');
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setBusyId(null);
     }
@@ -154,7 +154,7 @@ export function AccountsPage() {
       const next = await api.saveProxy({ defaultAccountId: id });
       setProxy(next);
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
@@ -162,9 +162,9 @@ export function AccountsPage() {
     try {
       const r = await api.rotateProxyKey();
       setApiKey(r.key);
-      setNotice({ kind: 'ok', text: '代理密钥已重新生成，外部工具需要更新 API Key' });
+      toast.success('代理密钥已重新生成，外部工具需要更新 API Key');
     } catch (e) {
-      setNotice({ kind: 'err', text: String(e instanceof Error ? e.message : e) });
+      toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
@@ -178,7 +178,6 @@ export function AccountsPage() {
           <div className="flow-actions">
             <button className="btn" onClick={cancelLogin}>取消</button>
           </div>
-          {notice && <div className={`notice ${notice.kind}`} role="status" style={{ marginTop: 16 }}>{notice.text}</div>}
         </div>
       </section>
     );
@@ -193,7 +192,6 @@ export function AccountsPage() {
           <h2>还没有接入账号</h2>
           <p>添加 Trae 国内版账号后，可以在这里查看真实配额，并把它接入本地模型代理。API 配置接入会在后续版本提供。</p>
           <button className="btn primary" onClick={startLogin}>添加 Trae 账号</button>
-          {notice && <div className={`notice ${notice.kind}`} role="status" style={{ marginTop: 16 }}>{notice.text}</div>}
         </div>
       </section>
     );
@@ -201,7 +199,6 @@ export function AccountsPage() {
 
   return (
     <section className="accounts-page">
-      {notice && <div className={`notice ${notice.kind}`} role="status">{notice.text}</div>}
       <div className="endpoint-card">
         <div className="endpoint-head">
           <strong>模型接入</strong>

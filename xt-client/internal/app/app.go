@@ -22,6 +22,7 @@ import (
 	"xiaotao/xt-client/internal/proxy"
 	"xiaotao/xt-client/internal/secrets"
 	"xiaotao/xt-client/internal/storage"
+	"xiaotao/xt-client/internal/usage"
 )
 
 const Version = "0.1.0-dev"
@@ -133,6 +134,11 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	}
 	proxySvc := proxy.New(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) }, proxyKey)
 	accountSvc := proxy.NewAccountService(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) })
+	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
+	if err != nil {
+		return nil, err
+	}
+	proxySvc.SetUsage(usageSvc)
 	send := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(v)
@@ -141,7 +147,13 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		send(w, map[string]any{"error": map[string]any{"message": message}})
 	}
 	requireOrigin := func(r *http.Request) bool {
-		return r.Method == http.MethodGet || r.Header.Get("Origin") == s.URL || r.Header.Get("Authorization") == "Bearer "+s.Token
+		if origin := r.Header.Get("Origin"); origin != "" {
+			return origin == s.URL
+		}
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			return auth == "Bearer "+s.Token
+		}
+		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
 	registerTrae := func() {
 		providers.Register(traeProvider)
@@ -156,6 +168,25 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		send(w, map[string]any{"providers": providers.List()})
+	})
+	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		snap, err := usageSvc.Snapshot()
+		if err != nil {
+			apiError(w, 500, "snapshot failed: "+err.Error())
+			return
+		}
+		send(w, snap)
+	})
+	mux.HandleFunc("GET /api/dashboard/events", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		usageSvc.HandleSSE(w, r)
 	})
 	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
@@ -405,7 +436,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		cfg = next
 		send(w, cfg)
 	})
-	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) { send(w, map[string]bool{"ok": true}); go stop() })
+	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) { send(w, map[string]bool{"ok": true}); usageSvc.Close(); go stop() })
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if !proxySvc.Authorize(r) {
 			writeProxyError(w, 401, "invalid_api_key", "代理访问密钥无效")
@@ -423,7 +454,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	})
 	sub, _ := fs.Sub(assets, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != s.URL[len("http://"):] {
 			http.Error(w, "invalid host", 403)
 			return
@@ -438,12 +469,29 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
+		if origin := r.Header.Get("Origin"); origin != "" && origin != s.URL {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Header.Get("Authorization") != "Bearer "+s.Token && r.Header.Get("Origin") != s.URL {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
 		mux.ServeHTTP(w, r)
-	}), nil
+	})
+	return &closeableHandler{Handler: baseHandler, usage: usageSvc}, nil
+}
+
+type closeableHandler struct {
+	http.Handler
+	usage *usage.Service
+}
+
+func (c *closeableHandler) Close() error {
+	if c.usage != nil {
+		return c.usage.Close()
+	}
+	return nil
 }
 
 func writeProxyError(w http.ResponseWriter, status int, code, message string) {
@@ -475,6 +523,9 @@ func Serve(ctx context.Context, data string) error {
 	h, e := Handler(s, data, cancel)
 	if e != nil {
 		return e
+	}
+	if closer, ok := h.(interface{ Close() error }); ok {
+		defer closer.Close()
 	}
 	srv := http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	if e = Save(filepath.Join(data, "runtime.json"), s); e != nil {

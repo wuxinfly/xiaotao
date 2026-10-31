@@ -47,6 +47,100 @@ export interface LoginSession {
   error?: string;
 }
 
+export interface LaunchInfo {
+  startedAt: number;
+  uptimeSeconds: number;
+  batchId: string;
+}
+
+export interface SessionStats {
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+}
+
+export interface DailyUsage {
+  date: string;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  totalRequests: number;
+  completedRequests: number;
+  failedRequests: number;
+  interruptedRequests: number;
+  missingUsageRequests: number;
+}
+
+export interface CumulativeStats {
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  totalRequests: number;
+}
+
+export interface TokenMetrics {
+  prompt?: number | null;
+  completion?: number | null;
+  cached?: number | null;
+  total?: number | null;
+}
+
+export interface RequestSummary {
+  id: string;
+  channel: string;
+  channelLabel: string;
+  model: string;
+  actionTag: string;
+  actionTitle: string;
+  status: string;
+  statusText: string;
+  startedAt: number;
+  firstTokenAt?: number | null;
+  endedAt?: number | null;
+  durationMs: number;
+  firstTokenDurationMs?: number | null;
+  tokens: TokenMetrics;
+  speedTokPerSec?: number | null;
+  errorSummary?: string;
+}
+
+export interface HeatmapDay {
+  totalTokens: number;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  totalRequests: number;
+  hasMissingUsage: boolean;
+}
+
+export interface HeatmapData {
+  startDate: string;
+  endDate: string;
+  trackingStartDate: string;
+  days: Record<string, HeatmapDay>;
+}
+
+export interface StorageStatus {
+  status: 'healthy' | 'degraded' | 'error';
+  message?: string;
+}
+
+export interface DashboardSnapshot {
+  version: string;
+  launch: LaunchInfo;
+  currentSession: SessionStats;
+  today: DailyUsage;
+  cumulative: CumulativeStats;
+  recentRequests: RequestSummary[];
+  activeCount: number;
+  activeRequests: RequestSummary[];
+  heatmap: HeatmapData;
+  storage: StorageStatus;
+  versionSeq: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -77,4 +171,23 @@ export const api = {
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
   saveProxy: (body: { defaultAccountId?: string }) =>
     request<ProxySettings>('/api/proxy/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  dashboard: () => request<DashboardSnapshot>('/api/dashboard'),
+  subscribeDashboard: (
+    onSnapshot: (snap: DashboardSnapshot) => void,
+    onError?: (err: Event) => void,
+  ): (() => void) => {
+    const es = new EventSource('/api/dashboard/events');
+    const handleMsg = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as DashboardSnapshot;
+        onSnapshot(data);
+      } catch { /* ignore */ }
+    };
+    es.addEventListener('snapshot', handleMsg);
+    es.addEventListener('update', handleMsg);
+    if (onError) {
+      es.onerror = onError;
+    }
+    return () => es.close();
+  },
 };

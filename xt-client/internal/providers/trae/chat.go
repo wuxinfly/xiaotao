@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"xiaotao/xt-client/internal/providers"
 )
@@ -21,6 +22,7 @@ type ChatResult struct {
 	ErrCode any
 	ErrMsg  string
 	EOF     bool
+	FirstTokenAt *time.Time
 }
 
 func streamChat(ctx context.Context, cred *providers.Credential, machineID, deviceID, model string, body map[string]any, onEvent func(event string, data map[string]any)) error {
@@ -52,6 +54,8 @@ func streamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	var event string
 	var data strings.Builder
+	var seenDone bool
+	var seenError bool
 	flush := func() {
 		if data.Len() == 0 {
 			event = ""
@@ -83,6 +87,11 @@ func streamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 		switch name {
 		case "event":
 			event = value
+			if value == "done" {
+				seenDone = true
+			} else if value == "error" {
+				seenError = true
+			}
 		case "data":
 			if data.Len() > 0 {
 				data.WriteString("\n")
@@ -91,6 +100,12 @@ func streamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 		}
 	}
 	flush()
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("stream read error: %w", err)
+	}
+	if !seenDone && !seenError {
+		return fmt.Errorf("stream disconnected unexpectedly: missing completion event")
+	}
 	return nil
 }
 
@@ -103,21 +118,46 @@ func collectChat(ctx context.Context, cred *providers.Credential, machineID, dev
 			result.ErrCode = data["code"]
 			result.ErrMsg = errText(data)
 		case "output":
+			hasOutput := false
 			if v, ok := data["reasoning_content"].(string); ok {
 				result.Reason += v
+				if v != "" {
+					hasOutput = true
+				}
 			}
 			if v, ok := data["response"].(string); ok {
 				result.Content += v
+				if v != "" {
+					hasOutput = true
+				}
 			}
 			if items, ok := data["tool_calls"].([]any); ok {
 				mergeToolCalls(calls, items)
+				if len(items) > 0 {
+					hasOutput = true
+				}
+			}
+			if hasOutput && result.FirstTokenAt == nil {
+				now := time.Now()
+				result.FirstTokenAt = &now
 			}
 		case "token_usage":
 			usage := map[string]any{}
-			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "prompt_cache_hit_tokens", "cache_tokens"} {
 				if v, ok := data[k].(float64); ok {
 					usage[k] = int64(v)
 				}
+			}
+			if details, ok := data["prompt_tokens_details"].(map[string]any); ok {
+				if v, ok := details["cached_tokens"].(float64); ok {
+					usage["cached_tokens"] = int64(v)
+				}
+			}
+			if p, ok := usage["prompt_cache_hit_tokens"]; ok && usage["cached_tokens"] == nil {
+				usage["cached_tokens"] = p
+			}
+			if c, ok := usage["cache_tokens"]; ok && usage["cached_tokens"] == nil {
+				usage["cached_tokens"] = c
 			}
 			result.Usage = usage
 		case "done":
@@ -147,6 +187,7 @@ func collectChat(ctx context.Context, cred *providers.Credential, machineID, dev
 // StreamEvents carries incremental upstream output. Tool call deltas are
 // pre-merged per index so consumers receive stable argument fragments.
 type StreamEvents struct {
+	OnFirstToken func(t time.Time)
 	OnDelta func(delta map[string]any)
 	OnError func(code any, msg string)
 	OnUsage func(usage map[string]any)
@@ -159,6 +200,7 @@ func StreamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 	calls := map[int]map[string]string{}
 	toolStarted := map[int]bool{}
 	toolEmitted := map[int]int{}
+	var firstTokenFired bool
 	err := streamChat(ctx, cred, machineID, deviceID, model, body, func(event string, data map[string]any) {
 		switch event {
 		case "error":
@@ -166,6 +208,22 @@ func StreamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 				ev.OnError(data["code"], errText(data))
 			}
 		case "output":
+			hasOutput := false
+			if v, ok := data["reasoning_content"].(string); ok && v != "" {
+				hasOutput = true
+			}
+			if v, ok := data["response"].(string); ok && v != "" {
+				hasOutput = true
+			}
+			if items, ok := data["tool_calls"].([]any); ok && len(items) > 0 {
+				hasOutput = true
+			}
+			if hasOutput && !firstTokenFired {
+				firstTokenFired = true
+				if ev.OnFirstToken != nil {
+					ev.OnFirstToken(time.Now())
+				}
+			}
 			if ev.OnDelta == nil {
 				return
 			}
@@ -199,10 +257,21 @@ func StreamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 			}
 		case "token_usage":
 			usage := map[string]any{}
-			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "prompt_cache_hit_tokens", "cache_tokens"} {
 				if v, ok := data[k].(float64); ok {
 					usage[k] = int64(v)
 				}
+			}
+			if details, ok := data["prompt_tokens_details"].(map[string]any); ok {
+				if v, ok := details["cached_tokens"].(float64); ok {
+					usage["cached_tokens"] = int64(v)
+				}
+			}
+			if p, ok := usage["prompt_cache_hit_tokens"]; ok && usage["cached_tokens"] == nil {
+				usage["cached_tokens"] = p
+			}
+			if c, ok := usage["cache_tokens"]; ok && usage["cached_tokens"] == nil {
+				usage["cached_tokens"] = c
 			}
 			if ev.OnUsage != nil && len(usage) > 0 {
 				ev.OnUsage(usage)

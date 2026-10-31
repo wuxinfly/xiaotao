@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" role="img" aria-label="模型">
+  <title>模型</title>
+  <g stroke="#14DDFB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.75 20.25 7.5 12 12.25 3.75 7.5 12 2.75Z"/>
+    <path d="m3.75 12 8.25 4.75L20.25 12"/>
+    <path d="m3.75 16.5 8.25 4.75 8.25-4.75"/>
+  </g>
+</svg>
