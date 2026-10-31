@@ -8,7 +8,7 @@
 - [xt-client/](xt-client/)：Go 本地服务与 WebView2 轻量客户端原型，含构建和运行说明。
 - [website/](website/)：独立 Astro 网站。
 - [docs/](docs/)：共享架构、计划和验收文档。历史计划中的旧根目录代码路径现位于 xt-skills/ 下。
-- [AGENTS.md](AGENTS.md)：AI 开发入口。
+- [AGENTS.md](AGENTS.md)：由 [规则源](docs/agent/rules.json) 生成的 AI 开发入口；演进流程见 [规则演进说明](docs/agent/README.md)。
 
 ## Skill 开发与验证
 

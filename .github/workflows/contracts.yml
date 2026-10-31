@@ -24,6 +24,19 @@ jobs:
       - name: Verify Codex plugin on Windows
         run: node --test test/codex-adapter.test.js
 
+  agent-rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test agent rule evolution
+        run: node --test tools/agent-rules.test.mjs
+      - name: Verify generated AGENTS.md and candidates
+        run: node tools/agent-rules.mjs check
+
   verify:
     defaults:
       run:

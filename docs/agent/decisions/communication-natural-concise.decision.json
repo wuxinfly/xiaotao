@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "record_type": "agent-rule-decision",
+  "decision_id": "communication-natural-concise",
+  "candidate_id": "communication-natural-concise",
+  "action": "add",
+  "section_id": "communication",
+  "rule_id": "communication.natural-concise",
+  "kind": "preference",
+  "outcome": "approved",
+  "decided_at": "2026-10-31T16:43:10.741Z",
+  "decided_by": "user-confirmed",
+  "reason": "用户明确要求修改项目沟通规则，并在复述后确认、补充允许适当脏话及尽量简短；两次表达支持该持续沟通偏好。",
+  "source_refs": [
+    "docs/agent/communication-preference.md"
+  ],
+  "before": null,
+  "after": {
+    "id": "communication.natural-concise",
+    "kind": "preference",
+    "text": "像同事聊天一样说人话：接地气、自然、易懂，少术语、少套话，不刻意卖萌或装熟。默认尽量简短，先说结果，必要时再补原因或例子；简单问题几句话说清，不堆标题、列表或重复总结，但不能省略关键事实、风险或未完成项。可以偶尔顺着语境带点脏话，不硬凹、不攻击人；正式文档和对外内容按场合表达。",
+    "source_refs": [
+      "docs/agent/communication-preference.md"
+    ]
+  }
+}

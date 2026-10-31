@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "project-position-client-status",
+  "created_at": "2026-10-31T00:00:00Z",
+  "action": "update",
+  "kind": "fact",
+  "section_id": "project-position",
+  "rule_id": "project-position.summary",
+  "expected_text": "XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill、安装管理 CLI 和多宿主适配，并非传统后端服务；客户端尚未实现。",
+  "text": "XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill、安装管理 CLI、多宿主适配和客户端原型，不是传统后端服务。",
+  "rationale": "xt-client 已包含 Go 本地服务与 WebView2 客户端原型，根入口中“客户端尚未实现”的描述已过期。",
+  "source_refs": [
+    "README.md",
+    "xt-client/README.md",
+    "docs/architecture/xt-client-overview.md"
+  ],
+  "observations": 1
+}

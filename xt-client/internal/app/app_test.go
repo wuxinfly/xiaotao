@@ -15,6 +15,11 @@ func TestConfigAndOrigin(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	defer func() {
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
 	call := func(method, path, origin, host, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, s.URL+path, strings.NewReader(body))
 		r.Host = host
@@ -39,6 +44,9 @@ func TestConfigAndOrigin(t *testing.T) {
 	if w := call("PUT", "/api/config", s.URL, host, `{"name":"再次保存"}`); w.Code != 200 {
 		t.Fatalf("replace: %d", w.Code)
 	}
+	if c, ok := h.(interface{ Close() error }); ok {
+		_ = c.Close()
+	}
 	h, e = Handler(s, dir, func() {})
 	if e != nil {
 		t.Fatal(e)
@@ -49,8 +57,16 @@ func TestConfigAndOrigin(t *testing.T) {
 	if w := call("GET", "/", "", host, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "小涛") {
 		t.Fatal("page missing")
 	}
-	if w := call("GET", "/v1/models", "", host, ""); w.Code != 501 {
-		t.Fatal("model endpoint must not pretend to work")
+	// WebView video playback needs byte ranges for seeking and metadata reads.
+	r := httptest.NewRequest("GET", s.URL+"/startup.mp4", nil)
+	r.Header.Set("Range", "bytes=0-31")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 206 || w.Body.Len() != 32 || w.Header().Get("Content-Type") != "video/mp4" {
+		t.Fatalf("startup video range: %d %s (%d bytes)", w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+	}
+	if w := call("GET", "/v1/models", "", host, ""); w.Code != 401 {
+		t.Fatalf("model endpoint without key: %d", w.Code)
 	}
 }
 func TestCorruptConfigPreserved(t *testing.T) {
@@ -63,5 +79,44 @@ func TestCorruptConfigPreserved(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	if string(b) != "broken" {
 		t.Fatal("overwrote invalid data")
+	}
+}
+
+func TestDashboardEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
+	h, e := Handler(s, dir, func() {})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
+
+	host := "127.0.0.1:12345"
+
+	// Cross-origin request blocked
+	rCross := httptest.NewRequest("GET", s.URL+"/api/dashboard", nil)
+	rCross.Host = host
+	rCross.Header.Set("Origin", "http://malicious.com")
+	wCross := httptest.NewRecorder()
+	h.ServeHTTP(wCross, rCross)
+	if wCross.Code != 403 {
+		t.Fatalf("expected 403 for cross-origin /api/dashboard, got %d", wCross.Code)
+	}
+
+	// Same-origin request allowed
+	rSame := httptest.NewRequest("GET", s.URL+"/api/dashboard", nil)
+	rSame.Host = host
+	rSame.Header.Set("Origin", s.URL)
+	wSame := httptest.NewRecorder()
+	h.ServeHTTP(wSame, rSame)
+	if wSame.Code != 200 {
+		t.Fatalf("expected 200 for /api/dashboard, got %d %s", wSame.Code, wSame.Body.String())
+	}
+	if !strings.Contains(wSame.Body.String(), "currentSession") || !strings.Contains(wSame.Body.String(), "heatmap") {
+		t.Fatalf("expected dashboard snapshot in response, got %s", wSame.Body.String())
 	}
 }

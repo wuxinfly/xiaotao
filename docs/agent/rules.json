@@ -1,0 +1,258 @@
+{
+  "schema_version": 1,
+  "title": "项目开发入口",
+  "generated_path": "AGENTS.md",
+  "policy": {
+    "minimum_observations": {
+      "fact": 1,
+      "convention": 2,
+      "preference": 2,
+      "safety": 2
+    },
+    "manual_review_kinds": [
+      "convention",
+      "preference",
+      "safety"
+    ]
+  },
+  "sections": [
+    {
+      "id": "communication",
+      "title": "沟通风格",
+      "rules": [
+        {
+          "id": "communication.natural-concise",
+          "kind": "preference",
+          "text": "像同事聊天一样说人话：接地气、自然、易懂，少术语、少套话，不刻意卖萌或装熟。默认尽量简短，先说结果，必要时再补原因或例子；简单问题几句话说清，不堆标题、列表或重复总结，但不能省略关键事实、风险或未完成项。可以偶尔顺着语境带点脏话，不硬凹、不攻击人；正式文档和对外内容按场合表达。",
+          "source_refs": [
+            "docs/agent/communication-preference.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project-position",
+      "title": "项目定位",
+      "rules": [
+        {
+          "id": "project-position.summary",
+          "kind": "fact",
+          "text": "XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill、安装管理 CLI、多宿主适配和客户端原型，不是传统后端服务。",
+          "source_refs": [
+            "README.md",
+            "xt-client/README.md",
+            "docs/architecture/xt-client-overview.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "directories",
+      "title": "目录",
+      "rules": [
+        {
+          "id": "directories.xt-skills",
+          "kind": "fact",
+          "text": "`xt-skills/`：Skill npm 包、CLI、宿主适配器和测试；开发前阅读该目录的 AGENTS.md 和 README.md。",
+          "source_refs": [
+            "xt-skills/AGENTS.md",
+            "xt-skills/package.json"
+          ]
+        },
+        {
+          "id": "directories.xt-client",
+          "kind": "fact",
+          "text": "`xt-client/`：Go 本地服务与 WebView2 轻量客户端原型，构建和运行说明见该目录 README.md 与 AGENTS.md。",
+          "source_refs": [
+            "xt-client/README.md",
+            "xt-client/AGENTS.md"
+          ]
+        },
+        {
+          "id": "directories.website",
+          "kind": "fact",
+          "text": "`website/`：独立 Astro 网站，使用自己的 package.json。",
+          "source_refs": [
+            "website/package.json"
+          ]
+        },
+        {
+          "id": "directories.docs",
+          "kind": "fact",
+          "text": "`docs/`：共享架构、计划及验收文档。历史计划中的旧根目录代码路径需对应到 xt-skills/。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "docs/plans/2026-10-31-directory-layout.md"
+          ]
+        },
+        {
+          "id": "directories.github",
+          "kind": "fact",
+          "text": "`.github/`：仓库级 CI 与部署。",
+          "source_refs": [
+            ".github/workflows/contracts.yml",
+            ".github/workflows/pages.yml"
+          ]
+        },
+        {
+          "id": "directories.xiaotao",
+          "kind": "fact",
+          "text": "`.xiaotao/`：当前仓库的运行记录及项目记忆，不是 Skill 源码。",
+          "source_refs": [
+            ".xiaotao/memory/knowledge/entries/project.overview.md"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "development-conventions",
+      "title": "开发约定",
+      "rules": [
+        {
+          "id": "development-conventions.module-commands",
+          "kind": "convention",
+          "text": "根目录没有 npm 包，在各模块目录执行命令。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "xt-skills/AGENTS.md"
+          ]
+        },
+        {
+          "id": "development-conventions.clean-tree",
+          "kind": "convention",
+          "text": "不提交 node_modules、构建产物、日志和本机安装记录。",
+          "source_refs": [
+            ".gitignore",
+            "docs/agent/README.md"
+          ]
+        },
+        {
+          "id": "development-conventions.path-sync",
+          "kind": "convention",
+          "text": "修改路径时同步 CI、脚本、文档链接和打包清单。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "docs/plans/2026-10-31-directory-layout.md"
+          ]
+        },
+        {
+          "id": "development-conventions.install-contract",
+          "kind": "convention",
+          "text": "调整目录不应改变 Skill 安装位置、协议和产品行为。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "xt-skills/README.md"
+          ]
+        },
+        {
+          "id": "development-conventions.docs-sync",
+          "kind": "convention",
+          "text": "模块职责、命令或路径发生变化时更新 README、局部 AGENTS.md 和规则源。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "docs/agent/rules.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "verification",
+      "title": "验证",
+      "rules": [
+        {
+          "id": "verification.skills",
+          "kind": "convention",
+          "text": "Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。",
+          "source_refs": [
+            "xt-skills/AGENTS.md",
+            "xt-skills/package.json"
+          ]
+        },
+        {
+          "id": "verification.dsh",
+          "kind": "convention",
+          "text": "DSH：在 xt-skills/adapters/deepseek-harness 下运行 `npm run typecheck`、`npm test`、`npm run test:package`。",
+          "source_refs": [
+            "xt-skills/adapters/deepseek-harness/README.md",
+            "xt-skills/adapters/deepseek-harness/package.json"
+          ]
+        },
+        {
+          "id": "verification.website",
+          "kind": "convention",
+          "text": "网站：在 website 下运行 `npm run build`。",
+          "source_refs": [
+            "website/package.json",
+            ".github/workflows/pages.yml"
+          ]
+        },
+        {
+          "id": "verification.client",
+          "kind": "convention",
+          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`、`./build.ps1`，详见局部 AGENTS.md。",
+          "source_refs": [
+            "xt-client/AGENTS.md"
+          ]
+        },
+        {
+          "id": "verification.agent-rules",
+          "kind": "convention",
+          "text": "规则：运行 `node tools/agent-rules.mjs check`；规则源变更后先运行 `render` 再运行 `check`。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "tools/agent-rules.mjs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rule-evolution",
+      "title": "规则演进",
+      "rules": [
+        {
+          "id": "rule-evolution.source-of-truth",
+          "kind": "convention",
+          "text": "`docs/agent/rules.json` 是规则唯一权威来源；不要手改 AGENTS.md，运行 `node tools/agent-rules.mjs render` 生成。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "tools/agent-rules.mjs"
+          ]
+        },
+        {
+          "id": "rule-evolution.trigger",
+          "kind": "convention",
+          "text": "在任务收尾或收到明确纠正时，检查是否有可复用规则变化：重复问题、模块职责、命令、路径、验证约束或协作偏好。",
+          "source_refs": [
+            "docs/agent/README.md"
+          ]
+        },
+        {
+          "id": "rule-evolution.candidate",
+          "kind": "convention",
+          "text": "候选写入 `docs/agent/candidates/<candidate-id>.json`，必须包含理由、观察次数和可达的 source_refs；一次性要求、猜测和无来源总结不进入规则库。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "docs/agent/candidates/README.md"
+          ]
+        },
+        {
+          "id": "rule-evolution.review",
+          "kind": "safety",
+          "text": "事实类候选可凭明确确认应用；约定、偏好和安全规则必须由用户确认，任何候选都不得自动放宽权限、发布、删除数据或访问控制边界。",
+          "source_refs": [
+            "docs/agent/README.md"
+          ]
+        },
+        {
+          "id": "rule-evolution.apply",
+          "kind": "convention",
+          "text": "应用候选使用 `node tools/agent-rules.mjs apply <candidate-id> --confirm <candidate-id>`；非事实规则还需 `--reviewed-by <name>`。",
+          "source_refs": [
+            "docs/agent/README.md",
+            "tools/agent-rules.mjs"
+          ]
+        }
+      ]
+    }
+  ]
+}

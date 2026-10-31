@@ -6,6 +6,7 @@ import (
 	"github.com/jchv/go-webview2/webviewloader"
 	"golang.org/x/sys/windows"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -51,12 +52,45 @@ func Window(url, data, token string) error {
 	if _, err := webviewloader.GetInstalledVersion(); err != nil {
 		return fmt.Errorf("WebView2 unavailable: %w", err)
 	}
-	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "小涛", Width: 1180, Height: 780, Center: true}})
+
+	closeSplash := playNativeSplash()
+	defer closeSplash()
+
+	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "小涛", Width: 1280, Height: 720, Center: true}})
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
 	defer w.Destroy()
-	cleanup := chrome(w, url, token)
+	if err := w.Bind("xtOpenDirectory", func(kind string) error {
+		var directory string
+		switch kind {
+		case "install":
+			executable, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("获取安装目录失败: %w", err)
+			}
+			directory = filepath.Dir(executable)
+		case "data":
+			directory = data
+		default:
+			return fmt.Errorf("未知目录操作")
+		}
+		absolute, err := filepath.Abs(directory)
+		if err != nil {
+			return fmt.Errorf("获取目录路径失败: %w", err)
+		}
+		path, err := windows.UTF16PtrFromString(absolute)
+		if err != nil {
+			return err
+		}
+		if err := windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), path, nil, nil, 1); err != nil {
+			return fmt.Errorf("打开目录失败: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("bind directory actions: %w", err)
+	}
+	cleanup := chrome(w, url, token, closeSplash)
 	defer cleanup()
 	w.Navigate(url)
 	done := make(chan struct{})

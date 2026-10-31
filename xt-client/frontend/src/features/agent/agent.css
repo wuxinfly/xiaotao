@@ -1,0 +1,19 @@
+.agent-main{scrollbar-gutter:auto}
+.agent-page{position:relative;isolation:isolate;display:flex;flex:1;align-items:center;justify-content:center;min-height:100%;padding:28px 24px 40px;overflow:hidden;text-align:center}
+.agent-page::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,#00132608 25%,#00101d3d 100%);pointer-events:none}
+.agent-content{width:100%;max-width:960px;display:flex;flex-direction:column;align-items:center}
+.agent-mascot{display:block;width:min(720px,78vw,84vh);height:auto;flex:none;user-select:none;filter:drop-shadow(0 12px 32px #009ee52b);animation:agent-arrive 700ms cubic-bezier(.2,.8,.2,1) both}
+.agent-copy{margin-top:10px;animation:agent-arrive 700ms 100ms cubic-bezier(.2,.8,.2,1) both}
+.agent-status{display:inline-flex;align-items:center;gap:10px;padding:7px 17px;border:1px solid #32d5f394;border-radius:30px;background:linear-gradient(110deg,#02416d77,#002c4966);box-shadow:inset 0 0 15px #05b9ed15,0 0 18px #00c8ff12;color:#79eaff;font-size:12px;letter-spacing:2px}
+.agent-status>span{width:6px;height:6px;border-radius:50%;background:#65f2ff;box-shadow:0 0 9px 3px #00d5ff70}
+.agent-copy h1{margin:19px 0 14px;color:#f0f9ff;font-size:clamp(30px,3.5vw,50px);font-weight:650;line-height:1.3;letter-spacing:2px;text-shadow:0 3px 24px #00142680}
+.agent-copy h1 span{white-space:nowrap}
+.agent-copy p{margin:0;color:#a7cce6;font-size:clamp(13px,1.3vw,17px);line-height:1.95;letter-spacing:1px}
+.agent-coming{display:flex;align-items:center;justify-content:center;gap:20px;margin-top:29px;color:#80b8d7;font-size:10px;letter-spacing:3px;white-space:nowrap}
+.agent-coming>span:first-child,.agent-coming>span:last-child{width:70px;height:1px;background:linear-gradient(90deg,transparent,#58b8e1a6)}
+.agent-coming>span:last-child{transform:rotate(180deg)}
+.agent-coming b{font-weight:400;margin:0 5px;color:#41d8f3}
+@keyframes agent-arrive{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@media(max-height:720px) and (min-width:601px){.agent-page{padding:16px 24px 25px}.agent-mascot{width:min(620px,75vw,77vh)}.agent-copy{margin-top:0}.agent-copy h1{margin:13px 0 9px;font-size:34px}.agent-coming{margin-top:20px}}
+@media(max-width:600px){.agent-page{padding:32px 18px 40px}.agent-mascot{width:min(100%,560px)}.agent-copy{margin-top:24px}.agent-copy h1{font-size:29px;letter-spacing:0}.agent-copy p{font-size:13px;letter-spacing:0}.agent-coming{gap:12px;letter-spacing:2px}.agent-coming>span:first-child,.agent-coming>span:last-child{width:30px}}
+@media(prefers-reduced-motion:reduce){.agent-mascot,.agent-copy{animation:none}}
