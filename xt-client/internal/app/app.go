@@ -239,6 +239,10 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			apiError(w, 500, "start login failed")
 			return
 		}
+		if err := desktop.Browser(sess.LoginURL); err != nil {
+			apiError(w, 500, "cannot open default browser")
+			return
+		}
 		send(w, sess)
 	})
 	mux.HandleFunc("GET /api/auth/trae/{id}", func(w http.ResponseWriter, r *http.Request) {

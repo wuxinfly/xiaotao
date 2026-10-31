@@ -40,7 +40,6 @@ export function AccountsPage() {
     try {
       const sess = await api.startLogin();
       setSession(sess);
-      window.open(sess.loginUrl, '_blank', 'noopener');
       clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
