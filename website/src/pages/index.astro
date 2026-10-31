@@ -97,7 +97,7 @@ const flow = [
           <div class="arch-row collaboration-row"><span class="arch-label">COLLABORATION</span><div class="arch-cells"><div>Workers<small>动态执行</small></div><div>Memory Worker<small>记忆整理</small></div><div>Checkpoint<small>状态恢复</small></div><div>Handoff<small>结果交接</small></div></div></div>
           <div class="arch-links three"><i></i><i></i><i></i></div>
           <div class="arch-row memory-row"><span class="arch-label">PROJECT STATE</span><div class="arch-cells three"><div>Temporary<small>探索</small></div><div>Task<small>正式工作</small></div><div>Long-term<small>稳定知识</small></div></div></div>
-          <div class="host-line"><span>HOST ADAPTERS</span><div><b>Codex</b><b>DeepSeek Harness</b><b class="muted">More to come</b></div></div>
+          <div class="host-line"><span>HOST ADAPTERS</span><div><b>Codex</b><b>DeepSeek Harness</b><b>Claude Code</b><b>Antigravity</b><b>ZCode</b></div></div>
         </div>
       </section>
 
@@ -118,16 +118,17 @@ const flow = [
 
       <section id="start" class="section start-section">
         <div class="shell start-grid">
-          <div><span class="kicker">06 / Quick start</span><h2>从源码开始，<br />让项目拥有连续记忆。</h2><p>当前版本支持直接从仓库安装，无需等待 npm 发布。</p><a class="text-link" href={`${repo}#从源码安装无需发布-npm`}>查看完整安装说明 →</a></div>
+          <div><span class="kicker">06 / Quick start</span><h2>一条命令，<br />让项目拥有连续记忆。</h2><p>已发布到 npm，在项目目录运行即可安装到你的宿主，无需克隆仓库。</p><a class="text-link" href="https://www.npmjs.com/package/@wxfly/xiaotao">查看 npm 包主页 →</a></div>
           <div class="terminal" data-terminal>
             <div class="terminal-top"><div><i></i><i></i><i></i></div><span>terminal</span><button type="button" aria-label="复制命令">COPY</button></div>
-            <pre><code><span class="comment"># 克隆并安装依赖</span>
-<span class="prompt">$</span> git clone {repo}.git
-<span class="prompt">$</span> cd xiaotao
-<span class="prompt">$</span> npm install
+            <pre><code><span class="comment"># 进入你的项目目录，初始化 XiaoTao</span>
+<span class="prompt">$</span> npx @wxfly/xiaotao@latest init
 
-<span class="comment"># 安装到 Codex</span>
-<span class="prompt">$</span> npm run codex:install:local</code></pre>
+<span class="comment"># 更新已安装的宿主</span>
+<span class="prompt">$</span> npx @wxfly/xiaotao@latest update
+
+<span class="comment"># 检查安装状态</span>
+<span class="prompt">$</span> npx @wxfly/xiaotao@latest doctor</code></pre>
           </div>
         </div>
       </section>
