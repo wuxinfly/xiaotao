@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, rename, rm } from 'node:fs/promises'
+import { access } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +30,13 @@ function run(command, args, { capture = false } = {}) {
 
 await rm(outputDir, { recursive: true, force: true })
 await mkdir(outputDir, { recursive: true })
+
+const esbuildModule = path.join(adapterRoot, 'node_modules', 'esbuild')
+const hasDependencies = await access(esbuildModule).then(() => true, () => false)
+if (!hasDependencies) {
+  process.stdout.write('Installing adapter build dependencies...\n')
+  run('npm', ['install', '--no-audit', '--no-fund'])
+}
 
 run('npm', ['run', 'build', '--silent'])
 
