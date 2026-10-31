@@ -1,97 +1,32 @@
 # XiaoTao
 
-小涛（XiaoTao）是一个面向软件协作的 Agent Skill。你只需要告诉小涛目标；它按需要组织分析、实现、验证和交接。
+小涛是面向软件协作的 AI 项目，目前提供 Agent Skill、安装管理 CLI 和多宿主适配，客户端待开发。
 
-## 最快开始
+## 目录
 
-在本仓库根目录运行：
+- [xt-skills/](xt-skills/)：Skill、CLI、宿主适配器与相关测试，使用说明见该目录 README。
+- [xt-client/](xt-client/)：Go 本地服务与 WebView2 轻量客户端原型，含构建和运行说明。
+- [website/](website/)：独立 Astro 网站。
+- [docs/](docs/)：共享架构、计划和验收文档。历史计划中的旧根目录代码路径现位于 xt-skills/ 下。
+- [AGENTS.md](AGENTS.md)：AI 开发入口。
 
-```bash
-npm run xiaotao:init
-```
+## Skill 开发与验证
 
-它会检测本机环境并让你选择要安装的宿主：
-
-```text
-1. DSH
-2. Codex / 通用 Agent Skills
-3. Claude Code
-4. Antigravity
-```
-
-选完会自动安装和自检。实际 Skill 装在用户级目录；当前项目只会生成：
-
-```text
-.xiaotao/installation.json
-```
-
-这个文件记录本项目启用了哪些宿主，`.xiaotao/` 默认不提交 Git。
-
-## 常用命令
+需要 Node.js >= 20.19、Python 和 PowerShell。
 
 ```bash
-# 第一次安装：选择宿主并安装
-npm run xiaotao:init
-
-# 更新当前项目已选择的宿主
-npm run xiaotao:update
-
-# 检查安装是否正常，不修改任何文件
-npm run xiaotao:doctor
-```
-
-`update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
-
-当前本地验证阶段，`init` 必须在交互式终端中运行，不提供 `--tools` 或 CI 批量初始化参数。`--json` 仅支持 `doctor`。
-
-## 安装位置
-
-| 选择 | 安装位置 |
-| --- | --- |
-| Codex / 通用 Agent Skills | `~/.agents/skills/xiaotao/` |
-| Claude Code | `~/.claude/skills/xiaotao/` |
-| Antigravity | `~/.gemini/config/plugins/xiaotao-antigravity/`（含 PreInvocation 恢复 Hook） |
-| DSH | `~/.dsh/profiles/web/` 的插件配置 |
-
-多个项目可以各自运行一次 `init`。每个项目都有自己的 `.xiaotao/installation.json`，但所有项目共用同一份用户级 XiaoTao；不会反复复制多份 Skill。
-
-如果用户级目标目录已有不是 XiaoTao 管理的内容，初始化会停止保护它。确认需要接管时可运行：
-
-```bash
-npm run xiaotao:init -- --force
-```
-
-## 旧项目升级
-
-早期版本会把 Skill 复制到项目内目录，并使用 schema v1 的 `.xiaotao/installation.json`。新版本不会自动删除或迁移这些文件。
-
-在旧项目目录执行一次 `npm run xiaotao:init`，重新选择宿主即可写入新的项目记录并安装用户级 Skill；旧项目内副本请在确认新安装可用后自行归档或删除。
-
-## 在宿主中使用
-
-安装后，在项目里直接说：
-
-```text
-小涛，帮我评审这个方案，只说主要风险和建议。
-小涛，先调查这个问题，不要改代码。
-小涛，按刚才确定的方案开始修改。
-```
-
-小涛不会自动扩权或静默开启固定流程；需要持久化任务、记忆或 Playbook 时，会按 Skill 的规则处理。
-
-## 开发与验证
-
-需要 Node.js 20.19 或更高版本。
-
-```bash
+cd xt-skills
 npm test
 npm run test:contracts
+npm pack --dry-run
 ```
 
-DSH Adapter、Codex Desktop 插件和 Skill 内部协议的详细说明在 [`adapters/`](adapters/) 与 [`docs/`](docs/) 下。CLI 只负责安装、更新和诊断，绝不调度 Worker 或直接运行工作流。
+安装、更新、诊断命令也在 xt-skills 下执行，详见 [Skill 使用说明](xt-skills/README.md)。根目录不再是 npm 包。
 
-### ZCode
+## 网站开发
 
-`xiaotao init` 可选择 ZCode，准备本地插件市场；随后需在 ZCode 客户端安装启用。
-支持 Core、共享项目记忆、一层原生 Worker 和每轮结束前的进度检查提醒。
-安装、更新步骤与尚未验收的限制见 [ZCode 适配说明](adapters/zcode/README.md)。
+```bash
+cd website
+npm install
+npm run dev
+```

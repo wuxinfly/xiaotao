@@ -11,6 +11,9 @@ permissions:
 
 jobs:
   codex-windows:
+    defaults:
+      run:
+        working-directory: xt-skills
     runs-on: windows-latest
     timeout-minutes: 5
     steps:
@@ -22,6 +25,9 @@ jobs:
         run: node --test test/codex-adapter.test.js
 
   verify:
+    defaults:
+      run:
+        working-directory: xt-skills
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -38,13 +44,13 @@ jobs:
         run: npm pack --dry-run
       - name: Install dsh-adapter dependencies
         run: npm install
-        working-directory: adapters/deepseek-harness
+        working-directory: xt-skills/adapters/deepseek-harness
       - name: Typecheck dsh-adapter
         run: npm run typecheck
-        working-directory: adapters/deepseek-harness
+        working-directory: xt-skills/adapters/deepseek-harness
       - name: Test dsh-adapter
         run: npm test
-        working-directory: adapters/deepseek-harness
+        working-directory: xt-skills/adapters/deepseek-harness
       - name: Verify dsh-adapter package
         run: npm run test:package
-        working-directory: adapters/deepseek-harness
+        working-directory: xt-skills/adapters/deepseek-harness

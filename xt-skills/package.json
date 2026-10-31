@@ -1,0 +1,58 @@
+{
+  "name": "@wxfly/xiaotao",
+  "version": "0.5.0",
+  "description": "面向结果的 AI 协作 Skill，支持动态 Worker 和多宿主安装 CLI",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "xiaotao": "bin/xiaotao.js"
+  },
+  "files": [
+    "bin/",
+    "cli/",
+    "xiaotao/",
+    "!xiaotao/**/__pycache__/**",
+    "!xiaotao/**/*.pyc",
+    "README.md",
+    "adapters/zcode/",
+    "adapters/antigravity/xiaotao-antigravity/",
+    "adapters/deepseek-harness/scripts/",
+    "adapters/deepseek-harness/adapter/"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:contracts": "pwsh -File scripts/verify-contracts.ps1",
+    "prepack": "node adapters/deepseek-harness/scripts/build-dsh-adapter.mjs",
+    "xiaotao:init": "node bin/xiaotao.js init",
+    "xiaotao:update": "node bin/xiaotao.js update",
+    "xiaotao:doctor": "node bin/xiaotao.js doctor",
+    "dsh:install:local": "node adapters/deepseek-harness/scripts/install-local.mjs",
+    "dsh:audit:checkpoint": "node adapters/deepseek-harness/scripts/audit-checkpoint.mjs",
+    "codex:install:local": "node adapters/codex/install-local.mjs",
+    "antigravity:install:local": "node adapters/antigravity/install-local.mjs",
+    "verify": "npm test && npm run test:contracts && npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wuxinfly/xiaotao.git"
+  },
+  "homepage": "https://github.com/wuxinfly/xiaotao#readme",
+  "bugs": {
+    "url": "https://github.com/wuxinfly/xiaotao/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "skill",
+    "workflow",
+    "codex",
+    "claude-code",
+    "opencode"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
