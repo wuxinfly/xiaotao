@@ -507,7 +507,7 @@ export async function recoveryContext(event) {
     const config = await localFile(root, CONFIG);
     if (config) {
       const metadata = await readConfig(config);
-      if (metadata.package !== 'xiaotao-ai-workflow' || metadata.schema_version !== 1) return null;
+      if ((metadata.package !== '@wxfly/xiaotao' && metadata.package !== 'xiaotao-ai-workflow') || metadata.schema_version !== 1) return null;
 
       const paths = {
         project_root: root,

@@ -1,6 +1,6 @@
 # Skill 工具包开发指引
 
-遵守根目录 AGENTS.md。本目录是 `xiaotao-ai-workflow` npm 包根目录。
+遵守根目录 AGENTS.md。本目录是 `@wxfly/xiaotao` npm 包根目录。
 
 ## 分工
 - `xiaotao/SKILL.md`：Skill 主入口；references、workers、scripts 提供协议、角色与运行支持。

@@ -43,7 +43,7 @@ async function project(cwd) {
   for (let depth = 0; depth < 64; depth++) {
     try {
       const config = JSON.parse(await bounded(await safePath(root, '.xiaotao/installation.json')));
-      return config.package === 'xiaotao-ai-workflow' && [1, 2].includes(config.schema_version) ? root : null;
+      return (config.package === '@wxfly/xiaotao' || config.package === 'xiaotao-ai-workflow') && [1, 2].includes(config.schema_version) ? root : null;
     } catch (e) { if (e.code !== 'ENOENT') throw e; }
     try { await lstat(path.join(root, '.git')); return null; } catch (e) { if (e.code !== 'ENOENT') throw e; }
     const parent = path.dirname(root);

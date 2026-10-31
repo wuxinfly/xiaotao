@@ -9,7 +9,7 @@ async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-install-test-'));
   const packageRoot = path.join(root, 'package'); const projectRoot = path.join(root, 'project'); const home = path.join(root, 'home');
   await mkdir(path.join(packageRoot, 'xiaotao'), { recursive: true }); await mkdir(projectRoot, { recursive: true });
-  await writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: 'xiaotao-ai-workflow', version: '0.3.0' }));
+  await writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@wxfly/xiaotao', version: '0.3.0' }));
   await writeFile(path.join(packageRoot, 'xiaotao', 'SKILL.md'), '# XiaoTao\n');
   return { root, packageRoot, projectRoot, environment: { XIAOTAO_HOME: home } };
 }
@@ -52,7 +52,7 @@ test('refuses to overwrite an unmanaged user-level directory without force', asy
 test('doctor reports a deleted global skill and version changes', async (t) => {
   const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
   await installScenes({ ...context, sceneIds: ['skills'] });
-  await writeFile(path.join(context.packageRoot, 'package.json'), JSON.stringify({ name: 'xiaotao-ai-workflow', version: '0.3.1' }));
+  await writeFile(path.join(context.packageRoot, 'package.json'), JSON.stringify({ name: '@wxfly/xiaotao', version: '0.3.1' }));
   assert.deepEqual(await globalUpdateNotice(context), { from: '0.3.0', to: '0.3.1' });
   await rm(path.join(context.environment.XIAOTAO_HOME, '.agents/skills/xiaotao/SKILL.md'));
   assert.equal((await doctorInstallation(context.projectRoot, context.environment)).ok, false);

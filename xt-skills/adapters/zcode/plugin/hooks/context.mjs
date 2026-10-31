@@ -14,7 +14,7 @@ export async function handle(event) {
     const stat = await lstat(file);
     if (info.isSymbolicLink() || !info.isDirectory() || stat.isSymbolicLink() || !stat.isFile() || stat.size > 32768) return {};
     const config = JSON.parse((await readFile(file, 'utf8')).replace(/^\uFEFF/, ''));
-    if (config.package !== 'xiaotao-ai-workflow' || config.schema_version !== 2 || !config.scenes?.includes('zcode')) return {};
+    if ((config.package !== '@wxfly/xiaotao' && config.package !== 'xiaotao-ai-workflow') || config.schema_version !== 2 || !config.scenes?.includes('zcode')) return {};
   } catch { return {}; }
   const name = event.hook_event_name ?? event.hookEventName;
   if (name === 'Stop') {

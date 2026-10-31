@@ -15,6 +15,7 @@ node_modules/
 __pycache__/
 *.pyc
 xt-skills/adapters/deepseek-harness/lib/
+xt-skills/adapters/deepseek-harness/adapter/
 website/.astro/
 website/dist/
 !/.xiaotao/memory/imports/

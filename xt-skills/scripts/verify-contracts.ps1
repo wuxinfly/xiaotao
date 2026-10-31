@@ -861,7 +861,7 @@ try {
     }
 
     $packageManifest = Get-Content -Raw "package.json" | ConvertFrom-Json
-    if ($packageManifest.name -ne "xiaotao-ai-workflow" -or
+  if ($packageManifest.name -ne "@wxfly/xiaotao" -or
         $packageManifest.bin.xiaotao -ne "bin/xiaotao.js") {
         throw "npm package metadata does not expose the expected XiaoTao CLI"
     }

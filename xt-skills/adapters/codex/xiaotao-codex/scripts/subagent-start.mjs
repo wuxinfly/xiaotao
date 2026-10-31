@@ -62,7 +62,7 @@ async function projectRoot(cwd) {
     const configFile = await regularInside(root, CONFIG, 16 * 1024);
     if (configFile) {
       const metadata = await boundedJson(configFile, 16 * 1024);
-      return metadata.package === 'xiaotao-ai-workflow' && metadata.schema_version === 1 ? root : null;
+      return (metadata.package === '@wxfly/xiaotao' || metadata.package === 'xiaotao-ai-workflow') && metadata.schema_version === 1 ? root : null;
     }
     try {
       await stat(path.join(root, '.git'));

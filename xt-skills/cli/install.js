@@ -9,7 +9,8 @@ const execFileAsync = promisify(execFile);
 const CONFIG_PATH = '.xiaotao/installation.json';
 const GLOBAL_CONFIG = '.xiaotao/managed-installation.json';
 const MARKER_NAME = '.xiaotao-managed.json';
-const MANAGED_PACKAGE = 'xiaotao-ai-workflow';
+const MANAGED_PACKAGE = '@wxfly/xiaotao';
+const LEGACY_MANAGED_PACKAGE = 'xiaotao-ai-workflow';
 
 async function pathExists(target) {
   try { await stat(target); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; }
@@ -24,7 +25,7 @@ async function isNonEmpty(target) {
 async function isManaged(target) {
   try {
     const managed = await readJson(path.join(target, MARKER_NAME));
-    if (managed.package === MANAGED_PACKAGE) return true;
+    if (managed.package === MANAGED_PACKAGE || managed.package === LEGACY_MANAGED_PACKAGE) return true;
   } catch (error) {
     if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
   }

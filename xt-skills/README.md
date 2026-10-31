@@ -4,10 +4,10 @@
 
 ## 最快开始
 
-先进入仓库的 `xt-skills/` 目录，再运行：
+在你的项目目录运行（需要 Node.js 20.19+、Python 和 PowerShell）：
 
 ```bash
-npm run xiaotao:init
+npx @wxfly/xiaotao@latest init
 ```
 
 它会检测本机环境并让你选择要安装的宿主：
@@ -27,17 +27,25 @@ npm run xiaotao:init
 
 这个文件记录本项目启用了哪些宿主，`.xiaotao/` 默认不提交 Git。
 
+## 从源码运行（开发者）
+
+先进入仓库的 `xt-skills/` 目录，再运行：
+
+```bash
+npm run xiaotao:init
+```
+
 ## 常用命令
 
 ```bash
 # 第一次安装：选择宿主并安装
-npm run xiaotao:init
+npx @wxfly/xiaotao@latest init
 
 # 更新当前项目已选择的宿主
-npm run xiaotao:update
+npx @wxfly/xiaotao@latest update
 
 # 检查安装是否正常，不修改任何文件
-npm run xiaotao:doctor
+npx @wxfly/xiaotao@latest doctor
 ```
 
 `update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
@@ -58,14 +66,14 @@ npm run xiaotao:doctor
 如果用户级目标目录已有不是 XiaoTao 管理的内容，初始化会停止保护它。确认需要接管时可运行：
 
 ```bash
-npm run xiaotao:init -- --force
+npx @wxfly/xiaotao@latest init --force
 ```
 
 ## 旧项目升级
 
 早期版本会把 Skill 复制到项目内目录，并使用 schema v1 的 `.xiaotao/installation.json`。新版本不会自动删除或迁移这些文件。
 
-在旧项目目录执行一次 `npm run xiaotao:init`，重新选择宿主即可写入新的项目记录并安装用户级 Skill；旧项目内副本请在确认新安装可用后自行归档或删除。
+在旧项目目录执行一次 `npx @wxfly/xiaotao@latest init`，重新选择宿主即可写入新的项目记录并安装用户级 Skill；旧项目内副本请在确认新安装可用后自行归档或删除。
 
 ## 在宿主中使用
 

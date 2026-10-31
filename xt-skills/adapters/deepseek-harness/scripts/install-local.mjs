@@ -2,12 +2,13 @@
 
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 
 const adapterRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const bundledArchive = path.join(adapterRoot, 'adapter', 'xiaotao-dsh-adapter.tgz')
 
 function usage() {
   return `Usage: npm run dsh:install:local -- [options]
@@ -128,24 +129,32 @@ async function install(options) {
   const packageCache = path.join(options.dshHome, 'local-packages', options.profile)
   await mkdir(packageCache, { recursive: true })
 
-  if (options.installDependencies) {
-    process.stdout.write('Installing adapter build dependencies...\n')
-    run('npm', ['install', '--no-audit', '--no-fund'], { cwd: adapterRoot })
-  }
-
-  process.stdout.write('Building and packing the local adapter...\n')
-  const packed = run(
-    'npm',
-    ['pack', '--silent', '--pack-destination', packageCache],
-    { cwd: adapterRoot, capture: true },
-  )
-  const archiveName = packed.stdout.split(/\r?\n/).map((line) => line.trim())
-    .findLast((line) => line.endsWith('.tgz'))
-  if (!archiveName) throw new Error(`npm pack did not return an archive name:\n${packed.stdout}`)
-  const packedPath = path.join(packageCache, archiveName)
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
-  const archivePath = path.join(packageCache, `xiaotao-ai-dsh-adapter-local-${stamp}.tgz`)
-  await rename(packedPath, archivePath)
+  let archivePath
+  const hasBundled = await access(bundledArchive).then(() => true, () => false)
+  if (hasBundled) {
+    archivePath = path.join(packageCache, `xiaotao-dsh-adapter-${stamp}.tgz`)
+    await copyFile(bundledArchive, archivePath)
+    process.stdout.write('Using prebuilt adapter archive from the published package.\n')
+  } else {
+    if (options.installDependencies) {
+      process.stdout.write('Installing adapter build dependencies...\n')
+      run('npm', ['install', '--no-audit', '--no-fund'], { cwd: adapterRoot })
+    }
+
+    process.stdout.write('Building and packing the local adapter...\n')
+    const packed = run(
+      'npm',
+      ['pack', '--silent', '--pack-destination', packageCache],
+      { cwd: adapterRoot, capture: true },
+    )
+    const archiveName = packed.stdout.split(/\r?\n/).map((line) => line.trim())
+      .findLast((line) => line.endsWith('.tgz'))
+    if (!archiveName) throw new Error(`npm pack did not return an archive name:\n${packed.stdout}`)
+    const packedPath = path.join(packageCache, archiveName)
+    archivePath = path.join(packageCache, `xiaotao-ai-dsh-adapter-local-${stamp}.tgz`)
+    await rename(packedPath, archivePath)
+  }
 
   process.stdout.write(`Installing package into DSH profile "${options.profile}"...\n`)
   const dshEnvironment = { ...process.env, DSH_HOME: options.dshHome }
