@@ -1,0 +1,5 @@
+/dist/
+*.syso
+/internal/app/web/assets/
+/internal/app/web/index.html
+/internal/app/web/mascot.png

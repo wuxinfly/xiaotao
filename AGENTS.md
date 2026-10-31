@@ -22,4 +22,4 @@ XiaoTao（小涛）是面向软件协作的 AI 项目。目前包含 Agent Skill
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。
 - DSH：在 xt-skills/adapters/deepseek-harness 下运行 `npm run typecheck`、`npm test`、`npm run test:package`。
 - 网站：在 website 下运行 `npm run build`。
-- 客户端：尚无构建和测试命令，开始开发时补充局部 AGENTS.md。
+- 客户端：在 xt-client 下运行 go test ./...、go vet ./...、./build.ps1，详见局部 AGENTS.md。
