@@ -35,7 +35,7 @@ const esbuildModule = path.join(adapterRoot, 'node_modules', 'esbuild')
 const hasDependencies = await access(esbuildModule).then(() => true, () => false)
 if (!hasDependencies) {
   process.stdout.write('Installing adapter build dependencies...\n')
-  run('npm', ['install', '--no-audit', '--no-fund'])
+  run('npm', ['install', '--no-dry-run', '--no-audit', '--no-fund'])
 }
 
 run('npm', ['run', 'build', '--silent'])
