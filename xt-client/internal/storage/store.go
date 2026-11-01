@@ -61,6 +61,63 @@ type Store struct {
 	data fileData
 }
 
+// Export returns account metadata and decrypted account credentials for a
+// one-time environment bootstrap. Internal secrets such as the proxy key are
+// excluded. The source store is never modified.
+func (s *Store) Export(dec func([]byte) ([]byte, error)) ([]*Account, map[string][]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	accounts := make([]*Account, 0, len(s.data.Accounts))
+	secrets := make(map[string][]byte, len(s.data.Accounts))
+	for _, acct := range s.data.Accounts {
+		if acct == nil {
+			continue
+		}
+		value, ok := s.data.Secrets[acct.ID]
+		if !ok {
+			continue
+		}
+		plain, err := decodeSecret(value, acct.ID, dec)
+		if err != nil {
+			continue
+		}
+		copy := *acct
+		if acct.Quota != nil {
+			quota := *acct.Quota
+			copy.Quota = &quota
+		}
+		accounts = append(accounts, &copy)
+		secrets[acct.ID] = plain
+	}
+	return accounts, secrets
+}
+
+func (s *Store) Bootstrap(accounts []*Account, secrets map[string][]byte, enc func([]byte) ([]byte, error)) error {
+	encoded := make(map[string]string, len(secrets))
+	for id, plain := range secrets {
+		blob, err := enc(plain)
+		if err != nil {
+			return err
+		}
+		encoded[id] = secretPrefix + base64.StdEncoding.EncodeToString(blob)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.data.Accounts) > 0 || len(s.data.Secrets) > 0 {
+		return nil
+	}
+	previousAccounts := s.data.Accounts
+	previousSecrets := s.data.Secrets
+	s.data.Accounts = accounts
+	s.data.Secrets = encoded
+	if err := s.save(); err != nil {
+		s.data.Accounts = previousAccounts
+		s.data.Secrets = previousSecrets
+		return err
+	}
+	return nil
+}
+
 func (s *Store) SecretRevision(id string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,6 +168,21 @@ func Open(dir string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	return load(s, b)
+}
+
+// OpenReadOnly loads an existing store without creating or modifying files.
+func OpenReadOnly(dir string) (*Store, error) {
+	path := filepath.Join(dir, "accounts.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	s := &Store{path: path}
+	return load(s, b)
+}
+
+func load(s *Store, b []byte) (*Store, error) {
 	if err := json.Unmarshal(b, &s.data); err != nil {
 		return nil, fmt.Errorf("invalid accounts data: %w", err)
 	}
@@ -263,4 +335,15 @@ func (s *Store) LoadSecret(id string, dec func([]byte) ([]byte, error)) ([]byte,
 	// Legacy entries stored raw binary as JSON strings are corrupted and
 	// will fail decryption; surface the decoder error.
 	return dec([]byte(v))
+}
+
+func decodeSecret(value, id string, dec func([]byte) ([]byte, error)) ([]byte, error) {
+	if rest, ok := strings.CutPrefix(value, secretPrefix); ok {
+		raw, err := base64.StdEncoding.DecodeString(rest)
+		if err != nil {
+			return nil, fmt.Errorf("secret for %q is malformed", id)
+		}
+		return dec(raw)
+	}
+	return dec([]byte(value))
 }

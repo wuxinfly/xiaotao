@@ -26,6 +26,7 @@
 - WorkBuddy 登录流程必须先请求 /v2/plugin/auth/state 获取 authUrl，拿到链接后再返回登录会话并打开浏览器；获取账号信息的 /v2/plugin/login/account 轮询必须携带刚获取的 Authorization Bearer access token、X-Domain 和 X-Product-Code: codebuddy 插件标识。
 - xt-client 前端模型页正文容器统一使用 style.css 的 --content-max 和 --content-gutter 控制宽度和左右留白，不在页面样式里各自写 max-width 或左右 padding。
 - 前端浮层（tooltip、modal 等 position:fixed 元素）不得依赖页面容器定位：页面或区块的入场动画不要使用会保留 transform 的 fill 模式，浮层优先用 createPortal 挂到 body，否则祖先会成为 fixed 的包含块导致浮层错位或被裁剪。
+- xt-client 的 UAT 首次启动时只读导入正式版已登录的模型账号，并在 UAT 密钥环内重新加密保存；代理密钥、用量、配额、配置、Agent 会话、日志和运行时状态必须继续隔离。导入完成后账号由 UAT 独立维护，正式版文件不得被 UAT 修改。会轮换 refresh token 的来源在正式版与 UAT 同时刷新时存在登录态互斥风险。
 
 ## 验证
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。

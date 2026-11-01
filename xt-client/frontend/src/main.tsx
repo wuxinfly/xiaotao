@@ -21,7 +21,7 @@ window.addEventListener('wheel', event => {
 }, {passive:false});
 
 function App(){
- const [page,setPage]=useState<Page>('dashboard'),[open,setOpen]=useState(false);
+ const [page,setPage]=useState<Page>('agent'),[open,setOpen]=useState(false);
  const menu=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
  const closeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
  const cancelClose=()=>clearTimeout(closeTimer.current);
@@ -31,6 +31,11 @@ function App(){
  useEffect(()=>{
   const timer=setTimeout(()=>{window.xtWindow?.('ready')},150);
   return()=>clearTimeout(timer);
+ },[]);
+ useEffect(()=>{
+  const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='agent'||next==='dashboard'||next==='accounts'){setPage(next);setOpen(false)}};
+  window.addEventListener('xiaotao:navigate',navigate);
+  return()=>window.removeEventListener('xiaotao:navigate',navigate);
  },[]);
  const select=(p:Page)=>{setPage(p);setOpen(false)};
  return <div className="app">

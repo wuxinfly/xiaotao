@@ -138,6 +138,52 @@ export interface DashboardSnapshot {
   versionSeq: number;
 }
 
+export interface AgentProject {
+  path: string;
+  name: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'tool';
+  content: string;
+  toolCallId?: string;
+  toolName?: string;
+  createdAt: string;
+}
+
+export interface AgentActivity {
+  id: string;
+  kind: string;
+  title: string;
+  detail?: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: string;
+  endedAt?: string;
+}
+
+export interface AgentSession {
+  id: string;
+  project: AgentProject;
+  title: string;
+  model: string;
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'canceled';
+  messages: AgentMessage[];
+  activity: AgentActivity[];
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentEvent {
+  type: 'session' | 'message' | 'activity' | 'status' | 'error';
+  sessionId: string;
+  message?: AgentMessage;
+  activity?: AgentActivity;
+  status?: AgentSession['status'];
+  error?: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -179,6 +225,21 @@ export const api = {
   proxyKey: () => request<{ key: string }>('/api/proxy/key'),
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
   dashboard: () => request<DashboardSnapshot>('/api/dashboard'),
+  agentSessions: () => request<{ sessions: AgentSession[] }>('/api/agent/sessions'),
+  agentModels: () => request<{ models: { model: string; label: string }[] }>('/api/agent/models'),
+  agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
+  createAgentSession: (projectPath: string, model: string) =>
+    request<AgentSession>('/api/agent/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ projectPath, model }),
+    }),
+  resolveAgentProject: (path: string) =>
+    request<AgentProject>('/api/agent/project', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  cancelAgentSession: (id: string) =>
+    request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
   subscribeDashboard: (
     onSnapshot: (snap: DashboardSnapshot) => void,
     onError?: (err: Event) => void,

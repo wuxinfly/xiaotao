@@ -17,6 +17,7 @@ type Environment struct {
 	DefaultPort      string
 	MutexNamespace   string
 	ShortcutFileName string
+	ModelSourceDir   string
 }
 
 // Active is set by build.ps1 through -ldflags. An empty value keeps the
@@ -32,6 +33,7 @@ func Current() Environment {
 			DefaultPort:      "5456",
 			MutexNamespace:   "XiaoTao.UAT",
 			ShortcutFileName: "小涛 UAT.lnk",
+			ModelSourceDir:   "XiaoTao",
 		}
 	}
 	return Environment{
@@ -46,6 +48,14 @@ func Current() Environment {
 
 func DefaultDataDir(localAppData string) string {
 	return filepath.Join(localAppData, Current().DataDirName)
+}
+
+func DefaultModelSourceDir(localAppData string) string {
+	source := Current().ModelSourceDir
+	if source == "" {
+		return ""
+	}
+	return filepath.Join(localAppData, source)
 }
 
 func ServiceMutex(dataDir string) string {

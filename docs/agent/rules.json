@@ -182,6 +182,17 @@
             "xt-client/frontend/src/features/dashboard/UsageHeatmap.tsx",
             "xt-client/frontend/src/features/accounts/accounts.css"
           ]
+        },
+        {
+          "id": "development-conventions.uat-model-account-import",
+          "kind": "safety",
+          "text": "xt-client 的 UAT 首次启动时只读导入正式版已登录的模型账号，并在 UAT 密钥环内重新加密保存；代理密钥、用量、配额、配置、Agent 会话、日志和运行时状态必须继续隔离。导入完成后账号由 UAT 独立维护，正式版文件不得被 UAT 修改。会轮换 refresh token 的来源在正式版与 UAT 同时刷新时存在登录态互斥风险。",
+          "source_refs": [
+            "xt-client/internal/app/model_accounts.go",
+            "xt-client/internal/storage/store.go",
+            "xt-client/README.md",
+            "docs/architecture/xt-client-overview.md"
+          ]
         }
       ]
     },

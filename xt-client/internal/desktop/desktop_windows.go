@@ -56,7 +56,7 @@ func Window(url, data, token, title string) error {
 	closeSplash := playNativeSplash()
 	defer closeSplash()
 
-	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: title, Width: 1280, Height: 720, Center: true}})
+	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: title, Width: 1280, Height: 800, Center: true}})
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
@@ -89,6 +89,11 @@ func Window(url, data, token, title string) error {
 		return nil
 	}); err != nil {
 		return fmt.Errorf("bind directory actions: %w", err)
+	}
+	if err := w.Bind("xtPickFolder", func() (string, error) {
+		return PickFolder("选择小涛要工作的项目文件夹")
+	}); err != nil {
+		return fmt.Errorf("bind folder picker: %w", err)
 	}
 	cleanup := chrome(w, url, token, title, closeSplash)
 	defer cleanup()

@@ -60,6 +60,19 @@ func Open(dir string) (*Keyring, error) {
 	return &Keyring{key: key}, nil
 }
 
+// OpenReadOnly loads an existing keyring without creating or modifying files.
+func OpenReadOnly(dir string) (*Keyring, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "secret.key"))
+	if err != nil {
+		return nil, err
+	}
+	key, err := unprotect(b)
+	if err != nil {
+		return nil, fmt.Errorf("open keyring: %w", err)
+	}
+	return &Keyring{key: key}, nil
+}
+
 func (k *Keyring) Encrypt(plain []byte) ([]byte, error) {
 	block, err := aes.NewCipher(k.key)
 	if err != nil {

@@ -15,6 +15,9 @@ func TestProductionDefaults(t *testing.T) {
 	if filepath.Base(DefaultDataDir(`C:\Users\test\AppData\Local`)) != "XiaoTao" {
 		t.Fatal("production data directory changed")
 	}
+	if DefaultModelSourceDir(`C:\Users\test\AppData\Local`) != "" {
+		t.Fatal("production must not import model accounts")
+	}
 }
 
 func TestUATIsolation(t *testing.T) {
@@ -26,6 +29,13 @@ func TestUATIsolation(t *testing.T) {
 	}
 	if filepath.Base(DefaultDataDir(`C:\Users\test\AppData\Local`)) != "XiaoTao-uat" {
 		t.Fatal("UAT data directory changed")
+	}
+	modelSource := DefaultModelSourceDir(`C:\Users\test\AppData\Local`)
+	if modelSource != filepath.Join(`C:\Users\test\AppData\Local`, "XiaoTao") {
+		t.Fatalf("unexpected UAT model source directory: %q", modelSource)
+	}
+	if !filepath.IsAbs(modelSource) {
+		t.Fatal("UAT model source directory is not absolute")
 	}
 	if ServiceMutex("a") == WindowMutex("a") || got.MutexNamespace != "XiaoTao.UAT" {
 		t.Fatal("UAT mutexes are not isolated")

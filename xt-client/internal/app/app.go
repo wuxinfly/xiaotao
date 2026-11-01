@@ -1,4 +1,4 @@
-﻿package app
+package app
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+	"xiaotao/xt-client/internal/agent"
 	"xiaotao/xt-client/internal/authsessions"
 	"xiaotao/xt-client/internal/desktop"
 	"xiaotao/xt-client/internal/providers"
@@ -119,6 +120,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := importModelAccounts(store, keyring, data); err != nil {
+		return nil, err
+	}
 	proxy.SetEncryptor(keyring.Encrypt)
 	authSvc := authsessions.NewService(s.URL)
 	var proxyKey string
@@ -140,6 +144,23 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	}
 	proxySvc := proxy.New(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) }, proxyKey)
 	accountSvc := proxy.NewAccountService(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) })
+	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, s.Token, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
+		out := []agent.ModelOption{}
+		for _, acct := range store.Accounts() {
+			if !acct.Enabled {
+				continue
+			}
+			for _, model := range proxySvc.AccountModels(*acct) {
+				id := acct.Provider + "/" + model.ID
+				label := id
+				if model.DisplayName != "" {
+					label = model.DisplayName + " · " + acct.Provider
+				}
+				out = append(out, agent.ModelOption{Model: id, Label: label})
+			}
+		}
+		return out
+	})
 	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
 	if err != nil {
 		return nil, err
@@ -178,6 +199,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		send(w, map[string]any{"providers": providers.List()})
 	})
+	registerAgentRoutes(mux, agentSvc, requireOrigin, send, apiError)
 	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

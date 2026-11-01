@@ -1,6 +1,10 @@
 package secrets
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestKeyringAcrossInstances(t *testing.T) {
 	dir := t.TempDir()
@@ -22,5 +26,15 @@ func TestKeyringAcrossInstances(t *testing.T) {
 	}
 	if string(dec) != "payload" {
 		t.Fatalf("unexpected payload %q", dec)
+	}
+}
+
+func TestOpenReadOnlyDoesNotCreateKey(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := OpenReadOnly(dir); err == nil {
+		t.Fatal("expected missing keyring error")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "secret.key")); !os.IsNotExist(err) {
+		t.Fatal("read-only open created secret.key")
 	}
 }

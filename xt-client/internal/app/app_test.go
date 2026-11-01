@@ -1,11 +1,17 @@
 package app
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"xiaotao/xt-client/internal/runtimeenv"
+	"xiaotao/xt-client/internal/secrets"
+	"xiaotao/xt-client/internal/storage"
 )
 
 func TestConfigAndOrigin(t *testing.T) {
@@ -119,4 +125,102 @@ func TestDashboardEndpoints(t *testing.T) {
 	if !strings.Contains(wSame.Body.String(), "currentSession") || !strings.Contains(wSame.Body.String(), "heatmap") {
 		t.Fatalf("expected dashboard snapshot in response, got %s", wSame.Body.String())
 	}
+}
+
+func TestUATImportsProductionModelAccountsOnce(t *testing.T) {
+	base := t.TempDir()
+	oldActive, oldLocalAppData := runtimeenv.Active, os.Getenv("LOCALAPPDATA")
+	runtimeenv.Active = runtimeenv.UAT
+	t.Setenv("LOCALAPPDATA", base)
+	t.Cleanup(func() { runtimeenv.Active = oldActive; os.Setenv("LOCALAPPDATA", oldLocalAppData) })
+	production := filepath.Join(base, "XiaoTao")
+	productionAccounts := filepath.Join(production, "accounts")
+	productionKeyring := filepath.Join(production, "keys")
+	source, err := storage.Open(productionAccounts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceKeyring, err := secrets.Open(productionKeyring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account := &storage.Account{ID: "trae:1", Provider: "trae", Nickname: "正式账号", Enabled: true, UsageTokens: 10, UsageCalls: 2}
+	if err := source.UpsertAccount(account); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.SaveSecret(account.ID, []byte(`{"accessToken":"token"}`), sourceKeyring.Encrypt); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.SaveSecret("proxy", []byte("production-proxy-key"), sourceKeyring.Encrypt); err != nil {
+		t.Fatal(err)
+	}
+	sourceBefore := snapshotFiles(t, productionAccounts, productionKeyring)
+
+	uat := filepath.Join(base, "XiaoTao-uat")
+	dst, err := storage.Open(filepath.Join(uat, "accounts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstKeyring, err := secrets.Open(filepath.Join(uat, "keys"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := importModelAccounts(dst, dstKeyring, uat); err != nil {
+		t.Fatal(err)
+	}
+	imported, ok := dst.Account(account.ID)
+	if !ok || imported.UsageTokens != 0 || imported.UsageCalls != 0 || imported.Quota != nil {
+		t.Fatalf("unexpected imported account: %#v", imported)
+	}
+	raw, err := dst.LoadSecret(account.ID, dstKeyring.Decrypt)
+	if err != nil || string(raw) != `{"accessToken":"token"}` {
+		t.Fatal("account credential was not re-encrypted in UAT")
+	}
+	if _, err := dst.LoadSecret("proxy", dstKeyring.Decrypt); err == nil {
+		t.Fatal("production proxy key was imported")
+	}
+	if got := snapshotFiles(t, productionAccounts, productionKeyring); got != sourceBefore {
+		t.Fatal("production account files changed during import")
+	}
+	if err := importModelAccounts(dst, dstKeyring, uat); err != nil {
+		t.Fatal(err)
+	}
+	accounts := dst.Accounts()
+	if len(accounts) != 1 {
+		t.Fatalf("repeated import changed account count: %d", len(accounts))
+	}
+}
+
+func snapshotFiles(t *testing.T, dirs ...string) string {
+	t.Helper()
+	var out bytes.Buffer
+	for _, dir := range dirs {
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			out.WriteString(path)
+			out.WriteString(":")
+			out.WriteString(info.ModTime().String())
+			out.WriteString(":")
+			if !entry.IsDir() {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				sum := sha256.Sum256(append([]byte(path), raw...))
+				out.WriteString(hex.EncodeToString(sum[:]))
+			}
+			out.WriteByte('\n')
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out.String()
 }
