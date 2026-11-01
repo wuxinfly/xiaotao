@@ -754,6 +754,7 @@
 /* Heatmap Popover Tooltip */
 .heatmap-popover {
   position: fixed;
+  transform: translate(-50%, -100%);
   background: #071522;
   border: 1px solid #1a3e54;
   border-radius: 7px;
@@ -768,9 +769,20 @@
   animation: popover-fade 120ms ease;
 }
 
+/* Placement variants keep the centering transform so the fade never overrides it. */
+.heatmap-popover.is-below {
+  transform: translate(-50%, 0);
+  animation-name: popover-fade-below;
+}
+
 @keyframes popover-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); }
+  to { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+@keyframes popover-fade-below {
+  from { opacity: 0; transform: translate(-50%, -4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 .popover-date {

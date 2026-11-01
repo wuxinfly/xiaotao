@@ -1,67 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Account, type LoginSession, type ProxySettings } from '../../lib/api';
-import { toast } from '../../components/toast';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  api,
+  type Account,
+  type LoginSession,
+  type ProviderInfo,
+  type ProxySettings,
+} from "../../lib/api";
+import { toast } from "../../components/toast";
+import { ModelEndpointCard } from "./components/ModelEndpointCard";
+import { ProviderGroup } from "./components/ProviderGroup";
+import { AccountDetailModal } from "./components/AccountDetailModal";
+import { AddAccountModal } from "./components/AddAccountModal";
+import "./accounts.css";
 
-type Flow = 'idle' | 'waiting' | 'error';
-
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch { /* ignore */ }
-    ta.remove();
-    return ok;
-  }
-}
-
-function CopyField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  const [copied, setCopied] = useState(false);
-  const doCopy = async () => {
-    if (await copyText(value)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    }
-  };
-  return (
-    <div className="copy-field">
-      <span className="copy-label">{label}</span>
-      <button type="button" className={`copy-value${mono ? ' mono' : ''}`} onClick={doCopy} title="点击复制">
-        <span className="copy-text">{value}</span>
-        <span className={`copy-hint${copied ? ' done' : ''}`}>{copied ? '已复制' : '复制'}</span>
-      </button>
-    </div>
-  );
-}
-
-function formatQuota(item: { used?: number | null; total?: number | null; unit: string }) {
-  if (item.used == null || item.total == null) return '额度未知';
-  const fmt = (n: number) => (item.unit === 'dollar' ? `$${n.toFixed(2)}` : `${Math.round(n)} 积分`);
-  return `${fmt(item.total - item.used)} / ${fmt(item.total)}`;
-}
+type Flow = "idle" | "waiting" | "error";
 
 export function AccountsPage() {
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [proxy, setProxy] = useState<ProxySettings>({ defaultAccountId: '' });
+  const [proxy, setProxy] = useState<ProxySettings>({ defaultAccountId: "" });
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [flow, setFlow] = useState<Flow>('idle');
+  const [flow, setFlow] = useState<Flow>("idle");
   const [session, setSession] = useState<LoginSession | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.accounts();
-      setAccounts(data.accounts ?? []);
-      setProxy(data.proxy);
+      const [acctData, provData] = await Promise.all([
+        api.accounts(),
+        api.providers().catch(() => ({ providers: [] })),
+      ]);
+      setAccounts(acctData.accounts ?? []);
+      setProxy(acctData.proxy);
+      if (provData.providers) {
+        setProviders(provData.providers);
+      }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -72,11 +51,35 @@ export function AccountsPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => clearInterval(pollRef.current), []);
   useEffect(() => {
-    api.proxyKey().then(r => setApiKey(r.key)).catch(() => setApiKey(''));
+    api.proxyKey().then(r => setApiKey(r.key)).catch(() => setApiKey(""));
   }, []);
 
-  const startLogin = async () => {
-    setFlow('waiting');
+  const providerMap = useMemo(() => {
+    const map = new Map<string, ProviderInfo>();
+    for (const p of providers) {
+      map.set(p.id.toLowerCase(), p);
+    }
+    return map;
+  }, [providers]);
+
+  const groupedAccounts = useMemo(() => {
+    const groups: { [provider: string]: Account[] } = {};
+    for (const a of accounts) {
+      const p = (a.provider || "unknown").toLowerCase();
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(a);
+    }
+    return groups;
+  }, [accounts]);
+
+  const selectedAccount = useMemo(() => {
+    if (!selectedAccountId) return null;
+    return accounts.find(a => a.id === selectedAccountId) || null;
+  }, [accounts, selectedAccountId]);
+
+  const startLogin = async (providerId = "trae") => {
+    setShowAddModal(false);
+    setFlow("waiting");
     try {
       const sess = await api.startLogin();
       setSession(sess);
@@ -84,21 +87,21 @@ export function AccountsPage() {
       pollRef.current = setInterval(async () => {
         try {
           const state = await api.pollLogin(sess.id);
-          if (state.status === 'succeeded') {
+          if (state.status === "succeeded") {
             clearInterval(pollRef.current);
-            setFlow('idle');
+            setFlow("idle");
             setSession(null);
-            toast.success('账号添加成功');
+            toast.success("账号添加成功");
             void load();
-          } else if (state.status !== 'waiting') {
+          } else if (state.status !== "waiting") {
             clearInterval(pollRef.current);
-            setFlow('error');
-            toast.error(state.error ?? '登录未完成');
+            setFlow("error");
+            toast.error(state.error ?? (providerId + " 登录未完成"));
           }
         } catch { /* keep polling */ }
       }, 1500);
     } catch (e) {
-      setFlow('error');
+      setFlow("error");
       toast.error(String(e instanceof Error ? e.message : e));
     }
   };
@@ -106,11 +109,11 @@ export function AccountsPage() {
   const cancelLogin = async () => {
     clearInterval(pollRef.current);
     if (session) void api.cancelLogin(session.id).catch(() => {});
-    setFlow('idle');
+    setFlow("idle");
     setSession(null);
   };
 
-  const toggle = async (a: Account) => {
+  const handleToggleEnable = async (a: Account) => {
     setBusyId(a.id);
     try {
       await api.updateAccount(a.id, { enabled: !a.enabled });
@@ -122,13 +125,17 @@ export function AccountsPage() {
     }
   };
 
-  const remove = async (a: Account) => {
-    if (!window.confirm(`确定移除账号「${a.alias || a.nickname || a.uid}」？本地凭据会一并删除。`)) return;
+  const handleDeleteAccount = async (a: Account) => {
+    const name = a.alias || a.nickname || a.uid;
+    if (!window.confirm("确定移除账号「" + name + "」？本地凭据会一并删除。")) return;
     setBusyId(a.id);
     try {
       await api.deleteAccount(a.id);
       await load();
-      toast.success('账号已移除');
+      if (selectedAccountId === a.id) {
+        setSelectedAccountId(null);
+      }
+      toast.success("账号已移除");
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -136,12 +143,12 @@ export function AccountsPage() {
     }
   };
 
-  const refresh = async (a: Account) => {
+  const handleRefreshQuota = async (a: Account) => {
     setBusyId(a.id);
     try {
       await api.refreshQuota(a.id);
       await load();
-      toast.success('配额已刷新');
+      toast.success("配额已刷新");
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -149,31 +156,32 @@ export function AccountsPage() {
     }
   };
 
-  const setDefault = async (id: string) => {
+  const handleSetDefault = async (id: string) => {
     try {
       const next = await api.saveProxy({ defaultAccountId: id });
       setProxy(next);
+      toast.success("已设为默认账号");
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
-  const rotateKey = async () => {
+  const handleRotateKey = async () => {
     try {
       const r = await api.rotateProxyKey();
       setApiKey(r.key);
-      toast.success('代理密钥已重新生成，外部工具需要更新 API Key');
+      toast.success("代理密钥已重新生成，外部工具需要更新 API Key");
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
-  if (flow === 'waiting') {
+  if (flow === "waiting") {
     return (
       <section className="accounts-flow" aria-live="polite">
         <div className="flow-card">
           <h2>等待 Trae 授权</h2>
-          <p>已在默认浏览器打开授权页面。完成登录后这里会自动更新。</p>
+          <p>已在默认浏览器打开授权页面。完成登录后小涛会自动接入。</p>
           <div className="flow-spinner" aria-hidden="true" />
           <div className="flow-actions">
             <button className="btn" onClick={cancelLogin}>取消</button>
@@ -187,66 +195,121 @@ export function AccountsPage() {
 
   if (accounts.length === 0) {
     return (
-      <section className="accounts-flow">
-        <div className="flow-card">
-          <h2>还没有接入账号</h2>
-          <p>添加 Trae 国内版账号后，可以在这里查看真实配额，并把它接入本地模型代理。API 配置接入会在后续版本提供。</p>
-          <button className="btn primary" onClick={startLogin}>添加 Trae 账号</button>
+      <div className="accounts-page-container">
+        <div className="accounts-header-bar">
+          <div className="accounts-header-titles">
+            <h1 className="accounts-main-title">账号与配额</h1>
+            <p className="accounts-main-subtitle">管理不同接入来源的账号与模型调用额度</p>
+          </div>
+          <button
+            type="button"
+            className="btn-add-account-primary"
+            onClick={() => setShowAddModal(true)}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>添加账号</span>
+          </button>
         </div>
-      </section>
+
+        <ModelEndpointCard
+          origin={window.location.origin}
+          apiKey={apiKey}
+          onRotateKey={handleRotateKey}
+        />
+
+        <div className="accounts-flow" style={{ padding: "30px 0" }}>
+          <div className="flow-card">
+            <h2>还没有接入账号</h2>
+            <p>添加 Trae 国内版账号后，即可在此查看实时配额并将其接入本地模型代理。后续将支持接入更多反代来源。</p>
+            <button className="btn primary" onClick={() => startLogin("trae")}>添加 Trae 账号</button>
+          </div>
+        </div>
+
+        {showAddModal && (
+          <AddAccountModal
+            providers={providers}
+            onSelectProvider={(pId) => startLogin(pId)}
+            onClose={() => setShowAddModal(false)}
+          />
+        )}
+      </div>
     );
   }
 
+  const providerKeys = Object.keys(groupedAccounts);
+
   return (
-    <section className="accounts-page">
-      <div className="endpoint-card">
-        <div className="endpoint-head">
-          <strong>模型接入</strong>
-          <small>在支持 OpenAI 接口的工具中填写以下信息即可调用已接入账号的模型</small>
+    <div className="accounts-page-container">
+      <div className="accounts-header-bar">
+        <div className="accounts-header-titles">
+          <h1 className="accounts-main-title">账号与配额</h1>
+          <p className="accounts-main-subtitle">管理不同接入来源的账号与模型调用额度</p>
         </div>
-        <CopyField label="接口地址" value={`${window.location.origin}/v1`} mono />
-        <CopyField label="API 密钥" value={apiKey ?? '加载中…'} mono />
-        <div className="copy-field">
-          <span className="copy-label">支持协议</span>
-          <span className="copy-value static">OpenAI Chat Completions 兼容（/v1/chat/completions · /v1/models）</span>
+        <button
+          type="button"
+          className="btn-add-account-primary"
+          onClick={() => setShowAddModal(true)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>添加账号</span>
+        </button>
+      </div>
+
+      <ModelEndpointCard
+        origin={window.location.origin}
+        apiKey={apiKey}
+        onRotateKey={handleRotateKey}
+      />
+
+      <div className="accounts-groups-container">
+        <div className="sources-section-title-row">
+          <h2 className="sources-section-title">接入来源</h2>
+          <span className="sources-section-sub">按反代服务统一管理</span>
         </div>
-        {apiKey && (
-          <div className="endpoint-foot">
-            <button className="btn" onClick={rotateKey}>重新生成密钥</button>
-          </div>
-        )}
+
+        {providerKeys.map((pKey) => (
+          <ProviderGroup
+            key={pKey}
+            providerId={pKey}
+            providerInfo={providerMap.get(pKey)}
+            accounts={groupedAccounts[pKey]}
+            defaultAccountId={proxy.defaultAccountId}
+            busyId={busyId}
+            onAddAccount={(pId) => startLogin(pId)}
+            onToggleEnable={handleToggleEnable}
+            onRefreshQuota={handleRefreshQuota}
+            onOpenDetail={(acct) => setSelectedAccountId(acct.id)}
+          />
+        ))}
       </div>
-      <ul className="account-list">
-        {accounts.map(a => {
-          const quota = a.quota;
-          return (
-            <li key={a.id} className={a.enabled ? '' : 'disabled'}>
-              <div className="acct-head">
-                <strong>{a.alias || a.nickname || `Trae ${a.uid}`}</strong>
-                <span className={`badge auth-${a.authState}`}>
-                  {a.authState === 'valid' ? '登录有效' : '需要重新登录'}
-                </span>
-              </div>
-              <div className="acct-quota">
-                {quota?.status === 'ok' && quota.items.length > 0
-                  ? quota.items.slice(0, 3).map((it, i) => <span key={i} className="quota-line">{it.label}：{formatQuota(it)}</span>)
-                  : quota?.status === 'error'
-                    ? <span className="quota-line err">配额查询失败{quota.error ? `：${quota.error}` : ''}</span>
-                    : <span className="quota-line muted">尚未查询配额</span>}
-              </div>
-              <div className="acct-actions">
-                <button className="btn" disabled={busyId === a.id} onClick={() => refresh(a)}>刷新配额</button>
-                <button className="btn" disabled={busyId === a.id} onClick={() => toggle(a)}>{a.enabled ? '停用' : '启用'}</button>
-                <button className="btn" disabled={busyId === a.id} onClick={() => setDefault(a.id)}>{proxy.defaultAccountId === a.id ? '默认账号' : '设为默认'}</button>
-                <button className="btn danger" disabled={busyId === a.id} onClick={() => remove(a)}>移除</button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="add-more">
-        <button className="btn primary" onClick={startLogin}>添加 Trae 账号</button>
-      </div>
-    </section>
+
+      {selectedAccount && (
+        <AccountDetailModal
+          account={selectedAccount}
+          providerInfo={providerMap.get(selectedAccount.provider.toLowerCase())}
+          isDefault={proxy.defaultAccountId === selectedAccount.id}
+          isBusy={busyId === selectedAccount.id}
+          onClose={() => setSelectedAccountId(null)}
+          onToggleEnable={handleToggleEnable}
+          onSetDefault={handleSetDefault}
+          onRefreshQuota={handleRefreshQuota}
+          onDeleteAccount={handleDeleteAccount}
+        />
+      )}
+
+      {showAddModal && (
+        <AddAccountModal
+          providers={providers}
+          onSelectProvider={(pId) => startLogin(pId)}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
+    </div>
   );
 }

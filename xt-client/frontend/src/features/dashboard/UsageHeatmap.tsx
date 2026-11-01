@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { HeatmapData, HeatmapDay } from '../../lib/api';
 import { formatNumber } from './UsageOverview';
 
@@ -10,6 +11,7 @@ interface PopoverState {
   visible: boolean;
   x: number;
   y: number;
+  below: boolean;
   dateStr: string;
   dayName: string;
   data: HeatmapDay | null;
@@ -17,6 +19,11 @@ interface PopoverState {
 }
 
 const DAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+// Half width used to keep the floating popover inside the viewport.
+const POPOVER_HALF_WIDTH = 130;
+const POPOVER_GAP = 8;
+const POPOVER_EDGE = 12;
 
 export function UsageHeatmap({ heatmap }: Props) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -146,23 +153,23 @@ export function UsageHeatmap({ heatmap }: Props) {
     const isUntracked = cellDateStr < trackingStart;
     const data = heatmap.days?.[cellDateStr] || null;
 
-    // Position tooltip above cell
+    // Position tooltip above the cell, flipping below when there is no room.
     let x = rect.left + rect.width / 2;
-    let y = rect.top - 8;
-
-    // Flip below if too close to top
+    let y = rect.top - POPOVER_GAP;
+    let below = false;
     if (y < 120) {
-      y = rect.bottom + 8;
+      y = rect.bottom + POPOVER_GAP;
+      below = true;
     }
-    // Shift left if too close to right edge
-    if (x + 130 > window.innerWidth) {
-      x = window.innerWidth - 130;
-    }
+    const minX = POPOVER_EDGE + POPOVER_HALF_WIDTH;
+    const maxX = window.innerWidth - POPOVER_EDGE - POPOVER_HALF_WIDTH;
+    x = Math.min(Math.max(x, minX), Math.max(maxX, minX));
 
     setPopover({
       visible: true,
       x,
       y,
+      below,
       dateStr: cellDateStr,
       dayName: dayOfWeek,
       data,
@@ -255,53 +262,56 @@ export function UsageHeatmap({ heatmap }: Props) {
         </div>
       </div>
 
-      {/* Floating Popover Tooltip */}
-      {popover && popover.visible && (
-        <div
-          className="heatmap-popover"
-          role="tooltip"
-          style={{ left: `${popover.x}px`, top: `${popover.y}px`, transform: 'translate(-50%, -100%)' }}
-        >
-          <div className="popover-date">
-            {popover.dateStr} {popover.dayName}
-          </div>
-          {popover.isUntracked ? (
-            <div className="popover-row">
-              <span>历史状态</span>
-              <span className="popover-val">未开启统计</span>
+      {/* Floating popover: portaled to body so page-level transforms cannot move it. */}
+      {popover &&
+        popover.visible &&
+        createPortal(
+          <div
+            className={`heatmap-popover${popover.below ? ' is-below' : ''}`}
+            role="tooltip"
+            style={{ left: `${popover.x}px`, top: `${popover.y}px` }}
+          >
+            <div className="popover-date">
+              {popover.dateStr} {popover.dayName}
             </div>
-          ) : (
-            <>
-              <div className="popover-row highlight">
-                <span>总 Token</span>
-                <span className="popover-val">{formatNumber(popover.data?.totalTokens || 0)}</span>
-              </div>
+            {popover.isUntracked ? (
               <div className="popover-row">
-                <span>输入 Token</span>
-                <span className="popover-val">{formatNumber(popover.data?.promptTokens || 0)}</span>
+                <span>历史状态</span>
+                <span className="popover-val">未开启统计</span>
               </div>
-              <div className="popover-row">
-                <span>输出 Token</span>
-                <span className="popover-val">{formatNumber(popover.data?.completionTokens || 0)}</span>
-              </div>
-              <div className="popover-row">
-                <span>缓存命中</span>
-                <span className="popover-val">{formatNumber(popover.data?.cachedTokens || 0)}</span>
-              </div>
-              <div className="popover-row">
-                <span>请求次数</span>
-                <span className="popover-val">{popover.data?.totalRequests || 0} 次</span>
-              </div>
-              {popover.data?.hasMissingUsage && (
-                <div className="popover-row" style={{ color: '#fca5a5' }}>
-                  <span>提示</span>
-                  <span>包含用量缺失请求</span>
+            ) : (
+              <>
+                <div className="popover-row highlight">
+                  <span>总 Token</span>
+                  <span className="popover-val">{formatNumber(popover.data?.totalTokens || 0)}</span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                <div className="popover-row">
+                  <span>输入 Token</span>
+                  <span className="popover-val">{formatNumber(popover.data?.promptTokens || 0)}</span>
+                </div>
+                <div className="popover-row">
+                  <span>输出 Token</span>
+                  <span className="popover-val">{formatNumber(popover.data?.completionTokens || 0)}</span>
+                </div>
+                <div className="popover-row">
+                  <span>缓存命中</span>
+                  <span className="popover-val">{formatNumber(popover.data?.cachedTokens || 0)}</span>
+                </div>
+                <div className="popover-row">
+                  <span>请求次数</span>
+                  <span className="popover-val">{popover.data?.totalRequests || 0} 次</span>
+                </div>
+                {popover.data?.hasMissingUsage && (
+                  <div className="popover-row" style={{ color: '#fca5a5' }}>
+                    <span>提示</span>
+                    <span>包含用量缺失请求</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }

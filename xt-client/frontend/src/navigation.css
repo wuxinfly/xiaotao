@@ -16,6 +16,9 @@
 /* One persistent indicator travels between the two navigation destinations. */
 .titlebar nav{--nav-width:112px;--nav-gap:6px;gap:var(--nav-gap)}
 .titlebar nav>button,.titlebar .model-menu,.titlebar .model-menu>button{width:var(--nav-width);flex-shrink:0}
+.titlebar .model-menu>button{display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px}
+.titlebar .model-menu>button .nav-icon{width:24px;height:24px;flex-shrink:0;object-fit:contain;margin:0}
+.titlebar .model-menu>button .chevron{flex-shrink:0;margin-left:0}
 .nav-indicator{position:absolute;bottom:0;left:24px;width:calc(var(--nav-width) - 48px);height:2px;border-radius:2px;background:#36deff;box-shadow:0 0 9px #00cbff9c;pointer-events:none;transform:translateX(0);transition:transform 220ms cubic-bezier(.22,.8,.25,1)}
 .titlebar nav[data-active=model] .nav-indicator{transform:translateX(calc(var(--nav-width) + var(--nav-gap)))}
 .titlebar nav>button,.titlebar .model-menu>button{transition:background-color 160ms ease,color 160ms ease,box-shadow 180ms ease}
