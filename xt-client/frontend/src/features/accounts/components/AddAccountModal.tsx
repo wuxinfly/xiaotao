@@ -67,6 +67,8 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
                 <span className="provider-item-desc">
                   {p.id === 'trae'
                     ? '国内版账号授权登录，支持模型代理与配额同步'
+                    : p.id === 'workbuddy'
+                      ? '国内版 CodeBuddy 插件协议授权，支持模型代理与真实额度'
                     : '反代服务接入'}
                 </span>
               </div>

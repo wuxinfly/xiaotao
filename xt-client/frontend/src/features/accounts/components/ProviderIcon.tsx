@@ -55,6 +55,23 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size = 32,
     );
   }
 
+  if (p === 'workbuddy') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={`provider-icon provider-icon-workbuddy ${className}`}
+        aria-hidden="true"
+      >
+        <rect width="32" height="32" rx="7" fill="#0B6BCB" />
+        <path d="M9 11l2.6 10h2.2L16 14l2.2 7h2.2L23 11h-2.4l-1.6 6.6L16.9 11h-1.8l-2.1 6.6L11.4 11H9z" fill="#fff" />
+      </svg>
+    );
+  }
+
   // Fallback generic proxy icon
   return (
     <svg

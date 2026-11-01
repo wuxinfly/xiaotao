@@ -1,8 +1,9 @@
 /* Dashboard container */
 .dashboard-page {
-  max-width: 1140px;
+  width: 100%;
+  max-width: var(--content-max);
   margin: 0 auto;
-  padding: 24px 28px 48px;
+  padding: 24px var(--content-gutter) 48px;
   display: flex;
   flex-direction: column;
   gap: 20px;

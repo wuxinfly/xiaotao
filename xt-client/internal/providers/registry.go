@@ -1,9 +1,12 @@
 package providers
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
+
+	"xiaotao/xt-client/internal/storage"
 )
 
 type ModelInfo struct {
@@ -21,19 +24,61 @@ type Info struct {
 }
 
 type Credential struct {
-	RefreshToken string
-	AccessToken  string
-	ExpiresAt    int64
-	UID          string
-	MachineID    string
-	DeviceID     string
-	Region       string
+	RefreshToken   string
+	AccessToken    string
+	ExpiresAt      int64
+	UID            string
+	Nickname       string
+	MachineID      string
+	DeviceID       string
+	Region         string
+	Domain         string
+	EnterpriseID   string
+	DepartmentInfo string
 }
 
 type Provider interface {
 	Info() Info
 	ListModels(region string) []ModelInfo
 }
+
+// ChatEvents receives normalized provider output. Providers pre-merge tool
+// fragments into the OpenAI tool-call shape before calling OnDelta.
+type ChatEvents struct {
+	OnFirstToken func()
+	OnDelta      func(delta map[string]any)
+	OnError      func(status int, message string)
+	OnUsage      func(usage map[string]any)
+	OnAction     func(tag, title string)
+}
+
+// ChatCollector aggregates a complete non-streaming provider response.
+type ChatCollector interface {
+	Collect(ctx context.Context, cred *Credential, model string, body map[string]any) (map[string]any, error)
+}
+
+// Streamer runs a provider streaming response and pushes normalized deltas.
+type Streamer interface {
+	Stream(ctx context.Context, cred *Credential, model string, body map[string]any, ev *ChatEvents) error
+}
+
+// Refresher exchanges a provider credential for a fresh access token.
+type Refresher interface {
+	Refresh(ctx context.Context, cred *Credential) (*Credential, error)
+}
+
+// Quoter fetches a provider account quota snapshot.
+type Quoter interface {
+	FetchQuota(ctx context.Context, cred *Credential) (*storage.QuotaSnapshot, error)
+}
+
+// UpstreamError carries an HTTP-like status from provider implementations.
+type UpstreamError struct {
+	Status  int
+	Message string
+}
+
+func (e *UpstreamError) Error() string { return e.Message }
 
 var (
 	mu        sync.RWMutex

@@ -15,11 +15,12 @@ import (
 const secretPrefix = "b64:"
 
 type QuotaItem struct {
-	Label    string   `json:"label"`
-	Used     *float64 `json:"used,omitempty"`
-	Total    *float64 `json:"total,omitempty"`
-	Unit     string   `json:"unit"`
-	ExpireAt int64    `json:"expireAt,omitempty"`
+	Label     string   `json:"label"`
+	Used      *float64 `json:"used,omitempty"`
+	Total     *float64 `json:"total,omitempty"`
+	Remaining *float64 `json:"remaining,omitempty"`
+	Unit      string   `json:"unit"`
+	ExpireAt  int64    `json:"expireAt,omitempty"`
 }
 
 type QuotaSnapshot struct {

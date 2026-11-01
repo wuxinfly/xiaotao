@@ -19,6 +19,7 @@ import (
 	"xiaotao/xt-client/internal/desktop"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/trae"
+	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/proxy"
 	"xiaotao/xt-client/internal/secrets"
 	"xiaotao/xt-client/internal/storage"
@@ -43,6 +44,7 @@ type Config struct {
 }
 
 var traeProvider = trae.Provider{}
+var workbuddyProvider = workbuddy.Provider{}
 
 func Key(data string) string { h := sha256.Sum256([]byte(data)); return hex.EncodeToString(h[:12]) }
 func Save(path string, v any) error {
@@ -155,10 +157,11 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
-	registerTrae := func() {
+	registerProviders := func() {
 		providers.Register(traeProvider)
+		providers.Register(workbuddyProvider)
 	}
-	registerTrae()
+	registerProviders()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		send(w, map[string]any{"App": "xiaotao", "PID": s.PID, "version": Version})
 	})
@@ -281,6 +284,109 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		send(w, sess)
+	})
+
+	startProviderLogin := func(w http.ResponseWriter, r *http.Request, providerID string) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		sess, err := authSvc.Start(providerID, "")
+		if err != nil {
+			apiError(w, 500, "start login failed")
+			return
+		}
+		if sess.LoginURL != "" {
+			if err := desktop.Browser(sess.LoginURL); err != nil {
+				apiError(w, 500, "cannot open default browser")
+				return
+			}
+		}
+		send(w, sess)
+	}
+
+	mux.HandleFunc("POST /api/auth/workbuddy", func(w http.ResponseWriter, r *http.Request) {
+		startProviderLogin(w, r, "workbuddy")
+	})
+
+	saveProviderAccount := func(w http.ResponseWriter, r *http.Request, providerID string) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		sess, cred := authSvc.Poll(r.PathValue("id"))
+		if sess.Status == "not_found" {
+			apiError(w, 404, "session not found")
+			return
+		}
+		if sess.Status == "succeeded" && cred != nil {
+			uid := cred.UID
+			nickname := cred.Nickname
+			if providerID == "trae" {
+				var err error
+				uid, nickname, err = trae.UserInfo(cred)
+				if err != nil || uid == "" {
+					uid = trae.JWTUserID(cred.AccessToken)
+				}
+				if uid == "" {
+					apiError(w, 502, "cannot determine account identity")
+					return
+				}
+			}
+			if uid == "" {
+				apiError(w, 502, "cannot determine account identity")
+				return
+			}
+			id := providerID + ":cn:" + uid
+			now := time.Now().Unix()
+			acct := &storage.Account{
+				ID: id, Provider: providerID, Region: cred.Region, UID: uid,
+				Nickname: nickname, Enabled: true, AuthState: "valid",
+				MachineID: cred.MachineID, DeviceID: cred.DeviceID,
+				AddedAt: now, UpdatedAt: now,
+			}
+			if existing, ok := store.Account(id); ok {
+				acct.Alias = existing.Alias
+				acct.Enabled = existing.Enabled
+				acct.AddedAt = existing.AddedAt
+			}
+			if err := store.UpsertAccount(acct); err != nil {
+				apiError(w, 500, "save account failed")
+				return
+			}
+			b, err := json.Marshal(cred)
+			if err != nil {
+				apiError(w, 500, "encode credential failed")
+				return
+			}
+			if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
+				apiError(w, 500, "save credential failed")
+				return
+			}
+			if p := store.Proxy(); p.DefaultAccountID == "" {
+				p.DefaultAccountID = id
+				if err := store.SetProxy(p); err != nil {
+					apiError(w, 500, "save default account failed")
+					return
+				}
+			}
+			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
+			return
+		}
+		send(w, map[string]any{"status": sess.Status, "error": sess.Error})
+	}
+
+	mux.HandleFunc("GET /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
+		saveProviderAccount(w, r, "workbuddy")
+	})
+
+	mux.HandleFunc("DELETE /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		authSvc.Cancel(r.PathValue("id"))
+		send(w, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("GET /api/auth/trae/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
@@ -408,7 +514,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			if !a.Enabled {
 				continue
 			}
-			for _, m := range traeProvider.ListModels(a.Region) {
+			for _, m := range providerModels(a) {
 				if !seen[m.ID] {
 					seen[m.ID] = true
 					models = append(models, m)
@@ -436,7 +542,11 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		cfg = next
 		send(w, cfg)
 	})
-	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) { send(w, map[string]bool{"ok": true}); usageSvc.Close(); go stop() })
+	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		send(w, map[string]bool{"ok": true})
+		usageSvc.Close()
+		go stop()
+	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		if !proxySvc.Authorize(r) {
 			writeProxyError(w, 401, "invalid_api_key", "代理访问密钥无效")
@@ -498,6 +608,15 @@ func writeProxyError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": message, "type": code}})
+}
+
+func providerModels(a *storage.Account) []providers.ModelInfo {
+	switch a.Provider {
+	case "workbuddy":
+		return workbuddyProvider.ListModels(a.Region)
+	default:
+		return traeProvider.ListModels(a.Region)
+	}
 }
 func Serve(ctx context.Context, data string) error {
 	release, e := desktop.Lock("Local\\XiaoTao.Service." + Key(data))

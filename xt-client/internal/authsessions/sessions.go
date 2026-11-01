@@ -1,6 +1,7 @@
 package authsessions
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/trae"
+	"xiaotao/xt-client/internal/providers/workbuddy"
 )
 
 type Session struct {
@@ -27,6 +29,7 @@ type Session struct {
 	LoginURL   string                `json:"loginUrl"`
 	Error      string                `json:"error,omitempty"`
 	Credential *providers.Credential `json:"-"`
+	cancel     context.CancelFunc
 }
 
 type Service struct {
@@ -44,7 +47,7 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if providerID != "trae" {
+	if providerID != "trae" && providerID != "workbuddy" {
 		return Session{}, fmt.Errorf("provider %q does not support web login yet", providerID)
 	}
 	if region == "" {
@@ -58,31 +61,94 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 			old.Status = "cancelled"
 		}
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return Session{}, err
+	var sess *Session
+	if providerID == "workbuddy" {
+		loginURL, upstreamState, err := workbuddy.StartAuth(context.Background(), "")
+		if err != nil {
+			return Session{}, err
+		}
+		loginCtx, cancel := context.WithCancel(context.Background())
+		sess = &Session{
+			ID: randHex(), Provider: providerID, Region: region, Status: "waiting",
+			CreatedAt: now.Unix(), ExpiresAt: now.Add(5 * time.Minute).Unix(),
+			LoginURL: loginURL, cancel: cancel,
+		}
+		s.sessions[sess.ID] = sess
+		go s.runWorkBuddyLogin(sess, loginCtx, cancel, upstreamState)
+	} else {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return Session{}, err
+		}
+		port := listener.Addr().(*net.TCPAddr).Port
+		nonce := randHex()
+		sess = &Session{
+			ID: randHex(), Provider: providerID, Region: region, Status: "waiting",
+			CreatedAt: now.Unix(), ExpiresAt: now.Add(15 * time.Minute).Unix(),
+			Port: port, Nonce: nonce, LoginURL: trae.LoginURL(region, port, nonce),
+		}
+		s.sessions[sess.ID] = sess
+		mux := http.NewServeMux()
+		mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
+			s.handleCallback(sess, w, r)
+		})
+		server := &http.Server{Handler: corsHandler(mux), ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			_ = server.Serve(listener)
+		}()
+		go func() {
+			s.expireWatch(sess, server)
+		}()
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	nonce := randHex()
-	sess := &Session{
-		ID: randHex(), Provider: providerID, Region: region, Status: "waiting",
-		CreatedAt: now.Unix(), ExpiresAt: now.Add(15 * time.Minute).Unix(),
-		Port: port, Nonce: nonce, LoginURL: trae.LoginURL(region, port, nonce),
-	}
-	s.sessions[sess.ID] = sess
-	mux := http.NewServeMux()
-	mux.HandleFunc("/authorize", func(w http.ResponseWriter, r *http.Request) {
-		s.handleCallback(sess, w, r)
-	})
-	server := &http.Server{Handler: corsHandler(mux), ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		_ = server.Serve(listener)
-	}()
-	go func() {
-		s.expireWatch(sess, server)
-	}()
 	cp := *sess
 	return cp, nil
+}
+
+func (s *Service) runWorkBuddyLogin(sess *Session, ctx context.Context, cancel context.CancelFunc, upstreamState string) {
+	defer cancel()
+	cred, err := workbuddy.WaitForToken(ctx, "", upstreamState)
+	if err != nil {
+		s.finishWorkBuddyLogin(sess, "", nil, err)
+		return
+	}
+	uid, nickname, enterprise, department, err := workbuddy.WaitForAccount(ctx, "", upstreamState, cred.AccessToken)
+	if err != nil {
+		s.finishWorkBuddyLogin(sess, "", nil, err)
+		return
+	}
+	cred.UID = uid
+	cred.Nickname = nickname
+	cred.EnterpriseID = enterprise
+	cred.DepartmentInfo = department
+	if cred.MachineID == "" {
+		cred.MachineID = randHex()
+	}
+	if cred.Domain == "" {
+		if parsed, parseErr := url.Parse(workbuddy.DefaultBaseURL); parseErr == nil {
+			cred.Domain = parsed.Host
+		}
+	}
+	s.finishWorkBuddyLogin(sess, uid, cred, nil)
+}
+
+func (s *Service) finishWorkBuddyLogin(sess *Session, uid string, cred *providers.Credential, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sess.Status != "waiting" {
+		return
+	}
+	if err != nil {
+		sess.Status = "failed"
+		sess.Error = redact(err.Error())
+		return
+	}
+	if uid == "" || cred == nil {
+		sess.Status = "failed"
+		sess.Error = "login response missing account identity"
+		return
+	}
+	sess.Status = "succeeded"
+	sess.Credential = cred
 }
 
 func (s *Service) handleCallback(sess *Session, w http.ResponseWriter, r *http.Request) {
@@ -147,6 +213,9 @@ func (s *Service) Poll(id string) (Session, *providers.Credential) {
 	now := time.Now().Unix()
 	if sess.Status == "waiting" && now > sess.ExpiresAt {
 		sess.Status = "expired"
+		if sess.cancel != nil {
+			sess.cancel()
+		}
 	}
 	cp := *sess
 	return cp, sess.Credential
@@ -168,6 +237,9 @@ func (s *Service) Cancel(id string) {
 	defer s.mu.Unlock()
 	if sess, ok := s.sessions[id]; ok && sess.Status == "waiting" {
 		sess.Status = "cancelled"
+		if sess.cancel != nil {
+			sess.cancel()
+		}
 	}
 }
 

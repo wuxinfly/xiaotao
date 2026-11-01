@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -70,7 +71,7 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 			return storage.QuotaSnapshot{}, err
 		}
 	}
-	snap, err := traeFetchQuota(cred, cred.MachineID, cred.DeviceID)
+	snap, err := providerQuota(context.Background(), a.providerID(id), cred)
 	if err != nil {
 		a.Store.UpdateAccount(id, func(acct *storage.Account) {
 			if acct.Quota == nil {
@@ -92,8 +93,15 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 	return *snap, nil
 }
 
+func (a *AccountService) providerID(id string) string {
+	if acct, ok := a.Store.Account(id); ok {
+		return acct.Provider
+	}
+	return ""
+}
+
 func (a *AccountService) refreshToken(id string, cred *providers.Credential) error {
-	newCred, err := traeRefresh(cred.RefreshToken, cred.Region)
+	newCred, err := providerRefresh(context.Background(), a.providerID(id), cred)
 	if err != nil {
 		return err
 	}

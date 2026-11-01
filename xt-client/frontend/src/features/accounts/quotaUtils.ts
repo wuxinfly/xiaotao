@@ -68,7 +68,7 @@ export function calculateQuotaSummary(quota?: QuotaSnapshot | null): QuotaSummar
 
   const total = summary.total;
   const used = summary.used;
-  const remaining = Math.max(0, total - used);
+  const remaining = summary.remaining == null ? Math.max(0, total - used) : summary.remaining;
 
   if (total <= 0) {
     return {
@@ -105,7 +105,7 @@ export function formatQuotaItemLine(item: QuotaItem): { usedText: string; limitT
   if (item.used == null || item.total == null) {
     return { usedText: '—', limitText: '额度未知' };
   }
-  const rem = Math.max(0, item.total - item.used);
+  const rem = item.remaining == null ? Math.max(0, item.total - item.used) : item.remaining;
   const remStr = item.unit === 'dollar' ? `$${rem.toFixed(2)}` : formatNumber(rem);
   return {
     usedText: remStr,

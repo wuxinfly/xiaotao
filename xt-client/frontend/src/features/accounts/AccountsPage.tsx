@@ -24,6 +24,7 @@ export function AccountsPage() {
   const [flow, setFlow] = useState<Flow>("idle");
   const [session, setSession] = useState<LoginSession | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [loginProvider, setLoginProvider] = useState("trae");
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -81,12 +82,13 @@ export function AccountsPage() {
     setShowAddModal(false);
     setFlow("waiting");
     try {
-      const sess = await api.startLogin();
+      setLoginProvider(providerId);
+      const sess = await api.startLogin(providerId);
       setSession(sess);
       clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
         try {
-          const state = await api.pollLogin(sess.id);
+          const state = await api.pollLogin(sess.id, providerId);
           if (state.status === "succeeded") {
             clearInterval(pollRef.current);
             setFlow("idle");
@@ -108,7 +110,7 @@ export function AccountsPage() {
 
   const cancelLogin = async () => {
     clearInterval(pollRef.current);
-    if (session) void api.cancelLogin(session.id).catch(() => {});
+    if (session) void api.cancelLogin(session.id, loginProvider).catch(() => {});
     setFlow("idle");
     setSession(null);
   };
@@ -180,10 +182,36 @@ export function AccountsPage() {
     return (
       <section className="accounts-flow" aria-live="polite">
         <div className="flow-card">
-          <h2>等待 Trae 授权</h2>
-          <p>已在默认浏览器打开授权页面。完成登录后小涛会自动接入。</p>
+          <h2>{loginProvider === "workbuddy" ? "等待 WorkBuddy 授权" : "等待 Trae 授权"}</h2>
+          <p>
+            {loginProvider === "workbuddy"
+              ? "正在打开 WorkBuddy 授权页面。如果没有自动打开，请使用下方按钮或复制链接。"
+              : "已在默认浏览器打开授权页面。完成登录后小涛会自动接入。"}
+          </p>
+          {loginProvider === "workbuddy" && session?.loginUrl && (
+            <div className="copy-field">
+              <span className="copy-label">授权链接</span>
+              <button
+                type="button"
+                className="copy-value mono"
+                onClick={() => void navigator.clipboard.writeText(session.loginUrl)}
+                title="点击复制"
+              >
+                <span className="copy-text">{session.loginUrl}</span>
+              </button>
+            </div>
+          )}
           <div className="flow-spinner" aria-hidden="true" />
           <div className="flow-actions">
+            {loginProvider === "workbuddy" && session?.loginUrl && (
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => window.open(session.loginUrl, "_blank", "noopener,noreferrer")}
+              >
+                打开授权页面
+              </button>
+            )}
             <button className="btn" onClick={cancelLogin}>取消</button>
           </div>
         </div>
@@ -223,8 +251,8 @@ export function AccountsPage() {
         <div className="accounts-flow" style={{ padding: "30px 0" }}>
           <div className="flow-card">
             <h2>还没有接入账号</h2>
-            <p>添加 Trae 国内版账号后，即可在此查看实时配额并将其接入本地模型代理。后续将支持接入更多反代来源。</p>
-            <button className="btn primary" onClick={() => startLogin("trae")}>添加 Trae 账号</button>
+            <p>添加 Trae 或 WorkBuddy 国内账号后，即可在此查看实时配额并将其接入本地模型代理。</p>
+            <button className="btn primary" onClick={() => setShowAddModal(true)}>添加账号</button>
           </div>
         </div>
 

@@ -2,6 +2,7 @@ export interface QuotaItem {
   label: string;
   used?: number | null;
   total?: number | null;
+  remaining?: number | null;
   unit: string;
   expireAt?: number;
 }
@@ -160,9 +161,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   providers: () => request<{ providers: ProviderInfo[] }>('/api/providers'),
   accounts: () => request<{ accounts: Account[]; proxy: ProxySettings }>('/api/accounts'),
-  startLogin: () => request<LoginSession>('/api/auth/trae', { method: 'POST' }),
-  pollLogin: (id: string) => request<{ status: string; accountId?: string; nickname?: string; error?: string }>(`/api/auth/trae/${id}`),
-  cancelLogin: (id: string) => request<{ ok: boolean }>(`/api/auth/trae/${id}`, { method: 'DELETE' }),
+  startLogin: (provider = 'trae') => request<LoginSession>(`/api/auth/${provider}`, { method: 'POST' }),
+  pollLogin: (id: string, provider = 'trae') =>
+    request<{ status: string; accountId?: string; nickname?: string; error?: string }>(`/api/auth/${provider}/${id}`),
+  cancelLogin: (id: string, provider = 'trae') => request<{ ok: boolean }>(`/api/auth/${provider}/${id}`, { method: 'DELETE' }),
   updateAccount: (id: string, body: { alias?: string; enabled?: boolean }) =>
     request<Account>(`/api/accounts/${id}/rename`, { method: 'POST', body: JSON.stringify(body) }),
   deleteAccount: (id: string) => request<{ ok: boolean }>(`/api/accounts/${id}/delete`, { method: 'POST' }),

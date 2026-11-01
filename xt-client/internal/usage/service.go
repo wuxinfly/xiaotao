@@ -120,13 +120,13 @@ type ActiveRequest struct {
 	rec Record
 	mu  sync.Mutex
 
-	lastReportedPrompt     int64
-	lastReportedCompletion int64
-	lastReportedCached     int64
+	lastReportedPrompt      int64
+	lastReportedCompletion  int64
+	lastReportedCached      int64
 	lastCommittedPrompt     int64
 	lastCommittedCompletion int64
 	lastCommittedCached     int64
-	finalized              bool
+	finalized               bool
 }
 
 // StartRequest creates and registers a new active request record.
@@ -265,6 +265,12 @@ func (ar *ActiveRequest) OnUsage(prompt, completion, cached *int64) {
 			dbDeltaCompletion = cVal - ar.lastCommittedCompletion
 			ar.lastCommittedCompletion = cVal
 		}
+	}
+
+	// Keep stream estimates from hiding a later missing-usage response: a
+	// usage-only chunk resets completion before storing nil.
+	if completion == nil {
+		ar.rec.CompletionTokens = nil
 	}
 
 	if cached != nil && *cached >= 0 {

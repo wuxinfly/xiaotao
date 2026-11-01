@@ -5,16 +5,18 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"sync/atomic"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/trae"
+	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
 	"xiaotao/xt-client/internal/usage"
 )
@@ -71,13 +73,22 @@ func (s *Service) Models() ([]map[string]any, error) {
 		return []map[string]any{}, nil
 	}
 	out := []map[string]any{}
-	traeProvider := trae.Provider{}
-	for _, m := range traeProvider.ListModels(acct.Region) {
+	models := listProviderModels(acct)
+	for _, m := range models {
 		out = append(out, map[string]any{
-			"id": "trae/" + m.ID, "object": "model", "created": 0, "owned_by": "xiaotao",
+			"id": acct.Provider + "/" + m.ID, "object": "model", "created": 0, "owned_by": "xiaotao",
 		})
 	}
 	return out, nil
+}
+
+func listProviderModels(acct storage.Account) []providers.ModelInfo {
+	switch acct.Provider {
+	case "workbuddy":
+		return workbuddy.Provider{}.ListModels(acct.Region)
+	default:
+		return trae.Provider{}.ListModels(acct.Region)
+	}
 }
 
 func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +192,28 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream)
 		return
 	}
+	if acct.Provider == "workbuddy" {
+		result, err := workbuddy.Collector{}.Collect(ctx, &cred, model, upstream)
+		if err != nil {
+			if reqTracker != nil {
+				if ctx.Err() != nil {
+					reqTracker.OnCanceled()
+				} else {
+					reqTracker.OnError(err.Error())
+				}
+			}
+			writeError(w, upstreamHTTPStatus(err), "upstream_error", redact(err.Error()))
+			return
+		}
+		if usageMap, ok := result["usage"].(map[string]any); ok {
+			s.recordUsage(reqTracker, acct, usageMap)
+		}
+		if reqTracker != nil {
+			reqTracker.OnCompleted()
+		}
+		writeJSON(w, result)
+		return
+	}
 	result, err := trae.CollectChat(ctx, &cred, acct.MachineID, acct.DeviceID, model, upstream)
 	if err != nil {
 		if reqTracker != nil {
@@ -246,6 +279,32 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Service) recordUsage(reqTracker *usage.ActiveRequest, acct storage.Account, usageMap map[string]any) {
+	if reqTracker != nil {
+		var pPtr, cPtr, caPtr *int64
+		if p, ok := usageMap["prompt_tokens"].(int64); ok {
+			pPtr = &p
+		}
+		if c, ok := usageMap["completion_tokens"].(int64); ok {
+			cPtr = &c
+		}
+		if ca, ok := usageMap["cached_tokens"].(int64); ok {
+			caPtr = &ca
+		}
+		reqTracker.OnUsage(pPtr, cPtr, caPtr)
+	}
+	if prompt, ok := usageMap["prompt_tokens"].(int64); ok {
+		var completion int64
+		if v, ok := usageMap["completion_tokens"].(int64); ok {
+			completion = v
+		}
+		_ = s.store.UpdateAccount(acct.ID, func(a *storage.Account) {
+			a.UsageTokens += prompt + completion
+			a.UsageCalls++
+		})
+	}
+}
+
 // streamLive proxies the upstream SSE stream incrementally: each upstream
 // delta is converted to an OpenAI chunk and flushed immediately, so
 // downstream clients see tokens as they are generated.
@@ -269,6 +328,98 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 	chunk(map[string]any{"role": "assistant", "content": ""}, nil)
 	var usage atomic.Value
 	var upstreamErr atomic.Value
+	var events *providers.ChatEvents
+	if acct.Provider == "workbuddy" {
+		events = &providers.ChatEvents{
+			OnFirstToken: func() {
+				if reqTracker != nil {
+					reqTracker.OnFirstToken()
+				}
+			},
+			OnDelta: func(delta map[string]any) {
+				chunk(delta, nil)
+				if reqTracker != nil {
+					if content, ok := delta["content"].(string); ok && content != "" {
+						reqTracker.OnStreamDelta(content)
+					}
+					if reason, ok := delta["reasoning_content"].(string); ok && reason != "" {
+						reqTracker.OnStreamDelta(reason)
+					}
+				}
+			},
+			OnError: func(status int, msg string) {
+				upstreamErr.Store(struct {
+					code any
+					msg  string
+				}{status, msg})
+			},
+			OnUsage: func(u map[string]any) {
+				prev, _ := usage.Load().(map[string]any)
+				next := map[string]any{}
+				for k, v := range prev {
+					next[k] = v
+				}
+				for k, v := range u {
+					next[k] = v
+				}
+				usage.Store(next)
+				if reqTracker != nil {
+					var pPtr, cPtr, caPtr *int64
+					if p, ok := next["prompt_tokens"].(int64); ok {
+						pPtr = &p
+					}
+					if c, ok := next["completion_tokens"].(int64); ok {
+						cPtr = &c
+					}
+					if ca, ok := next["cached_tokens"].(int64); ok {
+						caPtr = &ca
+					}
+					reqTracker.OnUsage(pPtr, cPtr, caPtr)
+				}
+			},
+		}
+		err := workbuddy.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
+		if err != nil {
+			if reqTracker != nil {
+				if ctx.Err() != nil {
+					reqTracker.OnCanceled()
+				} else {
+					reqTracker.OnInterrupted(err.Error())
+				}
+			}
+			chunk(map[string]any{"content": "\n\n[upstream error: " + redact(err.Error()) + "]"}, nil)
+		} else if v, ok := upstreamErr.Load().(struct {
+			code any
+			msg  string
+		}); ok && v.msg != "" {
+			if reqTracker != nil {
+				reqTracker.OnError(v.msg)
+			}
+			chunk(map[string]any{"content": "\n\n[" + redact(v.msg) + "]"}, nil)
+		} else if reqTracker != nil {
+			reqTracker.OnCompleted()
+		}
+		final, _ := usage.Load().(map[string]any)
+		chunk(map[string]any{}, "stop")
+		if len(final) > 0 {
+			writeChunk(map[string]any{
+				"id": id, "object": "chat.completion.chunk", "created": created, "model": model,
+				"choices": []any{}, "usage": final,
+			})
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		if prompt, ok := final["prompt_tokens"].(int64); ok {
+			var completion int64
+			if v, ok := final["completion_tokens"].(int64); ok {
+				completion = v
+			}
+			_ = s.store.UpdateAccount(acct.ID, func(a *storage.Account) {
+				a.UsageTokens += prompt + completion
+				a.UsageCalls++
+			})
+		}
+		return
+	}
 	ev := &trae.StreamEvents{
 		OnFirstToken: func(t time.Time) {
 			if reqTracker != nil {
@@ -379,11 +530,12 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 }
 
 func (s *Service) refreshCredential(acct *storage.Account, cred *providers.Credential) error {
-	next, err := trae.Exchange(cred.Region, cred.RefreshToken)
+	next, err := providerRefresh(context.Background(), acct.Provider, cred)
 	if err != nil {
 		return err
 	}
 	next.UID = cred.UID
+	next.Nickname = cred.Nickname
 	next.MachineID = cred.MachineID
 	next.DeviceID = cred.DeviceID
 	b, err := json.Marshal(next)
@@ -464,6 +616,14 @@ func upstreamStatus(code any) int {
 		return 401
 	case "4008", "4011", "4021", "4031":
 		return 429
+	}
+	return 502
+}
+
+func upstreamHTTPStatus(err error) int {
+	var upstream *providers.UpstreamError
+	if errors.As(err, &upstream) {
+		return upstream.Status
 	}
 	return 502
 }
