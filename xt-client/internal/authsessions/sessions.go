@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"xiaotao/xt-client/internal/providers"
+	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 )
@@ -47,7 +48,7 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if providerID != "trae" && providerID != "workbuddy" {
+	if providerID != "trae" && providerID != "workbuddy" && providerID != "antigravity" {
 		return Session{}, fmt.Errorf("provider %q does not support web login yet", providerID)
 	}
 	if region == "" {
@@ -62,6 +63,33 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 		}
 	}
 	var sess *Session
+	if providerID == "antigravity" {
+		login, err := antigravity.StartLogin(context.Background())
+		if err != nil {
+			return Session{}, err
+		}
+		loginCtx, cancel := context.WithCancel(context.Background())
+		_ = loginCtx
+		sess = &Session{
+			ID: login.ID, Provider: providerID, Region: "global", Status: "waiting",
+			CreatedAt: now.Unix(), ExpiresAt: now.Add(15 * time.Minute).Unix(),
+			LoginURL: login.LoginURL, cancel: cancel,
+		}
+		s.sessions[sess.ID] = sess
+		go func() {
+			for {
+				time.Sleep(200 * time.Millisecond)
+				if login.Credential() != nil {
+					s.mu.Lock()
+					sess.Status = "succeeded"
+					sess.Credential = login.Credential()
+					s.mu.Unlock()
+					return
+				}
+			}
+		}()
+		return *sess, nil
+	}
 	if providerID == "workbuddy" {
 		loginURL, upstreamState, err := workbuddy.StartAuth(context.Background(), "")
 		if err != nil {

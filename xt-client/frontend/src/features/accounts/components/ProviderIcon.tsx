@@ -63,6 +63,26 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size = 32,
     );
   }
 
+  if (p === 'antigravity') {
+    return (
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 32 32"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={`provider-icon provider-icon-antigravity ${className}`}
+        aria-hidden="true"
+      >
+        <rect width="32" height="32" rx="7" fill="#101820" stroke="#3A506B" strokeWidth="1" />
+        {/* Antigravity logo: abstract orbit + core, simplified */}
+        <circle cx="16" cy="16" r="9" stroke="#4ECDC4" strokeWidth="1.5" opacity="0.6" />
+        <circle cx="16" cy="16" r="4" fill="#4ECDC4" />
+        <ellipse cx="16" cy="16" rx="13" ry="5" stroke="#FF6B6B" strokeWidth="1.5" transform="rotate(-25 16 16)" opacity="0.8" />
+      </svg>
+    );
+  }
+
   if (p === 'workbuddy') {
     return (
       <img

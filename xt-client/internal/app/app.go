@@ -18,6 +18,7 @@ import (
 	"xiaotao/xt-client/internal/authsessions"
 	"xiaotao/xt-client/internal/desktop"
 	"xiaotao/xt-client/internal/providers"
+	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/proxy"
@@ -45,6 +46,7 @@ type Config struct {
 
 var traeProvider = trae.Provider{}
 var workbuddyProvider = workbuddy.Provider{}
+var antigravityProvider = antigravity.Provider{}
 
 func Key(data string) string { h := sha256.Sum256([]byte(data)); return hex.EncodeToString(h[:12]) }
 func Save(path string, v any) error {
@@ -158,6 +160,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
 	registerProviders := func() {
+		providers.Register(antigravityProvider)
 		providers.Register(traeProvider)
 		providers.Register(workbuddyProvider)
 	}
@@ -308,6 +311,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.HandleFunc("POST /api/auth/workbuddy", func(w http.ResponseWriter, r *http.Request) {
 		startProviderLogin(w, r, "workbuddy")
 	})
+	mux.HandleFunc("POST /api/auth/antigravity", func(w http.ResponseWriter, r *http.Request) {
+		startProviderLogin(w, r, "antigravity")
+	})
 
 	saveProviderAccount := func(w http.ResponseWriter, r *http.Request, providerID string) {
 		if !requireOrigin(r) {
@@ -379,8 +385,19 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.HandleFunc("GET /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
 		saveProviderAccount(w, r, "workbuddy")
 	})
+	mux.HandleFunc("GET /api/auth/antigravity/{id}", func(w http.ResponseWriter, r *http.Request) {
+		saveProviderAccount(w, r, "antigravity")
+	})
 
 	mux.HandleFunc("DELETE /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		authSvc.Cancel(r.PathValue("id"))
+		send(w, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("DELETE /api/auth/antigravity/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
 			return
@@ -611,12 +628,11 @@ func writeProxyError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func providerModels(a *storage.Account) []providers.ModelInfo {
-	switch a.Provider {
-	case "workbuddy":
-		return workbuddyProvider.ListModels(a.Region)
-	default:
-		return traeProvider.ListModels(a.Region)
+	p, err := providers.Get(a.Provider)
+	if err != nil {
+		return []providers.ModelInfo{}
 	}
+	return p.ListModels(a.Region)
 }
 func Serve(ctx context.Context, data string) error {
 	release, e := desktop.Lock("Local\\XiaoTao.Service." + Key(data))

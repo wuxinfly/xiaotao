@@ -3,9 +3,11 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"xiaotao/xt-client/internal/providers"
+	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
@@ -20,17 +22,27 @@ func traeRefresh(refresh, region string) (*providers.Credential, error) {
 }
 
 func providerRefresh(ctx context.Context, provider string, cred *providers.Credential) (*providers.Credential, error) {
-	if provider == "workbuddy" {
+	switch provider {
+	case "antigravity":
+		return antigravity.Refresh(ctx, cred)
+	case "workbuddy":
 		return workbuddy.Refresh(ctx, "", cred)
+	case "trae":
+		return traeRefresh(cred.RefreshToken, cred.Region)
 	}
-	return traeRefresh(cred.RefreshToken, cred.Region)
+	return nil, fmt.Errorf("unknown provider %q", provider)
 }
 
 func providerQuota(ctx context.Context, provider string, cred *providers.Credential) (*storage.QuotaSnapshot, error) {
-	if provider == "workbuddy" {
+	switch provider {
+	case "antigravity":
+		return antigravity.FetchQuota(ctx, cred)
+	case "workbuddy":
 		return workbuddy.FetchQuota(ctx, "", cred)
+	case "trae":
+		return traeFetchQuota(cred, cred.MachineID, cred.DeviceID)
 	}
-	return traeFetchQuota(cred, cred.MachineID, cred.DeviceID)
+	return nil, fmt.Errorf("unknown provider %q", provider)
 }
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

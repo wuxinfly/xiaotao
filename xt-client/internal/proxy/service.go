@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"xiaotao/xt-client/internal/providers"
+	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
@@ -83,12 +84,21 @@ func (s *Service) Models() ([]map[string]any, error) {
 }
 
 func listProviderModels(acct storage.Account) []providers.ModelInfo {
-	switch acct.Provider {
-	case "workbuddy":
-		return workbuddy.Provider{}.ListModels(acct.Region)
-	default:
-		return trae.Provider{}.ListModels(acct.Region)
+	p, err := providers.Get(acct.Provider)
+	if err != nil {
+		return []providers.ModelInfo{}
 	}
+	return p.ListModels(acct.Region)
+}
+
+func providerCollector(provider string) (providers.ChatCollector, bool) {
+	switch provider {
+	case "antigravity":
+		return antigravity.Collector{}, true
+	case "workbuddy":
+		return workbuddy.Collector{}, true
+	}
+	return nil, false
 }
 
 func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
@@ -97,18 +107,14 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Model    string          `json:"model"`
-		Stream   bool            `json:"stream"`
-		Messages json.RawMessage `json:"messages"`
-		Tools    json.RawMessage `json:"tools"`
+		Model      string          `json:"model"`
+		Stream     bool            `json:"stream"`
+		Messages   json.RawMessage `json:"messages"`
+		Tools      json.RawMessage `json:"tools"`
+		ToolChoice any             `json:"tool_choice"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&body); err != nil {
 		writeError(w, 400, "invalid_request_error", "请求体无法解析")
-		return
-	}
-	model := strings.TrimPrefix(body.Model, "trae/")
-	if model == "" {
-		writeError(w, 400, "invalid_request_error", "缺少 model")
 		return
 	}
 	var msgs []map[string]any
@@ -126,6 +132,21 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	p := s.store.Proxy()
 	acct, ok := s.store.Account(p.DefaultAccountID)
+	isWorkBuddy := ok && acct.Provider == "workbuddy"
+	model := ""
+	if isWorkBuddy {
+		if !strings.HasPrefix(body.Model, "workbuddy/") {
+			writeError(w, 400, "invalid_request_error", "模型必须以 workbuddy/ 开头")
+			return
+		}
+		model = strings.TrimPrefix(body.Model, "workbuddy/")
+	} else {
+		model = strings.TrimPrefix(body.Model, "trae/")
+	}
+	if model == "" {
+		writeError(w, 400, "invalid_request_error", "缺少 model")
+		return
+	}
 	id := "chatcmpl-" + randHex()
 	created := time.Now().Unix()
 	ctx := r.Context()
@@ -181,19 +202,30 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	upstream := map[string]any{
-		"function": "chat_v3", "request_id": randHex(), "session_id": randHex(),
-	}
-	upstream["messages"] = trae.NativeMessages(msgs)
-	if len(body.Tools) > 0 {
-		upstream["tools"] = convertTools(tools)
+	var upstream map[string]any
+	if acct.Provider == "workbuddy" {
+		upstream = map[string]any{"messages": msgs}
+		if reqChoice := normalizeToolChoice(body.ToolChoice); reqChoice != "" {
+			upstream["tool_choice"] = reqChoice
+		}
+		if len(tools) > 0 {
+			upstream["tools"] = tools
+		}
+	} else {
+		upstream = map[string]any{
+			"function": "chat_v3", "request_id": randHex(), "session_id": randHex(),
+		}
+		upstream["messages"] = trae.NativeMessages(msgs)
+		if len(body.Tools) > 0 {
+			upstream["tools"] = convertTools(tools)
+		}
 	}
 	if body.Stream {
 		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream)
 		return
 	}
-	if acct.Provider == "workbuddy" {
-		result, err := workbuddy.Collector{}.Collect(ctx, &cred, model, upstream)
+	if collector, ok := providerCollector(acct.Provider); ok {
+		result, err := collector.Collect(ctx, &cred, model, upstream)
 		if err != nil {
 			if reqTracker != nil {
 				if ctx.Err() != nil {
@@ -625,7 +657,29 @@ func upstreamHTTPStatus(err error) int {
 	if errors.As(err, &upstream) {
 		return upstream.Status
 	}
+	var httpStatus interface{ UpstreamStatus() int }
+	if errors.As(err, &httpStatus) {
+		return httpStatus.UpstreamStatus()
+	}
 	return 502
+}
+
+// normalizeToolChoice collapses the structured OpenAI tool_choice form
+// ({"type":"function","function":{"name":"x"}}) into the plain string that
+// OpenAI-compatible upstreams expect ("x"). Valid string values pass through.
+func normalizeToolChoice(choice any) string {
+	switch value := choice.(type) {
+	case string:
+		return value
+	case map[string]any:
+		if value["type"] != "function" {
+			return ""
+		}
+		fn, _ := value["function"].(map[string]any)
+		name, _ := fn["name"].(string)
+		return name
+	}
+	return ""
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

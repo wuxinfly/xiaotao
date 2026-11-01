@@ -182,11 +182,19 @@ export function AccountsPage() {
     return (
       <section className="accounts-flow" aria-live="polite">
         <div className="flow-card">
-          <h2>{loginProvider === "workbuddy" ? "等待 WorkBuddy 授权" : "等待 Trae 授权"}</h2>
+          <h2>
+            {loginProvider === "workbuddy"
+              ? "等待 WorkBuddy 授权"
+              : loginProvider === "antigravity"
+                ? "等待 Google 授权"
+                : "等待 Trae 授权"}
+          </h2>
           <p>
             {loginProvider === "workbuddy"
               ? "正在打开 WorkBuddy 授权页面。如果没有自动打开，请使用下方按钮或复制链接。"
-              : "已在默认浏览器打开授权页面。完成登录后小涛会自动接入。"}
+              : loginProvider === "antigravity"
+                ? "正在打开 Google 授权页面。完成 Google OAuth 授权后小涛会自动接入。"
+                : "已在默认浏览器打开授权页面。完成登录后小涛会自动接入。"}
           </p>
           {loginProvider === "workbuddy" && session?.loginUrl && (
             <div className="copy-field">

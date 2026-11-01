@@ -24,17 +24,19 @@ type Info struct {
 }
 
 type Credential struct {
-	RefreshToken   string
-	AccessToken    string
-	ExpiresAt      int64
-	UID            string
-	Nickname       string
-	MachineID      string
-	DeviceID       string
-	Region         string
-	Domain         string
+	RefreshToken string
+	AccessToken  string
+	ExpiresAt    int64
+	UID          string
+	Nickname     string
+	ProjectID    string
+	AuthTier     string
 	EnterpriseID   string
 	DepartmentInfo string
+	MachineID    string
+	DeviceID     string
+	Region       string
+	Domain       string
 }
 
 type Provider interface {
