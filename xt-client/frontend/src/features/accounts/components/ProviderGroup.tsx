@@ -8,7 +8,6 @@ interface ProviderGroupProps {
   providerId: string;
   providerInfo?: ProviderInfo;
   accounts: Account[];
-  defaultAccountId: string;
   busyId: string | null;
   onAddAccount: (providerId: string) => void;
   onToggleEnable: (account: Account) => Promise<void>;
@@ -20,7 +19,6 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   providerId,
   providerInfo,
   accounts,
-  defaultAccountId,
   busyId,
   onAddAccount,
   onToggleEnable,
@@ -96,7 +94,6 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             <AccountCard
               key={acct.id}
               account={acct}
-              isDefault={defaultAccountId === acct.id}
               isBusy={busyId === acct.id}
               onToggleEnable={onToggleEnable}
               onRefreshQuota={onRefreshQuota}

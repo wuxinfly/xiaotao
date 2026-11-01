@@ -29,10 +29,6 @@ export interface Account {
   usageCalls: number;
 }
 
-export interface ProxySettings {
-  defaultAccountId: string;
-}
-
 export interface ProviderInfo {
   id: string;
   displayName: string;
@@ -160,14 +156,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface ModelCatalog {
   models: { id: string; displayName?: string; multimodal: boolean }[];
-  source: 'live' | 'builtin' | 'merged' | 'cached';
+  source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error';
+  error?: string;
 }
 
 export const api = {
   accountModels: (id: string) => request<ModelCatalog>(`/api/proxy/models?accountId=${encodeURIComponent(id)}`, { method: 'POST' }),
   providers: () => request<{ providers: ProviderInfo[] }>('/api/providers'),
-  accounts: () => request<{ accounts: Account[]; proxy: ProxySettings }>('/api/accounts'),
-  startLogin: (provider = 'trae') => request<LoginSession>(`/api/auth/${provider}`, { method: 'POST' }),
+  accounts: () => request<{ accounts: Account[] }>('/api/accounts'),
+  startLogin: (provider = 'trae', region = 'cn') => request<LoginSession>(`/api/auth/${provider}`, { method: 'POST', body: JSON.stringify({ region }) }),
   pollLogin: (id: string, provider = 'trae') =>
     request<{ status: string; accountId?: string; nickname?: string; error?: string }>(`/api/auth/${provider}/${id}`),
   cancelLogin: (id: string, provider = 'trae') => request<{ ok: boolean }>(`/api/auth/${provider}/${id}`, { method: 'DELETE' }),
@@ -177,8 +174,6 @@ export const api = {
   refreshQuota: (id: string) => request<QuotaSnapshot>(`/api/accounts/${id}/quota`, { method: 'POST' }),
   proxyKey: () => request<{ key: string }>('/api/proxy/key'),
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
-  saveProxy: (body: { defaultAccountId?: string }) =>
-    request<ProxySettings>('/api/proxy/settings', { method: 'PUT', body: JSON.stringify(body) }),
   dashboard: () => request<DashboardSnapshot>('/api/dashboard'),
   subscribeDashboard: (
     onSnapshot: (snap: DashboardSnapshot) => void,

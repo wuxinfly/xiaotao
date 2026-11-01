@@ -101,23 +101,12 @@ func (a *AccountService) providerID(id string) string {
 }
 
 func (a *AccountService) refreshToken(id string, cred *providers.Credential) error {
-	newCred, err := providerRefresh(context.Background(), a.providerID(id), cred)
-	if err != nil {
-		return err
+	acct, ok := a.Store.Account(id)
+	if !ok {
+		return fmt.Errorf("account deleted")
 	}
-	newCred.UID = cred.UID
-	newCred.MachineID = cred.MachineID
-	newCred.DeviceID = cred.DeviceID
-	b, err := jsonMarshal(newCred)
-	if err != nil {
-		return err
-	}
-	if err := a.Store.SaveSecret(id, b, encryptFn); err != nil {
-		return err
-	}
-	return a.Store.UpdateAccount(id, func(acct *storage.Account) { acct.AuthState = "valid" })
+	return refreshStoredCredential(context.Background(), a.Store, a.secret, acct, cred)
 }
-
 func (a *AccountService) CacheFresh(id string, maxAge int64) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()

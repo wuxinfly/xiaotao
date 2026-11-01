@@ -12,13 +12,16 @@ import (
 	"time"
 	"xiaotao/xt-client/internal/app"
 	"xiaotao/xt-client/internal/desktop"
+	"xiaotao/xt-client/internal/logging"
+	"xiaotao/xt-client/internal/runtimeenv"
 )
 
 func main() {
+	environment := runtimeenv.Current()
 	if e := run(); e != nil {
 		log.Print(e)
 		if !hasServiceFlag() {
-			desktop.Alert(e.Error())
+			desktop.Alert(environment.DisplayName, e.Error())
 		}
 		os.Exit(1)
 	}
@@ -39,12 +42,13 @@ func run() error {
 	status := flag.Bool("status", false, "显示服务地址")
 	stop := flag.Bool("stop", false, "停止服务")
 	flag.Parse()
+	environment := runtimeenv.Current()
 	if *data == "" {
 		base := os.Getenv("LOCALAPPDATA")
 		if base == "" {
 			return fmt.Errorf("LOCALAPPDATA unavailable")
 		}
-		*data = filepath.Join(base, "XiaoTao")
+		*data = runtimeenv.DefaultDataDir(base)
 	}
 	abs, e := filepath.Abs(*data)
 	if e != nil {
@@ -54,12 +58,12 @@ func run() error {
 	if e = os.MkdirAll(*data, 0700); e != nil {
 		return e
 	}
-	f, e := os.OpenFile(filepath.Join(*data, "client.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	logger, e := logging.Open(filepath.Join(*data, "logs"))
 	if e != nil {
 		return e
 	}
-	defer f.Close()
-	log.SetOutput(f)
+	defer logger.Close()
+	log.SetOutput(logger)
 	if *service {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
@@ -105,22 +109,22 @@ func run() error {
 			}
 		}
 		if !ready {
-			return fmt.Errorf("服务启动超时，请查看 client.log")
+			return fmt.Errorf("服务启动超时，请查看 %s", logger.Path())
 		}
 	}
 	if *browser {
 		return desktop.Browser(s.URL)
 	}
 	if *window {
-		release, e := desktop.Lock("Local\\XiaoTao.Window." + app.Key(*data))
+		release, e := desktop.Lock(runtimeenv.WindowMutex(app.Key(*data)))
 		if e != nil {
-			if desktop.ShowExisting() {
+			if desktop.ShowExisting(environment.DisplayName) {
 				return nil
 			}
 			return desktop.Browser(s.URL)
 		}
 		defer release()
-		if e = desktop.Window(s.URL, *data, s.Token); e != nil {
+		if e = desktop.Window(s.URL, *data, s.Token, environment.DisplayName); e != nil {
 			log.Print(e)
 			return desktop.Browser(s.URL)
 		}

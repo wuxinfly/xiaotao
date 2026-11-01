@@ -1085,6 +1085,11 @@
   gap: 10px;
 }
 
+.qoder-region-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--text-muted, #8fa9b8); font-size: 12px; }
+.qoder-region-field select { min-width: 124px; padding: 8px 12px; border: 1px solid #255570; border-radius: 8px; background: #0a2232; color: #dce8f5; font: inherit; cursor: pointer; transition: border-color 160ms, background 160ms; }
+.qoder-region-field select:hover { background: #103043; border-color: #43829c; }
+.qoder-region-field select:focus-visible { outline: 2px solid #59dfdd; outline-offset: 3px; }
+
 .add-provider-item {
   display: flex;
   align-items: center;

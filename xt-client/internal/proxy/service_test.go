@@ -62,7 +62,7 @@ func TestProxy_AuthorizedWithNoReadyAccount(t *testing.T) {
 	svc.SetUsage(usageSvc)
 
 	// Request with valid API key but no account configured
-	r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}`))
+	r := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"trae/gpt-4","messages":[{"role":"user","content":"hi"}]}`))
 	r.Header.Set("Authorization", "Bearer valid-key")
 	w := httptest.NewRecorder()
 
@@ -83,7 +83,7 @@ func TestProxy_AuthorizedWithNoReadyAccount(t *testing.T) {
 	if rec.Status != usage.StatusFailed {
 		t.Errorf("expected status %s, got %s", usage.StatusFailed, rec.Status)
 	}
-	if !strings.Contains(rec.ErrorSummary, "缺少可用账号") {
+	if !strings.Contains(rec.ErrorSummary, "没有可用的已启用账号") {
 		t.Errorf("expected error summary to mention missing account, got %s", rec.ErrorSummary)
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
+	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
@@ -23,6 +24,8 @@ func traeRefresh(refresh, region string) (*providers.Credential, error) {
 
 func providerRefresh(ctx context.Context, provider string, cred *providers.Credential) (*providers.Credential, error) {
 	switch provider {
+	case "qoder":
+		return qoder.Refresh(ctx, cred)
 	case "antigravity":
 		return antigravity.Refresh(ctx, cred)
 	case "workbuddy":
@@ -30,11 +33,18 @@ func providerRefresh(ctx context.Context, provider string, cred *providers.Crede
 	case "trae":
 		return traeRefresh(cred.RefreshToken, cred.Region)
 	}
+	if p, err := providers.Get(provider); err == nil {
+		if refresher, ok := p.(providers.Refresher); ok {
+			return refresher.Refresh(ctx, cred)
+		}
+	}
 	return nil, fmt.Errorf("unknown provider %q", provider)
 }
 
 func providerQuota(ctx context.Context, provider string, cred *providers.Credential) (*storage.QuotaSnapshot, error) {
 	switch provider {
+	case "qoder":
+		return qoder.FetchQuota(ctx, cred)
 	case "antigravity":
 		return antigravity.FetchQuota(ctx, cred)
 	case "workbuddy":

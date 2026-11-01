@@ -2,7 +2,7 @@
 
 ## 范围
 
-在 `xt-client` 中用 Go 原生接入 Google Antigravity，认证和协议转换参考 `E:\code_my\utils\buddy-proxy`（MIT 许可）。首期完成：Google OAuth 添加账号 → `loadCodeAssist`/`onboardUser` 项目初始化 → 内置模型表 → 配额查询 → 设为默认账号 → 外部工具调用。不含自动换号、账号冷却、跨渠道路由、agy 登录态导入、图片生成、Responses 和 Anthropic Messages 接口。
+在 `xt-client` 中用 Go 原生接入 Google Antigravity，认证和协议转换参考 `E:\code_my\utils\buddy-proxy`（MIT 许可）。首期完成：Google OAuth 添加账号 → `loadCodeAssist`/`onboardUser` 项目初始化 → 内置模型表 → 配额查询 → 设为默认账号 → 外部工具调用。同来源账号支持请求内 429/403 主备降级与短期冷却；不含跨渠道自动换号、agy 登录态导入、图片生成、Responses 和 Anthropic Messages 接口。
 
 ## 模块
 
@@ -32,7 +32,7 @@
 
 OpenAI messages 中 `system` / `developer` 内容转为 Gemini `systemInstruction`。Antigravity 服务端风控要求请求自称 Antigravity，因此在 systemInstruction 前注入两段身份文本（原文 + `[ignore]` 包裹副本，让模型读到身份但不自称）；用户自己的 system/developer 追加在后面，其中已知竞品身份断言（"You are Claude/Codex/ChatGPT/GPT"）替换为中性表述，用户正文、工具参数和工具结果不做替换。
 
-`user` / `assistant` / `tool` 角色转为 Gemini `contents`。`tool` 消息转 `functionResponse` 并并入前一个 user turn（当它只含 functionResponse 时）；`assistant.tool_calls` 转 `functionCall`，保持 id 配对，为对外调用生成唯一 `call_*` ID。tools 声明转为 `functionDeclarations`（JSON Schema 做最小清洗），`tool_choice` 映射为 `functionCallingConfig.mode`。`temperature`、`top_p`、`max_tokens`、`stop` 和 `reasoning_effort` 映射到 `generationConfig`。
+`user` / `assistant` / `tool` 角色转为 Gemini `contents`。`tool` 消息转 `functionResponse` 并并入前一个 user turn（当它只含 functionResponse 时）；`assistant.tool_calls` 转 `functionCall`，保持 id 配对，为对外调用生成唯一 `call_*` ID。相邻同角色 turn 会合并为单个 Gemini turn，避免 OpenAI 客户端连续消息触发上游校验。tools 声明转为 `functionDeclarations`（JSON Schema 做最小清洗），`tool_choice` 映射为 `functionCallingConfig.mode`。`temperature`、`top_p`、`max_tokens`、`stop` 和 `reasoning_effort` 映射到 `generationConfig`。对话请求的 `User-Agent` 追加实际上游模型名，与参考 Antigravity 客户端指纹一致。
 
 ### 响应方向（Gemini → OpenAI）
 
@@ -42,7 +42,11 @@ OpenAI messages 中 `system` / `developer` 内容转为 Gemini `systemInstructio
 
 ### thoughtSignature
 
-Gemini 3 系在 `functionCall` part 上返回 `thoughtSignature`，多轮工具调用时上游强制校验。小涛使用按账号隔离的有界内存 LRU 缓存（2048 条）回传签名；客户端显式带 `gemini_thought_signature` 时优先使用。签名不可用时（缓存 miss 或重启后）对 Gemini 模型注入 `skip_thought_signature_validator` 哨兵，Claude/GPT-OSS 模型不注入。
+Gemini 3 系在包含 `functionCall` 的 part 外层返回 `thoughtSignature`，多轮工具调用时上游强制校验；它不能嵌进 `functionCall` 对象。小涛使用按账号隔离的有界内存 LRU 缓存（2048 条）回传签名；客户端显式带 `gemini_thought_signature` 时优先使用。签名不可用时（缓存 miss 或重启后）对 Gemini 模型注入 `skip_thought_signature_validator` 哨兵，Claude/GPT-OSS 模型不注入。
+
+### 账号降级
+
+Antigravity 请求按账号添加顺序尝试同来源、同模型的启用账号。HTTP 429 或 403 在尚未向客户端提交内容时视为账号级失败，当前账号进入短冷却（1 分钟）并尝试下一个账号；429 不一定是额度耗尽，因此不做长冷却。流式响应在首个文本、思考或工具事件前保持闸门，确认可用后才开始输出 SSE，首个语义事件之后绝不再换号重放。所有候选账号都失败时返回最后一次上游状态；全部账号处于冷却时返回明确的 429 限流提示。成功切换后，用量记录归属实际服务账号。
 
 ## 模型表
 
@@ -65,8 +69,8 @@ Gemini 3 系在 `functionCall` part 上返回 `thoughtSignature`，多轮工具�
 
 ## 已知限制
 
-- 单账号：无自动换号和冷却，配额耗尽直接报错。
-- 首事件闸门（上游 429/403 带内错误时换号）未实现；本版本对带内错误直接返回。
+- 仅 Antigravity 启用账号级请求内降级；Trae、WorkBuddy 和 Qoder 仍保持各自现有路由行为。
+- 冷却状态只存在内存，服务重启后清空并重新探测账号。
 - 图片生成模型（`gemini-3.1-flash-image`）未纳入模型表。
 - 真实账号验收尚未完成：模型族可用性、连续工具调用、签名缓存未命中等均需用户实测确认。
 

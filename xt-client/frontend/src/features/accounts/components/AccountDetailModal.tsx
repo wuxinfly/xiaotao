@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { Account, ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
 import {
@@ -11,25 +12,23 @@ import {
 interface AccountDetailModalProps {
   account: Account | null;
   providerInfo?: ProviderInfo;
-  isDefault: boolean;
   isBusy: boolean;
   onClose: () => void;
   onToggleEnable: (account: Account) => Promise<void>;
-  onSetDefault: (id: string) => Promise<void>;
   onRefreshQuota: (account: Account) => Promise<void>;
   onDeleteAccount: (account: Account) => Promise<void>;
+  onRelogin?: (account: Account) => void;
 }
 
 export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   account,
   providerInfo,
-  isDefault,
   isBusy,
   onClose,
   onToggleEnable,
-  onSetDefault,
   onRefreshQuota,
   onDeleteAccount,
+  onRelogin,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +54,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   const isAuthValid = account.authState === 'valid';
   const isQuotaError = account.quota?.status === 'error';
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       role="dialog"
@@ -92,7 +91,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
             </div>
             <div className="profile-info-col">
               <h4 className="profile-name" title={displayName}>{displayName}</h4>
-              <span className="profile-source">来自 {providerName}</span>
+              <span className="profile-source">来自 {providerName}{account.provider === 'qoder' ? (account.region === 'global' ? ' · 海外版' : ' · 国内版') : ''}</span>
               <div className="profile-status-capsules">
                 <span className={`status-capsule ${isAuthValid ? 'auth-ok' : 'auth-warn'}`}>
                   <span className="capsule-dot" />
@@ -111,9 +110,6 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
                   <span className="pill-text">{account.enabled ? '已启用' : '已停用'}</span>
                 </label>
 
-                {isDefault && (
-                  <span className="status-capsule default-badge">默认账号</span>
-                )}
               </div>
             </div>
           </div>
@@ -146,7 +142,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
                   const formatted = formatQuotaItemLine(item);
                   return (
                     <div key={idx} className="sub-item-row">
-                      <span className="sub-item-label">{item.label}</span>
+                      <span className="sub-item-label">{item.label}{item.expireAt ? <small> · {new Date(item.expireAt * 1000).toLocaleDateString('zh-CN')} 到期</small> : null}</span>
                       <div className="sub-item-value">
                         <span className="sub-val-cur">{formatted.usedText}</span>
                         <span className="sub-val-slash">/</span>
@@ -203,21 +199,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
               </svg>
               <span>刷新配额</span>
             </button>
-
-            {isDefault ? (
-              <button type="button" className="dialog-btn default-disabled" disabled>
-                已是默认
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="dialog-btn secondary"
-                disabled={isBusy}
-                onClick={() => onSetDefault(account.id)}
-              >
-                设为默认
-              </button>
-            )}
+            {onRelogin && <button type="button" className="dialog-btn" disabled={isBusy} onClick={() => onRelogin(account)}>重新登录</button>}
 
             <button
               type="button"
@@ -229,6 +211,6 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 };

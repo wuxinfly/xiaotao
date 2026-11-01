@@ -12,7 +12,7 @@ import (
 // FetchModels merges public discoveries with curated routes. The upstream
 // catalog omits some verified premium models and includes obsolete/internal ones.
 func FetchModels(ctx context.Context, cred *providers.Credential) ([]providers.ModelInfo, error) {
-	payload, err := upstreamRequest(ctx, cred.AccessToken, "fetchAvailableModels", map[string]any{}, false)
+	payload, err := upstreamRequest(ctx, cred.AccessToken, "fetchAvailableModels", "", map[string]any{}, false)
 	if err != nil {
 		return nil, err
 	}

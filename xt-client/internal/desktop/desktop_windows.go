@@ -41,12 +41,12 @@ func Browser(url string) error {
 	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url).Start()
 }
 
-func Alert(message string) {
+func Alert(titleText, message string) {
 	text, _ := windows.UTF16PtrFromString(message)
-	title, _ := windows.UTF16PtrFromString("小涛")
+	title, _ := windows.UTF16PtrFromString(titleText)
 	windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(text)), uintptr(unsafe.Pointer(title)), 0x10)
 }
-func Window(url, data, token string) error {
+func Window(url, data, token, title string) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if _, err := webviewloader.GetInstalledVersion(); err != nil {
@@ -56,7 +56,7 @@ func Window(url, data, token string) error {
 	closeSplash := playNativeSplash()
 	defer closeSplash()
 
-	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: "小涛", Width: 1280, Height: 720, Center: true}})
+	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: title, Width: 1280, Height: 720, Center: true}})
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
@@ -90,7 +90,7 @@ func Window(url, data, token string) error {
 	}); err != nil {
 		return fmt.Errorf("bind directory actions: %w", err)
 	}
-	cleanup := chrome(w, url, token, closeSplash)
+	cleanup := chrome(w, url, token, title, closeSplash)
 	defer cleanup()
 	w.Navigate(url)
 	done := make(chan struct{})

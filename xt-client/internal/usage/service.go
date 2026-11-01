@@ -196,6 +196,16 @@ func (ar *ActiveRequest) SetAction(tag, title string) {
 	ar.s.markDirty()
 }
 
+// SetAccount records the account that ultimately served a failover request.
+func (ar *ActiveRequest) SetAccount(accountID string) {
+	ar.mu.Lock()
+	defer ar.mu.Unlock()
+	if accountID != "" {
+		ar.rec.AccountID = accountID
+		ar.s.markDirty()
+	}
+}
+
 // OnStreamDelta is called incrementally as text/tokens arrive from upstream during streaming.
 func (ar *ActiveRequest) OnStreamDelta(deltaText string) {
 	ar.mu.Lock()

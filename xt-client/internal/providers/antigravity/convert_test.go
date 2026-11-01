@@ -89,3 +89,68 @@ func TestBuildRequest_UserContentNotScrubbed(t *testing.T) {
 		t.Errorf("user text should not be scrubbed, got %q", parts[0]["text"])
 	}
 }
+
+func TestBuildRequest_PutsThoughtSignatureOnFunctionCallPart(t *testing.T) {
+	body := map[string]any{
+		"messages": []map[string]any{
+			{"role": "user", "content": "read a file"},
+			{
+				"role": "assistant",
+				"tool_calls": []any{
+					map[string]any{
+						"id":   "call_1",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "read_file",
+							"arguments": `{"path":"README.md"}`,
+						},
+						"gemini_thought_signature": "signed",
+					},
+				},
+			},
+			{"role": "tool", "tool_call_id": "call_1", "content": `{"ok":true}`},
+		},
+	}
+	envelope := buildRequest(body, "p", "gemini-3.8-flash-tiered", NewSignatureCache())
+	inner := envelope["request"].(map[string]any)
+	contents := inner["contents"].([]map[string]any)
+	if len(contents) != 3 {
+		t.Fatalf("expected 3 content entries, got %d", len(contents))
+	}
+	part := contents[1]["parts"].([]map[string]any)[0]
+	if part["thoughtSignature"] != "signed" {
+		t.Errorf("thoughtSignature should be on the functionCall part, got %v", part)
+	}
+	call := part["functionCall"].(map[string]any)
+	if _, exists := call["thoughtSignature"]; exists {
+		t.Errorf("thoughtSignature must not be nested in functionCall, got %v", call)
+	}
+}
+
+func TestMessagesToContentsMergesAdjacentRoles(t *testing.T) {
+	body := map[string]any{
+		"messages": []map[string]any{
+			{"role": "user", "content": "first"},
+			{"role": "user", "content": "second"},
+			{"role": "assistant", "content": "one"},
+			{"role": "assistant", "content": "two"},
+			{"role": "tool", "tool_call_id": "call_1", "content": `{"ok":true}`},
+			{"role": "tool", "tool_call_id": "call_2", "content": `{"ok":true}`},
+		},
+	}
+	envelope := buildRequest(body, "p", "gemini-3.8-flash-tiered", NewSignatureCache())
+	inner := envelope["request"].(map[string]any)
+	contents := inner["contents"].([]map[string]any)
+	if len(contents) != 3 {
+		t.Fatalf("expected alternating roles, got %d contents: %v", len(contents), contents)
+	}
+	if got := len(contents[0]["parts"].([]map[string]any)); got != 2 {
+		t.Errorf("expected adjacent user text merged, got %d parts", got)
+	}
+	if got := len(contents[1]["parts"].([]map[string]any)); got != 2 {
+		t.Errorf("expected adjacent assistant text merged, got %d parts", got)
+	}
+	if got := len(contents[2]["parts"].([]map[string]any)); got != 2 {
+		t.Errorf("expected adjacent tool responses merged, got %d parts", got)
+	}
+}

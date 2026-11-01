@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -348,9 +347,11 @@ func msToSeconds(ms int64) int64 {
 func stableMachineID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("wb-%d", time.Now().UnixNano())
+		return "00000000-0000-4000-8000-000000000000"
 	}
-	return hex.EncodeToString(b)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func post(ctx context.Context, endpoint string, body any, headers map[string]string) ([]byte, error) {

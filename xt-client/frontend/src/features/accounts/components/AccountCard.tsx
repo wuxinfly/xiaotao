@@ -4,7 +4,6 @@ import { calculateQuotaSummary } from '../quotaUtils';
 
 interface AccountCardProps {
   account: Account;
-  isDefault: boolean;
   isBusy: boolean;
   onToggleEnable: (account: Account) => Promise<void>;
   onRefreshQuota: (account: Account) => Promise<void>;
@@ -13,7 +12,6 @@ interface AccountCardProps {
 
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
-  isDefault,
   isBusy,
   onToggleEnable,
   onRefreshQuota,
@@ -35,6 +33,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             {displayName}
           </h4>
           <div className="card-badges">
+            {account.provider === 'qoder' && <span className="badge-pill">{account.region === 'global' ? '海外版' : '国内版'}</span>}
             {isAuthValid && (
               <span className="badge-pill badge-auth-valid">
                 <span className="dot" aria-hidden="true" />
@@ -47,7 +46,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 登录失效
               </span>
             )}
-            {isDefault && <span className="badge-pill badge-default">默认</span>}
           </div>
         </div>
 

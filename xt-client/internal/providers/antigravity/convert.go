@@ -129,6 +129,7 @@ func generationConfig(body map[string]any) map[string]any {
 // functionCall sequence.
 func messagesToContents(messages []map[string]any, model string, signatureCache *SignatureCache) []map[string]any {
 	contents := []map[string]any{}
+	knownNames := map[string]string{}
 	for _, msg := range messages {
 		role, _ := msg["role"].(string)
 		switch role {
@@ -146,7 +147,10 @@ func messagesToContents(messages []map[string]any, model string, signatureCache 
 			callID, _ := msg["tool_call_id"].(string)
 			name, _ := msg["name"].(string)
 			if name == "" && callID != "" {
-				name, _ = signatureCache.Lookup(callID)
+				name = knownNames[callID]
+				if name == "" {
+					name, _ = signatureCache.Lookup(callID)
+				}
 			}
 			name = sanitizeFunctionName(name)
 			if name == "" || name == "_" {
@@ -201,11 +205,13 @@ func messagesToContents(messages []map[string]any, model string, signatureCache 
 					fc := map[string]any{"name": sanitizeFunctionName(name), "args": args}
 					if callID != "" {
 						fc["id"] = callID
+						knownNames[callID] = name
 					}
+					part := map[string]any{"functionCall": fc}
 					if signature != "" {
-						fc["thoughtSignature"] = signature
+						part["thoughtSignature"] = signature
 					}
-					parts = append(parts, map[string]any{"functionCall": fc})
+					parts = append(parts, part)
 				}
 			}
 		} else {
@@ -216,7 +222,19 @@ func messagesToContents(messages []map[string]any, model string, signatureCache 
 		}
 		contents = append(contents, map[string]any{"role": role, "parts": parts})
 	}
-	return contents
+	// Gemini expects adjacent turns to alternate. OpenAI clients can emit
+	// consecutive assistant messages, so merge same-role turns like the
+	// reference proxy does.
+	merged := make([]map[string]any, 0, len(contents))
+	for _, content := range contents {
+		if len(merged) > 0 && merged[len(merged)-1]["role"] == content["role"] {
+			last := merged[len(merged)-1]
+			last["parts"] = append(last["parts"].([]map[string]any), content["parts"].([]map[string]any)...)
+			continue
+		}
+		merged = append(merged, content)
+	}
+	return merged
 }
 
 func allFunctionResponses(parts []map[string]any) bool {

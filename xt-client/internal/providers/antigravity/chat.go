@@ -27,7 +27,7 @@ func (Collector) Collect(ctx context.Context, cred *providers.Credential, model 
 	}
 	cache := NewSignatureCache()
 	envelope := buildRequest(body, cred.ProjectID, upstreamModel, cache)
-	payload, err := upstreamRequest(ctx, cred.AccessToken, "generateContent", envelope, false)
+	payload, err := upstreamRequest(ctx, cred.AccessToken, "generateContent", upstreamModel, envelope, false)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (Streamer) Stream(ctx context.Context, cred *providers.Credential, model st
 	}
 	cache := NewSignatureCache()
 	envelope := buildRequest(body, cred.ProjectID, upstreamModel, cache)
-	resp, err := upstreamStream(ctx, cred.AccessToken, "streamGenerateContent", envelope)
+	resp, err := upstreamStream(ctx, cred.AccessToken, "streamGenerateContent", upstreamModel, envelope)
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func (i *idleTimeoutReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func upstreamRequest(ctx context.Context, token, method string, body map[string]any, _ bool) (map[string]any, error) {
+func upstreamRequest(ctx context.Context, token, method, model string, body map[string]any, _ bool) (map[string]any, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func upstreamRequest(ctx context.Context, token, method string, body map[string]
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range metadataHeaders(token) {
+		for k, v := range metadataHeaders(token, model) {
 			req.Header.Set(k, v)
 		}
 		client := newHTTPClient(connectTimeout + nonStreamTimeout)
@@ -142,7 +142,7 @@ func upstreamRequest(ctx context.Context, token, method string, body map[string]
 	return nil, lastErr
 }
 
-func upstreamStream(ctx context.Context, token, method string, body map[string]any) (*http.Response, error) {
+func upstreamStream(ctx context.Context, token, method, model string, body map[string]any) (*http.Response, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func upstreamStream(ctx context.Context, token, method string, body map[string]a
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range metadataHeaders(token) {
+		for k, v := range metadataHeaders(token, model) {
 			req.Header.Set(k, v)
 		}
 		req.Header.Set("Accept", "text/event-stream")

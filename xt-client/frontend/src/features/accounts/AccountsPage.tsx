@@ -4,7 +4,6 @@ import {
   type Account,
   type LoginSession,
   type ProviderInfo,
-  type ProxySettings,
 } from "../../lib/api";
 import { toast } from "../../components/toast";
 import { ModelEndpointCard } from "./components/ModelEndpointCard";
@@ -18,7 +17,6 @@ type Flow = "idle" | "waiting" | "error";
 export function AccountsPage() {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [proxy, setProxy] = useState<ProxySettings>({ defaultAccountId: "" });
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [flow, setFlow] = useState<Flow>("idle");
@@ -38,7 +36,6 @@ export function AccountsPage() {
         api.providers().catch(() => ({ providers: [] })),
       ]);
       setAccounts(acctData.accounts ?? []);
-      setProxy(acctData.proxy);
       if (provData.providers) {
         setProviders(provData.providers);
       }
@@ -78,12 +75,12 @@ export function AccountsPage() {
     return accounts.find(a => a.id === selectedAccountId) || null;
   }, [accounts, selectedAccountId]);
 
-  const startLogin = async (providerId = "trae") => {
+  const startLogin = async (providerId = "trae", region = "cn") => {
     setShowAddModal(false);
     setFlow("waiting");
     try {
       setLoginProvider(providerId);
-      const sess = await api.startLogin(providerId);
+      const sess = await api.startLogin(providerId, region);
       setSession(sess);
       clearInterval(pollRef.current);
       pollRef.current = setInterval(async () => {
@@ -158,16 +155,6 @@ export function AccountsPage() {
     }
   };
 
-  const handleSetDefault = async (id: string) => {
-    try {
-      const next = await api.saveProxy({ defaultAccountId: id });
-      setProxy(next);
-      toast.success("已设为默认账号");
-    } catch (e) {
-      toast.error(String(e instanceof Error ? e.message : e));
-    }
-  };
-
   const handleRotateKey = async () => {
     try {
       const r = await api.rotateProxyKey();
@@ -183,20 +170,12 @@ export function AccountsPage() {
       <section className="accounts-flow" aria-live="polite">
         <div className="flow-card">
           <h2>
-            {loginProvider === "workbuddy"
-              ? "等待 WorkBuddy 授权"
-              : loginProvider === "antigravity"
-                ? "等待 Google 授权"
-                : "等待 Trae 授权"}
+            等待 {providerMap.get(loginProvider)?.displayName ?? loginProvider} 授权
           </h2>
           <p>
-            {loginProvider === "workbuddy"
-              ? "正在打开 WorkBuddy 授权页面。如果没有自动打开，请使用下方按钮或复制链接。"
-              : loginProvider === "antigravity"
-                ? "正在打开 Google 授权页面。完成 Google OAuth 授权后小涛会自动接入。"
-                : "已在默认浏览器打开授权页面。完成登录后小涛会自动接入。"}
+            已在浏览器打开授权页面。完成登录后自动接入；Qoder 授权链接 10 分钟内有效。
           </p>
-          {loginProvider === "workbuddy" && session?.loginUrl && (
+          {session?.loginUrl && (
             <div className="copy-field">
               <span className="copy-label">授权链接</span>
               <button
@@ -211,7 +190,7 @@ export function AccountsPage() {
           )}
           <div className="flow-spinner" aria-hidden="true" />
           <div className="flow-actions">
-            {loginProvider === "workbuddy" && session?.loginUrl && (
+            {session?.loginUrl && (
               <button
                 type="button"
                 className="btn primary"
@@ -259,7 +238,7 @@ export function AccountsPage() {
         <div className="accounts-flow" style={{ padding: "30px 0" }}>
           <div className="flow-card">
             <h2>还没有接入账号</h2>
-            <p>添加 Trae 或 WorkBuddy 国内账号后，即可在此查看实时配额并将其接入本地模型代理。</p>
+            <p>添加来源账号后，即可查看实时配额并接入本地模型代理。</p>
             <button className="btn primary" onClick={() => setShowAddModal(true)}>添加账号</button>
           </div>
         </div>
@@ -267,7 +246,7 @@ export function AccountsPage() {
         {showAddModal && (
           <AddAccountModal
             providers={providers}
-            onSelectProvider={(pId) => startLogin(pId)}
+            onSelectProvider={(pId, region) => startLogin(pId, region)}
             onClose={() => setShowAddModal(false)}
           />
         )}
@@ -315,9 +294,8 @@ export function AccountsPage() {
             providerId={pKey}
             providerInfo={providerMap.get(pKey)}
             accounts={groupedAccounts[pKey]}
-            defaultAccountId={proxy.defaultAccountId}
             busyId={busyId}
-            onAddAccount={(pId) => startLogin(pId)}
+            onAddAccount={() => setShowAddModal(true)}
             onToggleEnable={handleToggleEnable}
             onRefreshQuota={handleRefreshQuota}
             onOpenDetail={(acct) => setSelectedAccountId(acct.id)}
@@ -329,20 +307,19 @@ export function AccountsPage() {
         <AccountDetailModal
           account={selectedAccount}
           providerInfo={providerMap.get(selectedAccount.provider.toLowerCase())}
-          isDefault={proxy.defaultAccountId === selectedAccount.id}
           isBusy={busyId === selectedAccount.id}
           onClose={() => setSelectedAccountId(null)}
           onToggleEnable={handleToggleEnable}
-          onSetDefault={handleSetDefault}
           onRefreshQuota={handleRefreshQuota}
           onDeleteAccount={handleDeleteAccount}
+          onRelogin={acct => { setSelectedAccountId(null); void startLogin(acct.provider, acct.region); }}
         />
       )}
 
       {showAddModal && (
         <AddAccountModal
           providers={providers}
-          onSelectProvider={(pId) => startLogin(pId)}
+          onSelectProvider={(pId, region) => startLogin(pId, region)}
           onClose={() => setShowAddModal(false)}
         />
       )}

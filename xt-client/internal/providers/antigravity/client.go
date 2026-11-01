@@ -25,10 +25,14 @@ var endpoints = []string{
 
 // metadataHeaders mimic the community-verified Antigravity CLI request
 // fingerprint.  These are the same values buddy-proxy ships with.
-func metadataHeaders(token string) map[string]string {
+func metadataHeaders(token, model string) map[string]string {
+	userAgent := "antigravity/2.0.3 win32/x64"
+	if model != "" {
+		userAgent += " " + model
+	}
 	return map[string]string{
 		"Content-Type":      "application/json",
-		"User-Agent":        "antigravity/2.0.3 win32/x64",
+		"User-Agent":        userAgent,
 		"X-Client-Name":     "antigravity",
 		"X-Client-Version":  "1.110.0",
 		"x-goog-api-client": "gl-node/18.18.2 fire/0.8.6 grpc/1.10.x",
@@ -59,7 +63,7 @@ func postJSON(ctx context.Context, token, method string, body any) (map[string]a
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range metadataHeaders(token) {
+		for k, v := range metadataHeaders(token, "") {
 			req.Header.Set(k, v)
 		}
 		client := newHTTPClient(connectTimeout + nonStreamTimeout)

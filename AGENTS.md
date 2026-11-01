@@ -31,7 +31,7 @@
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。
 - DSH：在 xt-skills/adapters/deepseek-harness 下运行 `npm run typecheck`、`npm test`、`npm run test:package`。
 - 网站：在 website 下运行 `npm run build`。
-- 客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`、`./build.ps1`，详见局部 AGENTS.md。
+- 客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；正式构建运行 `./build.ps1`，UAT 构建运行 `./build.ps1 -Env uat`，详见局部 AGENTS.md。
 - 规则：运行 `node tools/agent-rules.mjs check`；规则源变更后先运行 `render` 再运行 `check`。
 
 ## 规则演进

@@ -23,21 +23,29 @@ import (
 )
 
 type Service struct {
-	store    *storage.Store
-	secret   func(id string) ([]byte, error)
-	usage    *usage.Service
-	mu       sync.Mutex
-	key      string
-	catalogs map[string]catalogSnapshot
+	store     *storage.Store
+	secret    func(id string) ([]byte, error)
+	usage     *usage.Service
+	mu        sync.Mutex
+	key       string
+	catalogs  map[string]catalogSnapshot
+	cooldowns map[string]time.Time
+	collect   func(context.Context, *providers.Credential, string, map[string]any) (map[string]any, error)
+	stream    func(context.Context, *providers.Credential, string, map[string]any, *providers.ChatEvents) error
 }
 
 type catalogSnapshot struct {
-	models []providers.ModelInfo
-	at     time.Time
+	region   string
+	revision string
+	models   []providers.ModelInfo
+	at       time.Time
 }
 
 func New(store *storage.Store, secret func(id string) ([]byte, error), apiKey string) *Service {
-	return &Service{store: store, secret: secret, key: apiKey}
+	return &Service{
+		store: store, secret: secret, key: apiKey,
+		catalogs: map[string]catalogSnapshot{}, cooldowns: map[string]time.Time{},
+	}
 }
 
 func (s *Service) SetUsage(u *usage.Service) {
@@ -71,20 +79,26 @@ func (s *Service) Authorize(r *http.Request) bool {
 }
 
 func (s *Service) Models() ([]map[string]any, error) {
-	p := s.store.Proxy()
-	if p.DefaultAccountID == "" {
-		return []map[string]any{}, nil
-	}
-	acct, ok := s.store.Account(p.DefaultAccountID)
-	if !ok || !acct.Enabled {
-		return []map[string]any{}, nil
-	}
 	out := []map[string]any{}
-	models := s.AccountModels(acct)
-	for _, m := range models {
-		out = append(out, map[string]any{
-			"id": acct.Provider + "/" + m.ID, "object": "model", "created": 0, "owned_by": "xiaotao",
-		})
+	seen := map[string]bool{}
+	for _, acct := range s.store.Accounts() {
+		if !acct.Enabled {
+			continue
+		}
+		models, source := s.AccountModelCatalog(*acct)
+		if acct.Provider == "qoder" && source == "error" {
+			return nil, fmt.Errorf("Qoder model directory unavailable")
+		}
+		for _, m := range models {
+			id := acct.Provider + "/" + m.ID
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, map[string]any{
+				"id": id, "object": "model", "created": 0, "owned_by": "xiaotao",
+			})
+		}
 	}
 	return out, nil
 }
@@ -105,6 +119,12 @@ func (s *Service) AccountModels(acct storage.Account) []providers.ModelInfo {
 
 // AccountModelCatalog also reports whether the catalog was fetched live.
 func (s *Service) AccountModelCatalog(acct storage.Account) ([]providers.ModelInfo, string) {
+	if p, err := providers.Get(acct.Provider); err == nil {
+		if fetcher, ok := p.(providers.ModelFetcher); ok {
+			models, source, _ := s.dynamicCatalog(acct, fetcher, false)
+			return models, source
+		}
+	}
 	fallback := listProviderModels(acct)
 	if acct.Provider != "trae" && acct.Provider != "antigravity" {
 		return fallback, "builtin"
@@ -185,6 +205,11 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 401, "invalid_api_key", "代理访问密钥无效")
 		return
 	}
+	var requestBody json.RawMessage
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&requestBody); err != nil {
+		writeError(w, 400, "invalid_request_error", "请求体无法解析")
+		return
+	}
 	var body struct {
 		ReasoningEffort string          `json:"reasoning_effort"`
 		Model           string          `json:"model"`
@@ -193,7 +218,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		Tools           json.RawMessage `json:"tools"`
 		ToolChoice      any             `json:"tool_choice"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&body); err != nil {
+	if err := json.Unmarshal(requestBody, &body); err != nil {
 		writeError(w, 400, "invalid_request_error", "请求体无法解析")
 		return
 	}
@@ -210,23 +235,12 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p := s.store.Proxy()
-	acct, ok := s.store.Account(p.DefaultAccountID)
-	model := ""
-	if ok && acct.Provider != "trae" {
-		prefix := acct.Provider + "/"
-		if !strings.HasPrefix(body.Model, prefix) {
-			writeError(w, 400, "invalid_request_error", "模型必须以 "+prefix+" 开头")
-			return
-		}
-		model = strings.TrimPrefix(body.Model, prefix)
-	} else {
-		model = strings.TrimPrefix(body.Model, "trae/")
-	}
-	if model == "" {
+	acct, model, ok := s.SelectAccount(body.Model)
+	if body.Model == "" {
 		writeError(w, 400, "invalid_request_error", "缺少 model")
 		return
 	}
+	providerID, _ := splitModelID(body.Model)
 	id := "chatcmpl-" + randHex()
 	created := time.Now().Unix()
 	ctx := r.Context()
@@ -235,21 +249,23 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	if s.usage != nil {
 		acctID := ""
 		channel := "trae"
-		if ok {
-			acctID = acct.ID
-			if acct.Provider != "" {
-				channel = acct.Provider
-			}
+		if acct.Provider != "" {
+			channel = acct.Provider
 		}
+		acctID = acct.ID
 		tag, title := detectAction(msgs, tools)
 		reqTracker = s.usage.StartRequest(id, channel, body.Model, acctID, tag, title)
 	}
 
-	if !ok || !acct.Enabled {
+	if providerID == "antigravity" {
+		s.handleAntigravityWithFailover(ctx, w, reqTracker, id, created, body.Model, body.Stream, msgs, tools, body.ToolChoice, body.ReasoningEffort)
+		return
+	}
+	if !ok {
 		if reqTracker != nil {
-			reqTracker.OnError("缺少可用账号，请在账号页启用并设为默认")
+			reqTracker.OnError("该模型没有可用的已启用账号")
 		}
-		writeError(w, 409, "no_ready_account", "缺少可用账号，请在账号页启用并设为默认")
+		writeError(w, 409, "no_ready_account", "该模型没有可用的已启用账号")
 		return
 	}
 	credBytes, err := s.secret(acct.ID)
@@ -281,6 +297,10 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 401, "account_unauthorized", "账号登录已失效，请重新登录")
 			return
 		}
+	}
+	if acct.Provider == "qoder" {
+		s.handleQoder(ctx, w, reqTracker, acct, &cred, model, body.Stream, requestBody)
+		return
 	}
 	var upstream map[string]any
 	if acct.Provider == "trae" || acct.Provider == "antigravity" {
@@ -660,25 +680,8 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 }
 
 func (s *Service) refreshCredential(acct *storage.Account, cred *providers.Credential) error {
-	next, err := providerRefresh(context.Background(), acct.Provider, cred)
-	if err != nil {
-		return err
-	}
-	next.UID = cred.UID
-	next.Nickname = cred.Nickname
-	next.MachineID = cred.MachineID
-	next.DeviceID = cred.DeviceID
-	b, err := json.Marshal(next)
-	if err != nil {
-		return err
-	}
-	if err := s.store.SaveSecret(acct.ID, b, encryptFn); err != nil {
-		return err
-	}
-	*cred = *next
-	return nil
+	return refreshStoredCredential(context.Background(), s.store, s.secret, *acct, cred)
 }
-
 func streamResult(w http.ResponseWriter, id string, created int64, model string, result *trae.ChatResult) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

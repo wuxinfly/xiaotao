@@ -22,14 +22,13 @@ import (
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/proxy"
+	"xiaotao/xt-client/internal/runtimeenv"
 	"xiaotao/xt-client/internal/secrets"
 	"xiaotao/xt-client/internal/storage"
 	"xiaotao/xt-client/internal/usage"
 )
 
 const Version = "0.1.0-dev"
-
-const defaultPort = "5455"
 
 //go:embed web/*
 var assets embed.FS
@@ -199,7 +198,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
-		send(w, map[string]any{"accounts": store.Accounts(), "proxy": store.Proxy()})
+		send(w, map[string]any{"accounts": store.Accounts()})
 	})
 	mux.HandleFunc("POST /api/accounts/{id}/rename", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
@@ -294,7 +293,25 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
-		sess, err := authSvc.Start(providerID, "")
+		region := ""
+		if providerID == "qoder" {
+			var input struct {
+				Region string `json:"region"`
+			}
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+				apiError(w, 400, "invalid region request")
+				return
+			}
+			region = input.Region
+			if region == "" {
+				region = "cn"
+			}
+			if region != "cn" && region != "global" {
+				apiError(w, 400, "unsupported Qoder region")
+				return
+			}
+		}
+		sess, err := authSvc.Start(providerID, region)
 		if err != nil {
 			apiError(w, 500, "start login failed")
 			return
@@ -314,6 +331,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.HandleFunc("POST /api/auth/antigravity", func(w http.ResponseWriter, r *http.Request) {
 		startProviderLogin(w, r, "antigravity")
 	})
+	mux.HandleFunc("POST /api/auth/qoder", func(w http.ResponseWriter, r *http.Request) { startProviderLogin(w, r, "qoder") })
 
 	saveProviderAccount := func(w http.ResponseWriter, r *http.Request, providerID string) {
 		if !requireOrigin(r) {
@@ -322,6 +340,10 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		sess, cred := authSvc.Poll(r.PathValue("id"))
 		if sess.Status == "not_found" {
+			apiError(w, 404, "session not found")
+			return
+		}
+		if sess.Provider != providerID {
 			apiError(w, 404, "session not found")
 			return
 		}
@@ -344,6 +366,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				return
 			}
 			id := providerID + ":cn:" + uid
+			if providerID == "qoder" {
+				id = providerID + ":" + cred.Region + ":" + uid
+			}
 			now := time.Now().Unix()
 			acct := &storage.Account{
 				ID: id, Provider: providerID, Region: cred.Region, UID: uid,
@@ -369,12 +394,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				apiError(w, 500, "save credential failed")
 				return
 			}
-			if p := store.Proxy(); p.DefaultAccountID == "" {
-				p.DefaultAccountID = id
-				if err := store.SetProxy(p); err != nil {
-					apiError(w, 500, "save default account failed")
-					return
-				}
+			if providerID == "qoder" {
+				authSvc.Complete(sess.ID)
+				go proxySvc.AccountModels(*acct)
 			}
 			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
 			return
@@ -387,6 +409,20 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	})
 	mux.HandleFunc("GET /api/auth/antigravity/{id}", func(w http.ResponseWriter, r *http.Request) {
 		saveProviderAccount(w, r, "antigravity")
+	})
+	mux.HandleFunc("GET /api/auth/qoder/{id}", func(w http.ResponseWriter, r *http.Request) { saveProviderAccount(w, r, "qoder") })
+	mux.HandleFunc("DELETE /api/auth/qoder/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		sess, ok := authSvc.View(r.PathValue("id"))
+		if !ok || sess.Provider != "qoder" {
+			apiError(w, 404, "session not found")
+			return
+		}
+		authSvc.Cancel(sess.ID)
+		send(w, map[string]any{"ok": true})
 	})
 
 	mux.HandleFunc("DELETE /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -450,13 +486,6 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				apiError(w, 500, "save credential failed")
 				return
 			}
-			if p := store.Proxy(); p.DefaultAccountID == "" {
-				p.DefaultAccountID = id
-				if err := store.SetProxy(p); err != nil {
-					apiError(w, 500, "save default account failed")
-					return
-				}
-			}
 			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
 			return
 		}
@@ -469,32 +498,6 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		authSvc.Cancel(r.PathValue("id"))
 		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("PUT /api/proxy/settings", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		var body struct {
-			DefaultAccountID string `json:"defaultAccountId"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
-			apiError(w, 400, "invalid request")
-			return
-		}
-		next := store.Proxy()
-		if body.DefaultAccountID != "" {
-			if _, ok := store.Account(body.DefaultAccountID); !ok {
-				apiError(w, 404, "account not found")
-				return
-			}
-			next.DefaultAccountID = body.DefaultAccountID
-		}
-		if err := store.SetProxy(next); err != nil {
-			apiError(w, 500, "save failed")
-			return
-		}
-		send(w, next)
 	})
 	mux.HandleFunc("POST /api/proxy/key", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
@@ -526,8 +529,12 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				apiError(w, 404, "account not found")
 				return
 			}
-			models, source := proxySvc.AccountModelCatalog(acct)
-			send(w, map[string]any{"models": models, "source": source})
+			models, source, catalogErr := proxySvc.RefreshAccountModelCatalog(acct)
+			message := ""
+			if catalogErr != nil {
+				message = "模型目录刷新失败"
+			}
+			send(w, map[string]any{"models": models, "source": source, "error": message})
 			return
 		}
 		accs := store.Accounts()
@@ -535,18 +542,23 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			apiError(w, 409, "no accounts")
 			return
 		}
-		seen := map[string]bool{}
-		models := []providers.ModelInfo{}
+		byID := map[string]providers.ModelInfo{}
+		names := []string{}
 		for _, a := range accs {
 			if !a.Enabled {
 				continue
 			}
 			for _, m := range proxySvc.AccountModels(*a) {
-				if !seen[m.ID] {
-					seen[m.ID] = true
-					models = append(models, m)
+				full := a.Provider + "/" + m.ID
+				if _, ok := byID[full]; !ok {
+					byID[full] = m
+					names = append(names, full)
 				}
 			}
+		}
+		models := make([]providers.ModelInfo, 0, len(names))
+		for _, name := range names {
+			models = append(models, byID[name])
 		}
 		send(w, map[string]any{"models": models})
 	})
@@ -638,12 +650,12 @@ func writeProxyError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func Serve(ctx context.Context, data string) error {
-	release, e := desktop.Lock("Local\\XiaoTao.Service." + Key(data))
+	release, e := desktop.Lock(runtimeenv.ServiceMutex(Key(data)))
 	if e != nil {
 		return e
 	}
 	defer release()
-	l, e := net.Listen("tcp4", "127.0.0.1:"+defaultPort)
+	l, e := net.Listen("tcp4", "127.0.0.1:"+runtimeenv.Current().DefaultPort)
 	if e != nil {
 		l, e = net.Listen("tcp4", "127.0.0.1:0")
 		if e != nil {

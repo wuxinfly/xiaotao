@@ -48,7 +48,7 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if providerID != "trae" && providerID != "workbuddy" && providerID != "antigravity" {
+	if providerID != "trae" && providerID != "workbuddy" && providerID != "antigravity" && providerID != "qoder" {
 		return Session{}, fmt.Errorf("provider %q does not support web login yet", providerID)
 	}
 	if region == "" {
@@ -60,9 +60,15 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	for _, old := range s.sessions {
 		if old.Provider == providerID && old.Region == region && old.Status == "waiting" {
 			old.Status = "cancelled"
+			if old.cancel != nil {
+				old.cancel()
+			}
 		}
 	}
 	var sess *Session
+	if providerID == "qoder" {
+		return s.startQoder(region)
+	}
 	if providerID == "antigravity" {
 		login, err := antigravity.StartLogin(context.Background())
 		if err != nil {
@@ -149,7 +155,7 @@ func (s *Service) runWorkBuddyLogin(sess *Session, ctx context.Context, cancel c
 	cred.EnterpriseID = enterprise
 	cred.DepartmentInfo = department
 	if cred.MachineID == "" {
-		cred.MachineID = randHex()
+		cred.MachineID = newUUID()
 	}
 	if cred.Domain == "" {
 		if parsed, parseErr := url.Parse(workbuddy.DefaultBaseURL); parseErr == nil {
@@ -177,6 +183,16 @@ func (s *Service) finishWorkBuddyLogin(sess *Session, uid string, cred *provider
 	}
 	sess.Status = "succeeded"
 	sess.Credential = cred
+}
+
+func newUUID() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "00000000-0000-4000-8000-000000000000"
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func (s *Service) handleCallback(sess *Session, w http.ResponseWriter, r *http.Request) {

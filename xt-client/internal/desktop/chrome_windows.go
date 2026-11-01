@@ -21,12 +21,6 @@ var shell = windows.NewLazySystemDLL("shell32.dll")
 var gdi = windows.NewLazySystemDLL("gdi32.dll")
 var kernel = windows.NewLazySystemDLL("kernel32.dll")
 
-
-
-
-
-
-
 func win(name string, args ...uintptr) uintptr { v, _, _ := user.NewProc(name).Call(args...); return v }
 
 type point struct{ X, Y int32 }
@@ -73,7 +67,7 @@ func appIcon() uintptr {
 	}
 	return win("CreateIconFromResourceEx", uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x30000, n, n, 0)
 }
-func chrome(w webview.WebView, url, token string, onReady func()) func() {
+func chrome(w webview.WebView, url, token, displayName string, onReady func()) func() {
 	hwnd := uintptr(w.Window())
 	const bgRGB = 0x00231707
 	brush, _, _ := gdi.NewProc("CreateSolidBrush").Call(bgRGB)
@@ -89,7 +83,7 @@ func chrome(w webview.WebView, url, token string, onReady func()) func() {
 	win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)), style|0x00cf0000)
 	n := notifyIcon{Hwnd: hwnd, ID: 1, Flags: 7, Callback: 0x8001, Icon: icon}
 	n.Size = uint32(unsafe.Sizeof(n))
-	copy(n.Tip[:], syscall.StringToUTF16("小涛 · 双击打开，右键菜单"))
+	copy(n.Tip[:], syscall.StringToUTF16(displayName+" · 双击打开，右键菜单"))
 	tray, _, _ := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
 	var readyOnce sync.Once
 	startTime := time.Now()
@@ -187,7 +181,7 @@ func chrome(w webview.WebView, url, token string, onReady func()) func() {
 			if lp == 0x205 {
 				menu := win("CreatePopupMenu")
 				defer win("DestroyMenu", menu)
-				for i, label := range []string{"打开小涛", "在浏览器打开", "退出小涛"} {
+				for i, label := range []string{"打开" + displayName, "在浏览器打开", "退出" + displayName} {
 					win("AppendMenuW", menu, 0, uintptr(i+1), uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(label))))
 				}
 				var p point
@@ -263,8 +257,8 @@ func chrome(w webview.WebView, url, token string, onReady func()) func() {
 	}
 }
 
-func ShowExisting() bool {
-	h := win("FindWindowW", 0, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("小涛"))))
+func ShowExisting(title string) bool {
+	h := win("FindWindowW", 0, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(title))))
 	if h == 0 {
 		return false
 	}

@@ -71,7 +71,7 @@ func FetchQuota(ctx context.Context, cred *providers.Credential) (*storage.Quota
 	if cred == nil || cred.AccessToken == "" {
 		return nil, fmt.Errorf("missing access token")
 	}
-	payload, err := upstreamRequest(ctx, cred.AccessToken, "fetchAvailableModels", map[string]any{}, false)
+	payload, err := upstreamRequest(ctx, cred.AccessToken, "fetchAvailableModels", "", map[string]any{}, false)
 	if err != nil {
 		return nil, err
 	}

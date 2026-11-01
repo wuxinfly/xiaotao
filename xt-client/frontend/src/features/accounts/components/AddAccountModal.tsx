@@ -1,10 +1,11 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import type { ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
 
 interface AddAccountModalProps {
   providers: ProviderInfo[];
-  onSelectProvider: (providerId: string) => void;
+  onSelectProvider: (providerId: string, region?: string) => void;
   onClose: () => void;
 }
 
@@ -13,6 +14,24 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
   onSelectProvider,
   onClose,
 }) => {
+  const [qoderRegion, setQoderRegion] = React.useState('cn');
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    dialog?.querySelector<HTMLButtonElement>('button')?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !dialog) return;
+      const nodes = Array.from(dialog.querySelectorAll<HTMLElement>('button, select, [tabindex="0"]'));
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    dialog?.addEventListener('keydown', trap);
+    return () => { dialog?.removeEventListener('keydown', trap); previous?.focus(); };
+  }, []);
+  React.useEffect(() => { const handler = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, [onClose]);
+  const descriptions: Record<string, string> = { trae: '国内版账号授权登录，支持模型代理与配额同步', workbuddy: '国内版 CodeBuddy 插件协议授权，支持模型代理与真实额度', antigravity: 'Google OAuth 授权登录，Gemini / Claude / GPT 免费额度', qoder: '浏览器设备授权，按账号同步模型与积分额度' };
   // Available providers from registry (Trae, etc.)
   const available = providers.length > 0 ? providers : [
     {
@@ -24,7 +43,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
     },
   ];
 
-  return (
+  return createPortal(
     <div
       className="modal-backdrop"
       role="dialog"
@@ -34,7 +53,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="add-account-dialog">
+      <div className="add-account-dialog" ref={dialogRef}>
         <div className="dialog-header">
           <h3 id="modal-add-title" className="dialog-title">选择反代接入来源</h3>
           <button
@@ -52,12 +71,13 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
         </div>
 
         <div className="add-provider-list">
+          {available.some(p => p.id === 'qoder') && <label className="qoder-region-field">Qoder 账号区域 <select aria-label="Qoder 账号区域" value={qoderRegion} onChange={e => setQoderRegion(e.target.value)}><option value="cn">国内版</option><option value="global">海外版</option></select></label>}
           {available.map((p) => (
             <button
               key={p.id}
               type="button"
               className="add-provider-item"
-              onClick={() => onSelectProvider(p.id)}
+              onClick={() => onSelectProvider(p.id, p.id === 'qoder' ? qoderRegion : undefined)}
             >
               <div className="provider-item-icon">
                 <ProviderIcon provider={p.id} size={36} />
@@ -65,13 +85,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
               <div className="provider-item-info">
                 <strong className="provider-item-name">{p.displayName}</strong>
                 <span className="provider-item-desc">
-                  {p.id === 'trae'
-                    ? '国内版账号授权登录，支持模型代理与配额同步'
-                    : p.id === 'workbuddy'
-                      ? '国内版 CodeBuddy 插件协议授权，支持模型代理与真实额度'
-                      : p.id === 'antigravity'
-                        ? 'Google OAuth 授权登录，Gemini / Claude / GPT 免费额度'
-                        : '反代服务接入'}
+                  {descriptions[p.id] ?? '反代服务接入'}
                 </span>
               </div>
               <div className="provider-item-arrow">
@@ -83,6 +97,6 @@ export const AddAccountModal: React.FC<AddAccountModalProps> = ({
           ))}
         </div>
       </div>
-    </div>
+    </div>, document.body
   );
 };

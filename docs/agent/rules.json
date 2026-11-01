@@ -219,9 +219,10 @@
         {
           "id": "verification.client",
           "kind": "convention",
-          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`、`./build.ps1`，详见局部 AGENTS.md。",
+          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；正式构建运行 `./build.ps1`，UAT 构建运行 `./build.ps1 -Env uat`，详见局部 AGENTS.md。",
           "source_refs": [
-            "xt-client/AGENTS.md"
+            "xt-client/AGENTS.md",
+            "xt-client/build.ps1"
           ]
         },
         {

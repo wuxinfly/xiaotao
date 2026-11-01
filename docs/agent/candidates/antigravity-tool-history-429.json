@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "antigravity-tool-history-429",
+  "created_at": "2026-11-01T09:40:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.antigravity-tool-history-429",
+  "text": "Antigravity 的 429 RESOURCE_EXHAUSTED 不一定是账号额度耗尽；工具调用历史出现相邻同角色 turn 或请求 User-Agent 缺少实际上游模型名时，也可能被上游拒绝。转换时需合并相邻同角色 turn，并让对话请求 UA 追加实际上游模型名。",
+  "rationale": "真实账号额度仍有约 98.9%，纯文本和首次 tools 请求均返回 200，但 tool_calls 回传后稳定复现 429；对照 buddy-proxy 后补齐相邻同角色 turn 合并和带模型名的 UA，连续三轮真实工具调用恢复为 200。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/providers/antigravity/convert.go",
+    "xt-client/internal/providers/antigravity/convert_test.go",
+    "xt-client/internal/providers/antigravity/client.go",
+    "docs/plans/2026-11-01-antigravity-proxy.md"
+  ]
+}

@@ -10,11 +10,13 @@ import (
 )
 
 type ModelInfo struct {
-	UpstreamID  string            `json:"-"`
-	Routes      map[string]string `json:"-"`
-	ID          string            `json:"id"`
-	DisplayName string            `json:"displayName,omitempty"`
-	Multimodal  bool              `json:"multimodal"`
+	Reasoning      bool              `json:"reasoning,omitempty"`
+	MaxInputTokens int               `json:"maxInputTokens,omitempty"`
+	UpstreamID     string            `json:"-"`
+	Routes         map[string]string `json:"-"`
+	ID             string            `json:"id"`
+	DisplayName    string            `json:"displayName,omitempty"`
+	Multimodal     bool              `json:"multimodal"`
 }
 
 type Info struct {
@@ -45,6 +47,10 @@ type Credential struct {
 type Provider interface {
 	Info() Info
 	ListModels(region string) []ModelInfo
+}
+
+type ModelFetcher interface {
+	FetchModels(context.Context, *Credential) ([]ModelInfo, error)
 }
 
 // ChatEvents receives normalized provider output. Providers pre-merge tool

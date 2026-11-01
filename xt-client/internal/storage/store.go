@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -48,14 +49,9 @@ type Account struct {
 	UsageCalls  int64          `json:"usageCalls"`
 }
 
-type ProxySettings struct {
-	DefaultAccountID string `json:"defaultAccountId"`
-}
-
 type fileData struct {
 	Version  int               `json:"version"`
 	Accounts []*Account        `json:"accounts"`
-	Proxy    ProxySettings     `json:"proxy"`
 	Secrets  map[string]string `json:"secrets"`
 }
 
@@ -63,6 +59,43 @@ type Store struct {
 	path string
 	mu   sync.Mutex
 	data fileData
+}
+
+func (s *Store) SecretRevision(id string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	value, ok := s.data.Secrets[id]
+	if !ok {
+		return "", fmt.Errorf("account credential unavailable")
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(value))), nil
+}
+
+// ReplaceSecret rejects refresh results after deletion or a new login.
+func (s *Store) ReplaceSecret(id, revision string, plain []byte, enc func([]byte) ([]byte, error)) error {
+	blob, err := enc(plain)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	for _, acct := range s.data.Accounts {
+		if acct.ID == id {
+			found = true
+			break
+		}
+	}
+	current, ok := s.data.Secrets[id]
+	if !found || !ok || fmt.Sprintf("%x", sha256.Sum256([]byte(current))) != revision {
+		return fmt.Errorf("account credential changed during refresh")
+	}
+	s.data.Secrets[id] = secretPrefix + base64.StdEncoding.EncodeToString(blob)
+	if err := s.save(); err != nil {
+		s.data.Secrets[id] = current
+		return err
+	}
+	return nil
 }
 
 func Open(dir string) (*Store, error) {
@@ -196,9 +229,6 @@ func (s *Store) DeleteAccount(id string) error {
 	}
 	s.data.Accounts = kept
 	delete(s.data.Secrets, id)
-	if s.data.Proxy.DefaultAccountID == id {
-		s.data.Proxy.DefaultAccountID = ""
-	}
 	return s.save()
 }
 
@@ -233,26 +263,4 @@ func (s *Store) LoadSecret(id string, dec func([]byte) ([]byte, error)) ([]byte,
 	// Legacy entries stored raw binary as JSON strings are corrupted and
 	// will fail decryption; surface the decoder error.
 	return dec([]byte(v))
-}
-
-func (s *Store) Proxy() ProxySettings {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p := s.data.Proxy
-	if p.DefaultAccountID == "" {
-		for _, a := range s.data.Accounts {
-			if a.Enabled {
-				p.DefaultAccountID = a.ID
-				break
-			}
-		}
-	}
-	return p
-}
-
-func (s *Store) SetProxy(p ProxySettings) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.data.Proxy = p
-	return s.save()
 }

@@ -14,7 +14,7 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
   useEffect(() => {
     let active = true;
     setLoading(true); setError(''); setCatalog(null);
-    api.accountModels(selectedId).then(data => { if (active) setCatalog(data); })
+    api.accountModels(selectedId).then(data => { if (active) { setCatalog(data); setError(data.error ?? ""); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -36,14 +36,14 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
       <label>账号 <select value={selectedId} onChange={e => setAccountId(e.target.value)}>
         {accounts.map(a => <option key={a.id} value={a.id}>{a.alias || a.nickname || a.uid}</option>)}
       </select></label>
-      <span className="model-catalog-source">{loading ? '正在获取…' : catalog ? `${({ live: '实时获取', builtin: '内置目录', merged: '实时 + 内置目录', cached: '刷新失败 · 上次目录' }[catalog.source])} · ${catalog.models.length} 个模型` : '获取失败'}</span>
+      <span className="model-catalog-source">{loading ? '正在获取…' : catalog ? `${({ live: '实时获取', builtin: '内置目录', merged: '实时 + 内置目录', cached: '账号缓存', stale: '刷新失败 · 上次目录', error: '目录不可用' }[catalog.source])} · ${(catalog.models?.length ?? 0)} 个模型` : '获取失败'}</span>
       <button className="group-add-btn" disabled={loading} onClick={() => setRevision(n => n + 1)}>刷新列表</button>
     </div>
-    <p className="model-catalog-note">复制完整模型 ID 到调用工具中；实际调用取决于默认账号、模型权限和剩余额度。内置目录不代表已通过当前账号验证。</p>
+    <p className="model-catalog-note">复制完整模型 ID 到调用工具中；实际调用按模型来源匹配账号，按添加顺序选择，并跳过已知额度用完的账号。内置目录不代表已通过当前账号验证。</p>
     <div aria-live="polite">
       {error && <p role="alert">{error}，可点击刷新重试。</p>}
       {catalog?.models.length === 0 && <p>该账号暂无模型目录。</p>}
-      <div className="model-catalog-list">{catalog?.models.map(model => {
+      <div className="model-catalog-list">{catalog?.models?.map(model => {
         const id = `${providerId}/${model.id}`;
         return <div className="model-catalog-row" key={id}>
           <div><strong>{model.displayName || model.id}</strong><code>{id}</code></div>

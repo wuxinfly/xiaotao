@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "candidate_id": "model-prefix-account-routing",
+  "created_at": "2026-11-01T15:18:16Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.model-prefix-account-routing",
+  "text": "xt-client 代理按模型前缀确定来源账号，来源内按启用账号添加顺序路由，已知额度用完的账号跳过；Qoder 例外，其免费模型不消耗额度，零额度不作为跳过依据；不引入默认账号路由状态。",
+  "rationale": "默认账号路由曾让 workbuddy/glm-5.3-flash 请求误投 Trae 上游并返回参数无效；用户随后明确要求改为按模型来源匹配、来源内按顺序和额度兜底选号，避免跨渠道误投。用户另确认 Qoder 有免费模型，额度不消耗，零额度快照不代表账号不可用。",
+  "observations": 3,
+  "source_refs": ["xt-client/internal/proxy/routing.go", "xt-client/internal/proxy/routing_test.go", "xt-client/internal/proxy/service.go", "xt-client/internal/app/app.go", "docs/plans/2026-11-01-qoder-proxy.md"]
+}

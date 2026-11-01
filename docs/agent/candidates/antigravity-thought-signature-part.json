@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "antigravity-thought-signature-part",
+  "created_at": "2026-11-01T10:20:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.antigravity-thought-signature-part",
+  "text": "Antigravity 的 Gemini thoughtSignature 必须放在包含 functionCall 的 part 外层，不能嵌进 functionCall；否则工具调用后的下一轮请求会返回 400 Unknown name thoughtSignature。",
+  "rationale": "用户使用 antigravity/gemini-3.8-flash 时，简单输入正常，进入工具调用后报 Unknown name thoughtSignature at request.contents[2].parts[0].function_call。代码将签名写入 functionCall 内部导致字段位置错误，参考 buddy-proxy 实现和 Gemini part 结构确认应放在外层 part。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/providers/antigravity/convert.go",
+    "xt-client/internal/providers/antigravity/convert_test.go",
+    "docs/plans/2026-11-01-antigravity-proxy.md",
+    "xt-client/AGENTS.md"
+  ]
+}
