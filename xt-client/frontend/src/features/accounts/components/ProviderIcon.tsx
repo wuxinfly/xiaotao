@@ -1,6 +1,8 @@
 import React from 'react';
 import workbuddyIcon from '../../../assets/workbuddy-32.png';
 import antigravityIcon from '../../../assets/antigravity.svg';
+import qoderIcon from '../../../assets/qoder-icon.png';
+import codexIcon from '../../../assets/codex-icon.png';
 
 interface ProviderIconProps {
   provider: string;
@@ -86,6 +88,32 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size = 32,
         height={size}
         className={`provider-icon provider-icon-workbuddy ${className}`}
         aria-hidden="true"
+      />
+    );
+  }
+
+  if (p === 'codex') {
+    return (
+      <img
+        src={codexIcon}
+        alt=''
+        width={size}
+        height={size}
+        className={'provider-icon provider-icon-codex ' + className}
+        aria-hidden='true'
+      />
+    );
+  }
+
+  if (p === 'qoder') {
+    return (
+      <img
+        src={qoderIcon}
+        alt=''
+        width={size}
+        height={size}
+        className={'provider-icon provider-icon-qoder ' + className}
+        aria-hidden='true'
       />
     );
   }

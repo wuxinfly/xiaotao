@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type Account,
@@ -23,9 +23,14 @@ export function AccountsPage() {
   const [session, setSession] = useState<LoginSession | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [loginProvider, setLoginProvider] = useState("trae");
+  const [manualCallbackInput, setManualCallbackInput] = useState("");
+  const [manualSubmitting, setManualSubmitting] = useState(false);
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importJsonText, setImportJsonText] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -165,6 +170,40 @@ export function AccountsPage() {
     }
   };
 
+  const handleManualCallbackSubmit = async () => {
+    if (!session || !manualCallbackInput.trim()) return;
+    setManualSubmitting(true);
+    try {
+      await api.submitCodexCallback(session.id, manualCallbackInput.trim());
+      clearInterval(pollRef.current);
+      setFlow("idle");
+      setSession(null);
+      setManualCallbackInput("");
+      toast.success("Codex 账号添加成功");
+      void load();
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setManualSubmitting(false);
+    }
+  };
+
+  const handleImportCodex = async () => {
+    if (!importJsonText.trim()) return;
+    setImporting(true);
+    try {
+      const res = await api.importCodexAuth(importJsonText.trim());
+      setShowImportModal(false);
+      setImportJsonText("");
+      toast.success("Codex 凭据导入成功: " + (res.nickname || res.accountId));
+      void load();
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (flow === "waiting") {
     return (
       <section className="accounts-flow" aria-live="polite">
@@ -173,7 +212,9 @@ export function AccountsPage() {
             等待 {providerMap.get(loginProvider)?.displayName ?? loginProvider} 授权
           </h2>
           <p>
-            已在浏览器打开授权页面。完成登录后自动接入；Qoder 授权链接 10 分钟内有效。
+            {loginProvider === "codex"
+              ? "已在浏览器打开授权页面。浏览器完成授权后将自动回调 localhost:1455；若端口被占用或未自动跳转，可将地址栏完整 URL 或 code 粘贴到下方。"
+              : "已在浏览器打开授权页面。完成登录后自动接入；Qoder 授权链接 10 分钟内有效。"}
           </p>
           {session?.loginUrl && (
             <div className="copy-field">
@@ -186,6 +227,36 @@ export function AccountsPage() {
               >
                 <span className="copy-text">{session.loginUrl}</span>
               </button>
+            </div>
+          )}
+          {loginProvider === "codex" && (
+            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8, textAlign: "left" }}>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>手动完成（粘贴回调 URL 或 code）</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="http://localhost:1455/auth/callback?code=..."
+                  value={manualCallbackInput}
+                  onChange={(e) => setManualCallbackInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    borderRadius: 7,
+                    border: "1px solid #1b3a4a",
+                    background: "#0a1c29",
+                    color: "#cfe6ef",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={manualSubmitting || !manualCallbackInput.trim()}
+                  onClick={handleManualCallbackSubmit}
+                >
+                  {manualSubmitting ? "提交中…" : "提交"}
+                </button>
+              </div>
             </div>
           )}
           <div className="flow-spinner" aria-hidden="true" />
@@ -247,6 +318,7 @@ export function AccountsPage() {
           <AddAccountModal
             providers={providers}
             onSelectProvider={(pId, region) => startLogin(pId, region)}
+            onImportCodex={() => { setShowAddModal(false); setShowImportModal(true); }}
             onClose={() => setShowAddModal(false)}
           />
         )}
@@ -285,7 +357,7 @@ export function AccountsPage() {
       <div className="accounts-groups-container">
         <div className="sources-section-title-row">
           <h2 className="sources-section-title">接入来源</h2>
-          <span className="sources-section-sub">按反代服务统一管理</span>
+          <span className="sources-section-sub">{providerKeys.length} 个来源 · {accounts.length} 个账号</span>
         </div>
 
         {providerKeys.map((pKey) => (

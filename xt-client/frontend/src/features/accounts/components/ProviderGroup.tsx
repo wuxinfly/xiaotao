@@ -25,23 +25,33 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   onRefreshQuota,
   onOpenDetail,
 }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showModels, setShowModels] = useState(false);
   const [modelsVisited, setModelsVisited] = useState(false);
 
   const displayName = providerInfo?.displayName || providerId.toUpperCase();
   const count = accounts.length;
+  const toggleCollapsed = () => setCollapsed(value => !value);
 
   return (
     <div className={`provider-group-section ${collapsed ? 'is-collapsed' : ''}`}>
-      {/* Group Header */}
       <div className="provider-group-header">
-        <div className="group-left" onClick={() => setCollapsed(!collapsed)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCollapsed(!collapsed); } }}>
-          <ProviderIcon provider={providerId} size={28} />
-          <div className="group-title-box">
-            <h3 className="group-title">{displayName}</h3>
-            <span className="group-count-badge">{count} 个账号</span>
-          </div>
+        <div className="group-left">
+          <button
+            type="button"
+            className="group-collapse-btn"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-controls={`accounts-${providerId}`}
+            title={collapsed ? '展开分组' : '收起分组'}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="m3 9 5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <ProviderIcon provider={providerId} size={24} />
+          <h3 className="group-title">{displayName}</h3>
+          <span className="group-count-badge">{count} 个账号</span>
         </div>
 
         <div className="group-right">
@@ -58,38 +68,14 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             </svg>
             <span>添加账号</span>
           </button>
-
-          <button
-            type="button"
-            className="group-collapse-btn"
-            onClick={() => setCollapsed(!collapsed)}
-            aria-expanded={!collapsed}
-            title={collapsed ? '展开分组' : '收起分组'}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`chevron-icon ${collapsed ? 'is-down' : 'is-up'}`}
-              aria-hidden="true"
-            >
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </button>
         </div>
       </div>
 
-      {/* Cards Grid */}
       <div id={`models-${providerId}`} className={`model-catalog-reveal ${showModels ? 'is-open' : ''}`} inert={!showModels} aria-hidden={!showModels}>
         <div>{modelsVisited && <ModelCatalogPanel accounts={accounts} providerId={providerId} />}</div>
       </div>
       {!collapsed && (
-        <div className="accounts-cards-grid">
+        <div className="accounts-cards-grid" id={`accounts-${providerId}`}>
           {accounts.map((acct) => (
             <AccountCard
               key={acct.id}

@@ -1,4 +1,4 @@
-export interface QuotaItem {
+﻿export interface QuotaItem {
   label: string;
   used?: number | null;
   total?: number | null;
@@ -168,6 +168,10 @@ export const api = {
   pollLogin: (id: string, provider = 'trae') =>
     request<{ status: string; accountId?: string; nickname?: string; error?: string }>(`/api/auth/${provider}/${id}`),
   cancelLogin: (id: string, provider = 'trae') => request<{ ok: boolean }>(`/api/auth/${provider}/${id}`, { method: 'DELETE' }),
+  importCodexAuth: (payload: string) =>
+    request<{ status: string; accountId: string; nickname: string }>('/api/auth/codex/import', { method: 'POST', body: payload }),
+  submitCodexCallback: (sessionId: string, callback: string) =>
+    request<{ status: string; accountId: string; nickname: string }>(`/api/auth/codex/${sessionId}/callback`, { method: 'POST', body: JSON.stringify({ callback }) }),
   updateAccount: (id: string, body: { alias?: string; enabled?: boolean }) =>
     request<Account>(`/api/accounts/${id}/rename`, { method: 'POST', body: JSON.stringify(body) }),
   deleteAccount: (id: string) => request<{ ok: boolean }>(`/api/accounts/${id}/delete`, { method: 'POST' }),

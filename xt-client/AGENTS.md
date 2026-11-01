@@ -1,4 +1,4 @@
-# 客户端开发约定
+﻿# 客户端开发约定
 
 - Windows Go 服务和 WebView2 壳，页面嵌入服务。
 - 本目录执行 go test ./...、go vet ./...；正式构建运行 ./build.ps1，UAT 构建运行 ./build.ps1 -Env uat。
@@ -16,7 +16,9 @@
 - 代理层按模型前缀确定来源，再按启用账号的添加顺序路由；已知额度用完的账号跳过，额度缺失或错误不阻塞。Qoder 有免费模型，额度不消耗，零额度不作为跳过依据。`/v1/models` 聚合启用账号目录并按完整模型 ID 去重；WorkBuddy 模型 ID 必须带 `workbuddy/` 前缀。不使用默认账号路由，也不要新增默认账号状态。
 - Antigravity 上游使用 Gemini 原生协议的 Antigravity 包装（`/v1internal:streamGenerateContent`），内部请求含 project/model/request envelope、身份声明注入和 `[ignore]` 包裹副本；模型 ID 必须带 `antigravity/` 前缀，使用内置底表与实时目录合并后的名称及档位映射。
 - Antigravity 流式空闲 90 秒、非流式 120 秒；thoughtSignature 使用按账号隔离的内存 LRU 缓存，签名必须放在包含 functionCall 的 part 外层，不能嵌进 functionCall；签名缺失时 Gemini 模型注入哨兵。请求内 429/403 主备降级只能在首个语义事件前进行，统一短冷却 1 分钟，已提交的流绝不重放。
-- 修改 WorkBuddy 请求格式或超时行为时同步更新本节、README 和 docs/plans 中的接入计划。
+- Codex 上游使用 Responses SSE 协议（POST /backend-api/codex/responses），请求固定 store: false、stream: true 并携带 Originator: codex-tui、Session-Id 及 Chatgpt-Account-Id 请求头；模型 ID 必须带 codex/ 前缀。
+- Codex OAuth 固定使用 localhost:1455/auth/callback 并校验 state；支持粘贴 ~/.codex/auth.json 导入，refresh token 轮换时写盘需比对内存版本避免覆盖。
+- 修改 WorkBuddy 或 Codex 请求格式或超时行为时同步更新本节、README 和 docs/plans 中的接入计划。
 
 ## 交互与动效设计规则
 

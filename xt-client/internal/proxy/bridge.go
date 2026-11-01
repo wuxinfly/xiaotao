@@ -1,4 +1,4 @@
-package proxy
+﻿package proxy
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
+	"xiaotao/xt-client/internal/providers/codex"
 	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
@@ -28,6 +29,8 @@ func providerRefresh(ctx context.Context, provider string, cred *providers.Crede
 		return qoder.Refresh(ctx, cred)
 	case "antigravity":
 		return antigravity.Refresh(ctx, cred)
+	case "codex":
+		return codex.Refresh(ctx, cred)
 	case "workbuddy":
 		return workbuddy.Refresh(ctx, "", cred)
 	case "trae":
@@ -47,6 +50,8 @@ func providerQuota(ctx context.Context, provider string, cred *providers.Credent
 		return qoder.FetchQuota(ctx, cred)
 	case "antigravity":
 		return antigravity.FetchQuota(ctx, cred)
+	case "codex":
+		return codex.FetchQuota(ctx, cred)
 	case "workbuddy":
 		return workbuddy.FetchQuota(ctx, "", cred)
 	case "trae":

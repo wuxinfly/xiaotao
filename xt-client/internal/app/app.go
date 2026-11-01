@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"xiaotao/xt-client/internal/desktop"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
+	"xiaotao/xt-client/internal/providers/codex"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/proxy"
@@ -46,6 +48,7 @@ type Config struct {
 var traeProvider = trae.Provider{}
 var workbuddyProvider = workbuddy.Provider{}
 var antigravityProvider = antigravity.Provider{}
+var codexProvider = codex.Provider{}
 
 func Key(data string) string { h := sha256.Sum256([]byte(data)); return hex.EncodeToString(h[:12]) }
 func Save(path string, v any) error {
@@ -162,6 +165,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		providers.Register(antigravityProvider)
 		providers.Register(traeProvider)
 		providers.Register(workbuddyProvider)
+		providers.Register(codexProvider)
 	}
 	registerProviders()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -332,6 +336,95 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		startProviderLogin(w, r, "antigravity")
 	})
 	mux.HandleFunc("POST /api/auth/qoder", func(w http.ResponseWriter, r *http.Request) { startProviderLogin(w, r, "qoder") })
+	mux.HandleFunc("POST /api/auth/codex", func(w http.ResponseWriter, r *http.Request) { startProviderLogin(w, r, "codex") })
+	mux.HandleFunc("POST /api/auth/codex/import", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64*1024))
+		if err != nil {
+			apiError(w, 400, "读取请求体失败")
+			return
+		}
+		cred, err := codex.ImportAuthPayload(raw)
+		if err != nil {
+			apiError(w, 400, "导入凭据失败: "+err.Error())
+			return
+		}
+		id := "codex:global:" + cred.UID
+		now := time.Now().Unix()
+		acct := &storage.Account{
+			ID: id, Provider: "codex", Region: cred.Region, UID: cred.UID,
+			Nickname: cred.Nickname, Enabled: true, AuthState: "valid",
+			AddedAt: now, UpdatedAt: now,
+		}
+		if existing, ok := store.Account(id); ok {
+			acct.Alias = existing.Alias
+			acct.Enabled = existing.Enabled
+			acct.AddedAt = existing.AddedAt
+		}
+		if err := store.UpsertAccount(acct); err != nil {
+			apiError(w, 500, "保存账号失败")
+			return
+		}
+		b, err := json.Marshal(cred)
+		if err != nil {
+			apiError(w, 500, "编码凭据失败")
+			return
+		}
+		if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
+			apiError(w, 500, "保存凭据失败")
+			return
+		}
+		go proxySvc.AccountModels(*acct)
+		send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": cred.Nickname})
+	})
+	mux.HandleFunc("POST /api/auth/codex/{id}/callback", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Callback string `json:"callback"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+			apiError(w, 400, "invalid callback payload")
+			return
+		}
+		cred, err := authSvc.CompleteCodexManual(r.PathValue("id"), input.Callback)
+		if err != nil {
+			apiError(w, 400, "换取 Token 失败: "+err.Error())
+			return
+		}
+		id := "codex:global:" + cred.UID
+		now := time.Now().Unix()
+		acct := &storage.Account{
+			ID: id, Provider: "codex", Region: cred.Region, UID: cred.UID,
+			Nickname: cred.Nickname, Enabled: true, AuthState: "valid",
+			AddedAt: now, UpdatedAt: now,
+		}
+		if existing, ok := store.Account(id); ok {
+			acct.Alias = existing.Alias
+			acct.Enabled = existing.Enabled
+			acct.AddedAt = existing.AddedAt
+		}
+		if err := store.UpsertAccount(acct); err != nil {
+			apiError(w, 500, "保存账号失败")
+			return
+		}
+		b, err := json.Marshal(cred)
+		if err != nil {
+			apiError(w, 500, "编码凭据失败")
+			return
+		}
+		if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
+			apiError(w, 500, "保存凭据失败")
+			return
+		}
+		go proxySvc.AccountModels(*acct)
+		send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": cred.Nickname})
+	})
 
 	saveProviderAccount := func(w http.ResponseWriter, r *http.Request, providerID string) {
 		if !requireOrigin(r) {
@@ -366,7 +459,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				return
 			}
 			id := providerID + ":cn:" + uid
-			if providerID == "qoder" {
+			if providerID == "qoder" || providerID == "codex" {
 				id = providerID + ":" + cred.Region + ":" + uid
 			}
 			now := time.Now().Unix()
@@ -418,6 +511,22 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		sess, ok := authSvc.View(r.PathValue("id"))
 		if !ok || sess.Provider != "qoder" {
+			apiError(w, 404, "session not found")
+			return
+		}
+		authSvc.Cancel(sess.ID)
+		send(w, map[string]any{"ok": true})
+	})
+	mux.HandleFunc("GET /api/auth/codex/{id}", func(w http.ResponseWriter, r *http.Request) {
+		saveProviderAccount(w, r, "codex")
+	})
+	mux.HandleFunc("DELETE /api/auth/codex/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		sess, ok := authSvc.View(r.PathValue("id"))
+		if !ok || sess.Provider != "codex" {
 			apiError(w, 404, "session not found")
 			return
 		}

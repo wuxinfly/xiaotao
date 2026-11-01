@@ -78,7 +78,7 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
       <div className="endpoint-banner-header">
         <div className="endpoint-title-group">
           <h2 className="endpoint-title">模型接入</h2>
-          <p className="endpoint-subtitle">统一的模型调用接口，在支持 OpenAI 规范的工具中填入以下信息即可调用</p>
+          <p className="endpoint-subtitle">OpenAI 兼容接口</p>
         </div>
         <div className="endpoint-protocol-capsules">
           <span className="protocol-capsule">OpenAI Chat Completions</span>
@@ -92,18 +92,21 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
           <span className="field-label">接口地址</span>
           <div className="field-box">
             <span className="field-value mono" title={endpointUrl}>{endpointUrl}</span>
-            <button
-              type="button"
-              className="field-action-btn"
-              onClick={() => handleCopy('url', endpointUrl)}
-              title="复制接口地址"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              <span>{copiedField === 'url' ? '已复制' : '复制'}</span>
-            </button>
+            <div className="field-actions">
+              <button
+                type="button"
+                className="field-icon-btn"
+                onClick={() => handleCopy('url', endpointUrl)}
+                title="复制接口地址"
+                aria-label="复制接口地址"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+              {copiedField === 'url' && <span className="field-copied">已复制</span>}
+            </div>
           </div>
         </div>
 
@@ -136,17 +139,18 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
               </button>
               <button
                 type="button"
-                className="field-action-btn"
+                className="field-icon-btn"
                 onClick={() => apiKey && handleCopy('key', apiKey)}
                 disabled={!apiKey}
                 title="复制 API 密钥"
+                aria-label="复制 API 密钥"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
-                <span>{copiedField === 'key' ? '已复制' : '复制'}</span>
               </button>
+              {copiedField === 'key' && <span className="field-copied">已复制</span>}
             </div>
           </div>
         </div>

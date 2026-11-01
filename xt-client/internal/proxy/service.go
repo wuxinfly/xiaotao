@@ -1,4 +1,4 @@
-package proxy
+﻿package proxy
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
+	"xiaotao/xt-client/internal/providers/codex"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
@@ -194,6 +195,8 @@ func providerCollector(provider string) (providers.ChatCollector, bool) {
 	switch provider {
 	case "antigravity":
 		return antigravity.Collector{}, true
+	case "codex":
+		return codex.Collector{}, true
 	case "workbuddy":
 		return workbuddy.Collector{}, true
 	}
@@ -313,7 +316,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" {
+	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" || acct.Provider == "codex" {
 		upstream = map[string]any{"messages": msgs}
 		if reqChoice := normalizeToolChoice(body.ToolChoice); reqChoice != "" {
 			upstream["tool_choice"] = reqChoice
@@ -474,7 +477,7 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 	var usage atomic.Value
 	var upstreamErr atomic.Value
 	var events *providers.ChatEvents
-	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" {
+	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" || acct.Provider == "codex" {
 		events = &providers.ChatEvents{
 			OnFirstToken: func() {
 				if reqTracker != nil {
@@ -526,6 +529,8 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 		var err error
 		if acct.Provider == "antigravity" {
 			err = antigravity.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
+		} else if acct.Provider == "codex" {
+			err = codex.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
 		} else {
 			err = workbuddy.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
 		}

@@ -1,4 +1,4 @@
-package proxy
+﻿package proxy
 
 import (
 	"context"
@@ -37,6 +37,12 @@ func (s *Service) dynamicCatalog(acct storage.Account, fetcher providers.ModelFe
 	fail := func(err error) ([]providers.ModelInfo, string, error) {
 		if ok {
 			return previous.models, "stale", err
+		}
+		if acct.Provider == "codex" {
+			fallback := listProviderModels(acct)
+			if len(fallback) > 0 {
+				return fallback, "builtin", err
+			}
 		}
 		return []providers.ModelInfo{}, "error", err
 	}

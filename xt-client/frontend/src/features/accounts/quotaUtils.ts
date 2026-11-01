@@ -1,4 +1,4 @@
-import type { QuotaItem, QuotaSnapshot } from '../../lib/api';
+﻿import type { QuotaItem, QuotaSnapshot } from '../../lib/api';
 
 export interface QuotaSummary {
   hasQuota: boolean;
@@ -23,6 +23,9 @@ export function formatUnitValue(value: number, unit: string): string {
   }
   if (unit === 'call' || unit === 'request') {
     return `${formatNumber(value)} 次请求`;
+  }
+  if (unit === 'percent') {
+    return `${value.toFixed(1)}%`;
   }
   return `${formatNumber(value)} ${unit || '配额'}`;
 }
@@ -96,7 +99,7 @@ export function calculateQuotaSummary(quota?: QuotaSnapshot | null): QuotaSummar
 
   return {
     hasQuota: true,
-    remainingText: summary.unit === 'dollar' ? `$${remaining.toFixed(2)}` : formatNumber(remaining),
+    remainingText: summary.unit === 'dollar' ? `$${remaining.toFixed(2)}` : summary.unit === 'percent' ? `${remaining.toFixed(1)}%` : formatNumber(remaining),
     limitText: formatUnitValue(total, summary.unit),
     ratioText,
     percent: clamped,
@@ -110,7 +113,7 @@ export function formatQuotaItemLine(item: QuotaItem): { usedText: string; limitT
     return { usedText: '—', limitText: '额度未知' };
   }
   const rem = item.remaining == null ? Math.max(0, item.total - item.used) : item.remaining;
-  const remStr = item.unit === 'dollar' ? `$${rem.toFixed(2)}` : formatNumber(rem);
+  const remStr = item.unit === 'dollar' ? `$${rem.toFixed(2)}` : item.unit === 'percent' ? `${rem.toFixed(1)}%` : formatNumber(rem);
   return {
     usedText: remStr,
     limitText: formatUnitValue(item.total, item.unit),

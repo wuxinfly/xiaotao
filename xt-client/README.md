@@ -1,4 +1,14 @@
-# XiaoTao 客户端
+﻿# XiaoTao 客户端
+
+## Codex 接入（2026-11-01）
+
+账号与配额 → 添加账号 → 选择 Codex（ChatGPT）后，在浏览器完成 OAuth 2.0 PKCE 授权，也可以通过“导入 Codex 登录态”直接粘贴本机 ~/.codex/auth.json 凭据。授权默认监听本地 http://localhost:1455/auth/callback，端口冲突或未自动跳转时支持手动粘贴回调完整 URL 或 code 参数。账号凭据经 Windows DPAPI 加密保存，刷新自动处理 refresh token 轮换。
+
+模型支持静态底表与账号目录实时拉取（GET /models?client_version=0.159.0），默认包含 gpt-6.1-sol、gpt-6-astra、gpt-6-sol、gpt-6-luna、gpt-5.6-sol 等主力模型，调用 ID 带 codex/ 前缀（如 codex/gpt-6.1-sol）。
+
+已实现 OpenAI Chat Completions 双向投影（Chat 请求转 Responses 协议，Responses SSE 增量折叠为 Chat 流式与非流式结果），支持 instructions / system 拼接、图片输入、工具调用、reasoning 内容折叠及真实 token usage 统计。额度查询接入真实 /backend-api/wham/usage 接口，按 5小时/周窗口展示百分比额度与重置时间。
+
+详细记录见 [Codex 实施计划](../docs/plans/2026-11-01-codex-proxy.md)。
 
 ## Qoder 接入（2026-11-01）
 

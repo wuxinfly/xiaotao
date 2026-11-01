@@ -1,9 +1,10 @@
-# 小涛客户端总体方案
+﻿# 小涛客户端总体方案
 
 日期：2026-10-31（2026-11-01 更新 Antigravity 接入状态）。
 
 状态：产品方向与总体技术路线已确认，客户端实现进行中。本文作为后续设计和开发依据；标为建议或待定的事项不视为已经确定。
 
+2026-11-01 Codex 跟进：新增独立 Go Provider，覆盖 OAuth 2.0 PKCE 流程与 ~/.codex/auth.json 导入，实现 Chat ↔ Responses 双向投影与流式/非流式聚合，接入真实 /backend-api/wham/usage 窗口配额。模型 ID 带 codex/ 前缀，默认包含 gpt-6.1-sol / gpt-6-astra 等。首期范围不包含多账号 failover、生图与 Anthropic Messages。
 2026-11-01 Qoder 跟进：新增独立 Go Provider，覆盖 cn/global 设备授权、刷新、账号模型目录、COSY 聊天与积分查询。可选 ModelFetcher 能力传入 context 和 Credential，既有静态 ListModels 保持兼容；Qoder 缓存按账号/区域/凭据版本隔离，失败不回退静态候选。聊天、目录、额度共用刷新互斥及凭据比较替换，防止轮换重放、删除后复活和重新登录被覆盖。页面使用现有账号管理与代理密钥，模型要求 qoder/ 前缀。当前为 mock 与构建验证通过，真实账号及桌面交互验收待完成，详见 Qoder 实施计划。
 
 ## 1. 产品定位与阶段范围

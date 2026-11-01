@@ -1,4 +1,4 @@
-package authsessions
+﻿package authsessions
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if providerID != "trae" && providerID != "workbuddy" && providerID != "antigravity" && providerID != "qoder" {
+	if providerID != "trae" && providerID != "workbuddy" && providerID != "antigravity" && providerID != "qoder" && providerID != "codex" {
 		return Session{}, fmt.Errorf("provider %q does not support web login yet", providerID)
 	}
 	if region == "" {
@@ -66,6 +66,9 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 		}
 	}
 	var sess *Session
+	if providerID == "codex" {
+		return s.startCodex()
+	}
 	if providerID == "qoder" {
 		return s.startQoder(region)
 	}

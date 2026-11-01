@@ -39,7 +39,7 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
       <span className="model-catalog-source">{loading ? '正在获取…' : catalog ? `${({ live: '实时获取', builtin: '内置目录', merged: '实时 + 内置目录', cached: '账号缓存', stale: '刷新失败 · 上次目录', error: '目录不可用' }[catalog.source])} · ${(catalog.models?.length ?? 0)} 个模型` : '获取失败'}</span>
       <button className="group-add-btn" disabled={loading} onClick={() => setRevision(n => n + 1)}>刷新列表</button>
     </div>
-    <p className="model-catalog-note">复制完整模型 ID 到调用工具中；实际调用按模型来源匹配账号，按添加顺序选择，并跳过已知额度用完的账号。内置目录不代表已通过当前账号验证。</p>
+    <p className="model-catalog-note">实际调用按来源匹配账号、按添加顺序选择，并跳过已知额度用完的账号。内置目录不代表当前账号已验证。</p>
     <div aria-live="polite">
       {error && <p role="alert">{error}，可点击刷新重试。</p>}
       {catalog?.models.length === 0 && <p>该账号暂无模型目录。</p>}
