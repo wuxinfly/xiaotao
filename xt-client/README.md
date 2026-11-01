@@ -40,6 +40,26 @@ go vet ./...
 ./dist/xiaotao.exe
 ```
 
+### 不重启服务调试前端
+
+当正式版或 UAT 正在运行、又只想调整页面样式或交互时，不要让 `build.ps1` 或 `--stop` 打断当前实例。另起 Vite 开发服务器，把 `/api` 代理到正在运行的服务：
+
+```powershell
+$runtime = Get-Content -Raw "$env:LOCALAPPDATA\XiaoTao\runtime.json" | ConvertFrom-Json
+cd xt-client/frontend
+$env:XIAOTAO_DEV_API = $runtime.URL
+npm run dev -- --host 127.0.0.1 --port 5460 --strictPort
+```
+
+打开 `http://127.0.0.1:5460/` 即可用真实账号、配额和仪表盘数据预览最新前端代码，Vite 修改后热更新。UAT 将 runtime 路径换成 `$env:LOCALAPPDATA\XiaoTao-uat\runtime.json`，并另选预览端口；不要与 5455/5456 冲突。
+
+调试期间注意：
+
+- 只在 Vite 代理内访问运行中的服务，`XIAOTAO_DEV_API` 必须是本机 `127.0.0.1` 地址；代理会把请求的 `Host` 和 `Origin` 改写为服务自身地址，以满足服务的同源校验。
+- 预览页面的增删账号、刷新配额、轮换密钥等按钮会真实修改当前实例数据。只调样式时避免点击这些写操作。
+- 不把 `XIAOTAO_DEV_API` 或临时代理配置提交到构建产物。默认未设置该变量时，开发服务器不启用代理，正式构建行为不变。
+- 验证完成后关闭 Vite 进程并清理环境变量；需要让桌面窗口加载新前端时，再选择合适时机构建和重启，不能中断用户正在使用的服务。
+
 正式构建和 UAT 构建使用同一份源码，但环境身份在编译时注入，互不共用数据目录、端口和单实例：
 
 | 构建 | 输出 | 默认数据目录 | 默认端口 | 桌面快捷方式 |
