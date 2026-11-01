@@ -120,6 +120,9 @@ func TestService_SortingAndActiveCount(t *testing.T) {
 	if snap.RecentRequests[2].ID != "req-1" {
 		t.Errorf("expected third to be req-1, got %s", snap.RecentRequests[2].ID)
 	}
+	if snap.RecentRequests[0].AccountID != "a3" {
+		t.Errorf("expected account id a3, got %q", snap.RecentRequests[0].AccountID)
+	}
 }
 
 func TestService_ConcurrentRequests(t *testing.T) {
@@ -168,6 +171,50 @@ func TestService_ConcurrentRequests(t *testing.T) {
 	}
 	if snap.Today.FailedRequests != 10 {
 		t.Errorf("expected 10 failed, got %d", snap.Today.FailedRequests)
+	}
+}
+
+func TestService_SnapshotConcurrentWithRequestUpdate(t *testing.T) {
+	tmp := t.TempDir()
+	svc, err := New(tmp, "0.1.0-test")
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	defer svc.Close()
+
+	req := svc.StartRequest("req-lock-order", "trae", "m1", "a1", "用户", "并发快照")
+
+	// Hold the request lock so Snapshot waits after copying the service state.
+	req.mu.Lock()
+	usageDone := make(chan error, 1)
+	go func() {
+		p, c := int64(100), int64(50)
+		req.OnUsage(&p, &c, nil)
+		usageDone <- nil
+	}()
+
+	snapshotDone := make(chan error, 1)
+	snapshotCalled := make(chan struct{})
+	go func() {
+		close(snapshotCalled)
+		_, err := svc.Snapshot()
+		snapshotDone <- err
+	}()
+	<-snapshotCalled
+	req.mu.Unlock()
+
+	for name, done := range map[string]<-chan error{
+		"usage update": usageDone,
+		"snapshot":     snapshotDone,
+	} {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("%s failed: %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s deadlocked", name)
+		}
 	}
 }
 

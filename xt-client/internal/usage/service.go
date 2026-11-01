@@ -526,19 +526,26 @@ func (s *Service) Snapshot() (*DashboardSnapshot, error) {
 	batchID := s.batchID
 	startedAt := s.startedAt
 
-	// Copy active requests
-	activeList := make([]*Record, 0, len(s.activeRequests))
+	// Keep the service lock independent from request locks. Request updates
+	// acquire a request lock before the service lock, so locking in the
+	// opposite order while snapshotting can deadlock both sides.
+	activeRequests := make([]*ActiveRequest, 0, len(s.activeRequests))
 	for _, ar := range s.activeRequests {
-		ar.mu.Lock()
-		cp := ar.rec
-		activeList = append(activeList, &cp)
-		ar.mu.Unlock()
+		activeRequests = append(activeRequests, ar)
 	}
 
 	// Copy finished records
 	finishedList := make([]*Record, len(s.recentFinished))
 	copy(finishedList, s.recentFinished)
 	s.mu.RUnlock()
+
+	activeList := make([]*Record, 0, len(activeRequests))
+	for _, ar := range activeRequests {
+		ar.mu.Lock()
+		cp := ar.rec
+		activeList = append(activeList, &cp)
+		ar.mu.Unlock()
+	}
 
 	now := time.Now()
 	uptime := int64(now.Sub(startedAt).Seconds())
@@ -715,6 +722,7 @@ func toSummary(r *Record, now time.Time) RequestSummary {
 		Channel:              channel,
 		ChannelLabel:         channelLabel,
 		Model:                cleanModel,
+		AccountID:            r.AccountID,
 		ActionTag:            tag,
 		ActionTitle:          title,
 		Status:               r.Status,

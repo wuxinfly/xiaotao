@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   type Account,
@@ -10,6 +10,7 @@ import { ModelEndpointCard } from "./components/ModelEndpointCard";
 import { ProviderGroup } from "./components/ProviderGroup";
 import { AccountDetailModal } from "./components/AccountDetailModal";
 import { AddAccountModal } from "./components/AddAccountModal";
+import { ModelCatalogModal } from "./components/ModelCatalogModal";
 import "./accounts.css";
 
 type Flow = "idle" | "waiting" | "error";
@@ -22,11 +23,13 @@ export function AccountsPage() {
   const [flow, setFlow] = useState<Flow>("idle");
   const [session, setSession] = useState<LoginSession | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [reorderingProvider, setReorderingProvider] = useState<string | null>(null);
   const [loginProvider, setLoginProvider] = useState("trae");
   const [manualCallbackInput, setManualCallbackInput] = useState("");
   const [manualSubmitting, setManualSubmitting] = useState(false);
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedModelProvider, setSelectedModelProvider] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
@@ -80,6 +83,11 @@ export function AccountsPage() {
     return accounts.find(a => a.id === selectedAccountId) || null;
   }, [accounts, selectedAccountId]);
 
+  const selectedModelAccounts = useMemo(() => {
+    if (!selectedModelProvider) return [];
+    return groupedAccounts[selectedModelProvider] ?? [];
+  }, [groupedAccounts, selectedModelProvider]);
+
   const startLogin = async (providerId = "trae", region = "cn") => {
     setShowAddModal(false);
     setFlow("waiting");
@@ -129,6 +137,37 @@ export function AccountsPage() {
     }
   };
 
+  const handleReorderAccounts = async (providerId: string, orderedIDs: string[]) => {
+    if (reorderingProvider) return;
+    const previous = accounts;
+    const providerAccounts = accounts.filter(a => a.provider.toLowerCase() === providerId);
+    const byID = new Map(providerAccounts.map(a => [a.id, a]));
+    const ordered = orderedIDs.map(id => byID.get(id)).filter((a): a is Account => Boolean(a));
+    if (ordered.length !== providerAccounts.length) {
+      toast.error("账号顺序不完整，请刷新后重试");
+      return;
+    }
+
+    let position = 0;
+    const optimistic = accounts.map(a => {
+      if (a.provider.toLowerCase() !== providerId) return a;
+      const next = ordered[position];
+      position++;
+      return next ?? a;
+    });
+    setAccounts(optimistic);
+    setReorderingProvider(providerId);
+    try {
+      const res = await api.reorderAccounts(providerId, orderedIDs);
+      setAccounts(res.accounts ?? []);
+    } catch (e) {
+      setAccounts(previous);
+      toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setReorderingProvider(null);
+    }
+  };
+
   const handleDeleteAccount = async (a: Account) => {
     const name = a.alias || a.nickname || a.uid;
     if (!window.confirm("确定移除账号「" + name + "」？本地凭据会一并删除。")) return;
@@ -157,6 +196,55 @@ export function AccountsPage() {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const handleCheckin = async (a: Account) => {
+    setBusyId(a.id);
+    try {
+      const res = await api.claimCheckin(a.id);
+      if (res.ok) {
+        const bonus = res.extraCredits ? `，获得 +${res.extraCredits} 积分` : '';
+        const streak = res.streakDays ? `（已连续签到 ${res.streakDays} 天）` : '';
+        toast.success(`签到成功${bonus}${streak}`);
+      } else {
+        toast.info(res.message || "签到未成功");
+      }
+      await load();
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleCheckinAll = async (providerId?: string) => {
+    try {
+      toast.info("正在执行签到打卡...");
+      const { results } = await api.claimAllCheckin();
+      let successCount = 0;
+      let totalPoints = 0;
+      for (const [id, r] of Object.entries(results)) {
+        if (providerId) {
+          const acct = accounts.find(a => a.id === id);
+          if (acct && acct.provider.toLowerCase() !== providerId.toLowerCase()) {
+            continue;
+          }
+        }
+        if (r.ok) {
+          successCount++;
+          if (r.extraCredits) totalPoints += r.extraCredits;
+        }
+      }
+      if (successCount > 0) {
+        const bonus = totalPoints > 0 ? `，共获得 +${totalPoints} 积分` : '';
+        toast.success(`已完成 ${successCount} 个账号签到${bonus}`);
+      } else {
+        toast.info("今日没有需要签到的账号或已全部签过");
+      }
+      await load();
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
     }
   };
 
@@ -359,6 +447,7 @@ export function AccountsPage() {
           <h2 className="sources-section-title">接入来源</h2>
           <span className="sources-section-sub">{providerKeys.length} 个来源 · {accounts.length} 个账号</span>
         </div>
+        <p className="sources-order-hint">请求会按各来源内的账号顺序，从上到下选择。</p>
 
         {providerKeys.map((pKey) => (
           <ProviderGroup
@@ -367,13 +456,27 @@ export function AccountsPage() {
             providerInfo={providerMap.get(pKey)}
             accounts={groupedAccounts[pKey]}
             busyId={busyId}
+            isReordering={reorderingProvider === pKey}
             onAddAccount={() => setShowAddModal(true)}
             onToggleEnable={handleToggleEnable}
             onRefreshQuota={handleRefreshQuota}
+            onCheckin={handleCheckin}
+            onCheckinAll={handleCheckinAll}
+            onReorder={handleReorderAccounts}
             onOpenDetail={(acct) => setSelectedAccountId(acct.id)}
+            onOpenModels={() => setSelectedModelProvider(pKey)}
           />
         ))}
       </div>
+
+      {selectedModelProvider && selectedModelAccounts.length > 0 && (
+        <ModelCatalogModal
+          providerId={selectedModelProvider}
+          providerInfo={providerMap.get(selectedModelProvider)}
+          accounts={selectedModelAccounts}
+          onClose={() => setSelectedModelProvider(null)}
+        />
+      )}
 
       {selectedAccount && (
         <AccountDetailModal
@@ -383,6 +486,7 @@ export function AccountsPage() {
           onClose={() => setSelectedAccountId(null)}
           onToggleEnable={handleToggleEnable}
           onRefreshQuota={handleRefreshQuota}
+          onCheckin={handleCheckin}
           onDeleteAccount={handleDeleteAccount}
           onRelogin={acct => { setSelectedAccountId(null); void startLogin(acct.provider, acct.region); }}
         />

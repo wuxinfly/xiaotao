@@ -46,6 +46,11 @@ type Config struct {
 	Name string `json:"name"`
 }
 
+type hudState struct {
+	mu      sync.Mutex
+	enabled bool
+}
+
 var traeProvider = trae.Provider{}
 var workbuddyProvider = workbuddy.Provider{}
 var antigravityProvider = antigravity.Provider{}
@@ -111,6 +116,8 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	}
 	var mu sync.Mutex
 	mux := http.NewServeMux()
+	hud := &hudState{}
+	hudTitle := desktop.HUDWindowTitle(runtimeenv.Current().DisplayName)
 	started := time.Now()
 	store, err := storage.Open(filepath.Join(data, "accounts"))
 	if err != nil {
@@ -144,7 +151,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	}
 	proxySvc := proxy.New(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) }, proxyKey)
 	accountSvc := proxy.NewAccountService(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) })
-	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, s.Token, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
+	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, proxySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
 		out := []agent.ModelOption{}
 		for _, acct := range store.Accounts() {
 			if !acct.Enabled {
@@ -171,6 +178,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		json.NewEncoder(w).Encode(v)
 	}
 	apiError := func(w http.ResponseWriter, status int, message string) {
+		w.WriteHeader(status)
 		send(w, map[string]any{"error": map[string]any{"message": message}})
 	}
 	requireOrigin := func(r *http.Request) bool {
@@ -212,6 +220,48 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		send(w, snap)
 	})
+	mux.HandleFunc("GET /api/request-hud", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		hud.mu.Lock()
+		enabled := hud.enabled
+		hud.mu.Unlock()
+		send(w, map[string]any{"enabled": enabled})
+	})
+	mux.HandleFunc("POST /api/request-hud", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+			apiError(w, 400, "invalid request")
+			return
+		}
+		hud.mu.Lock()
+		hud.enabled = body.Enabled
+		if body.Enabled {
+			exe, err := os.Executable()
+			if err != nil {
+				hud.mu.Unlock()
+				apiError(w, 500, "cannot locate executable")
+				return
+			}
+			hud.mu.Unlock()
+			go func() {
+				_ = desktop.Start(exe, "--hud-window", "--data-dir", data)
+			}()
+			send(w, map[string]any{"enabled": true})
+			return
+		}
+		hud.mu.Unlock()
+		go desktop.CloseWindow(hudTitle)
+		send(w, map[string]any{"enabled": false})
+	})
 	mux.HandleFunc("GET /api/dashboard/events", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
@@ -222,6 +272,25 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
+			return
+		}
+		send(w, map[string]any{"accounts": store.Accounts()})
+	})
+	mux.HandleFunc("POST /api/accounts/order", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var body struct {
+			ProviderID string   `json:"providerId"`
+			AccountIDs []string `json:"accountIds"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+			apiError(w, 400, "invalid request")
+			return
+		}
+		if err := store.ReorderAccounts(body.ProviderID, body.AccountIDs); err != nil {
+			apiError(w, 400, err.Error())
 			return
 		}
 		send(w, map[string]any{"accounts": store.Accounts()})
@@ -296,6 +365,48 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		send(w, snap)
+	})
+	mux.HandleFunc("GET /api/accounts/{id}/checkin", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		id := r.PathValue("id")
+		if _, ok := store.Account(id); !ok {
+			apiError(w, 404, "account not found")
+			return
+		}
+		st, err := accountSvc.FetchCheckin(id)
+		if err != nil {
+			apiError(w, 502, "checkin status failed: "+err.Error())
+			return
+		}
+		send(w, st)
+	})
+	mux.HandleFunc("POST /api/accounts/{id}/checkin", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		id := r.PathValue("id")
+		if _, ok := store.Account(id); !ok {
+			apiError(w, 404, "account not found")
+			return
+		}
+		res, err := accountSvc.ClaimCheckin(id)
+		if err != nil {
+			apiError(w, 502, "checkin claim failed: "+err.Error())
+			return
+		}
+		send(w, res)
+	})
+	mux.HandleFunc("POST /api/checkin/claim-all", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		res := accountSvc.ClaimAllSupported()
+		send(w, map[string]any{"results": res})
 	})
 	mux.HandleFunc("POST /api/auth/trae", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {

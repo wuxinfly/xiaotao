@@ -1,80 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { api, type DashboardSnapshot } from '../../lib/api';
+import { useDashboardData } from './DashboardData';
 import { UsageOverview } from './UsageOverview';
 import { RecentRequests } from './RecentRequests';
 import { UsageHeatmap } from './UsageHeatmap';
 import './dashboard.css';
 
 export function DashboardPage() {
-  const [snap, setSnap] = useState<DashboardSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [nowMs, setNowMs] = useState(Date.now());
-  const [uptimeSec, setUptimeSec] = useState(0);
-
-  // Keep track of latest snapshot reference
-  const snapRef = useRef<DashboardSnapshot | null>(null);
-  snapRef.current = snap;
-
-  // 1. Initial snapshot fetch & SSE subscription
-  useEffect(() => {
-    let mounted = true;
-
-    const loadInitial = async () => {
-      try {
-        const data = await api.dashboard();
-        if (mounted) {
-          setSnap(data);
-          setUptimeSec(data.launch.uptimeSeconds);
-          setLoading(false);
-          setError(null);
-        }
-      } catch (e) {
-        if (mounted) {
-          setError(String(e instanceof Error ? e.message : e));
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadInitial();
-
-    const unsubscribe = api.subscribeDashboard(
-      (update) => {
-        if (!mounted) return;
-        setConnected(true);
-        setError(null);
-        setSnap((prev) => {
-          // Discard older updates based on versionSeq
-          if (prev && update.versionSeq < prev.versionSeq) {
-            return prev;
-          }
-          setUptimeSec(update.launch.uptimeSeconds);
-          return update;
-        });
-      },
-      () => {
-        if (mounted) {
-          setConnected(false);
-        }
-      }
-    );
-
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, []);
-
-  // 2. 1-second live ticker for running durations and uptime
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNowMs(Date.now());
-      setUptimeSec((s) => s + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const { snap, accounts, connected, loading, error, nowMs, reload } = useDashboardData();
 
   if (loading) {
     return (
@@ -92,20 +23,7 @@ export function DashboardPage() {
           <div style={{ marginTop: 12 }}>
             <button
               className="btn primary"
-              onClick={() => {
-                setLoading(true);
-                setError(null);
-                api.dashboard()
-                  .then((d) => {
-                    setSnap(d);
-                    setUptimeSec(d.launch.uptimeSeconds);
-                    setLoading(false);
-                  })
-                  .catch((e) => {
-                    setError(String(e));
-                    setLoading(false);
-                  });
-              }}
+              onClick={() => void reload()}
             >
               重新加载
             </button>
@@ -118,6 +36,9 @@ export function DashboardPage() {
   if (!snap) return null;
 
   const isStorageError = snap.storage.status !== 'healthy';
+  const accountNames = new Map(
+    accounts.map((account) => [account.id, account.alias || account.nickname || account.uid])
+  );
 
   return (
     <div className="dashboard-page">
@@ -167,7 +88,7 @@ export function DashboardPage() {
       )}
 
       {/* 1. Usage Overview Card */}
-      <UsageOverview snap={snap} uptimeSeconds={uptimeSec} />
+      <UsageOverview snap={snap} uptimeSeconds={snap.launch.uptimeSeconds} />
 
       {/* 2. Recent Requests Card */}
       <RecentRequests
@@ -175,6 +96,7 @@ export function DashboardPage() {
         activeRequests={snap.activeRequests}
         activeCount={snap.activeCount}
         nowMs={nowMs}
+        accountNames={accountNames}
       />
 
       {/* 3. Usage Heatmap */}

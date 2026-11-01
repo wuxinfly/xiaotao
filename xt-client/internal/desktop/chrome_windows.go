@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 	"image/png"
 	"net/http"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -24,6 +25,7 @@ var kernel = windows.NewLazySystemDLL("kernel32.dll")
 func win(name string, args ...uintptr) uintptr { v, _, _ := user.NewProc(name).Call(args...); return v }
 
 type point struct{ X, Y int32 }
+type rect = windows.Rect
 type notifyIcon struct {
 	Size                uint32
 	Hwnd                uintptr
@@ -131,18 +133,29 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 		case 0x14:
 			if brush != 0 {
 				hdc := wp
-				var r struct{ Left, Top, Right, Bottom int32 }
+				var r rect
 				user.NewProc("GetClientRect").Call(hwnd, uintptr(unsafe.Pointer(&r)))
 				user.NewProc("FillRect").Call(hdc, uintptr(unsafe.Pointer(&r)), brush)
 				return 1
 			}
+		case 0x24: // Constrain native maximization to the monitor work area.
+			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
+			return status
 		case 0x83: // Let WebView cover the entire client area, including the old top frame.
 			if wp != 0 {
 				return 0
 			}
+		case 0x5: // Keep the WebView inside the work area while maximized.
+			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
+			if win("IsZoomed", hwnd) != 0 {
+				if info, ok := monitorInfoFor(hwnd); ok {
+					resizeMaximizedChild(hwnd, info)
+				}
+			}
+			return status
 		case 0x84: // Keep resizing available after removing the non-client frame.
 			if win("IsZoomed", hwnd) == 0 {
-				var r struct{ Left, Top, Right, Bottom int32 }
+				var r rect
 				win("GetWindowRect", hwnd, uintptr(unsafe.Pointer(&r)))
 				x, y := int32(int16(lp&0xffff)), int32(int16((lp>>16)&0xffff))
 				edge := int32(6)
@@ -210,6 +223,7 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 	old = win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), callback)
 	// Recalculate only after installing WM_NCCALCSIZE handling.
 	win("SetWindowPos", hwnd, 0, 0, 0, 0, 0, 0x37)
+	roundNativeWindow(hwnd)
 	dark := uint32(1)
 	windows.NewLazySystemDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute").Call(hwnd, 20, uintptr(unsafe.Pointer(&dark)), 4)
 	captionColor := uint32(bgRGB)
@@ -229,6 +243,19 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 			switch action {
 			case "ready":
 				reveal()
+			case "pick-folder":
+				go func() {
+					path, err := PickFolder("选择小涛要工作的项目文件夹")
+					payload := "{}"
+					if err != nil {
+						payload = `{"error":` + strconv.Quote(err.Error()) + `}`
+					} else {
+						payload = `{"path":` + strconv.Quote(path) + `}`
+					}
+					w.Dispatch(func() {
+						w.Eval("window.xtFolderPicked?.(" + payload + ")")
+					})
+				}()
 			case "minimize":
 				win("PostMessageW", hwnd, 0x112, 0xf020, 0)
 			case "maximize":
@@ -255,6 +282,15 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 			win("DestroyIcon", icon)
 		}
 	}
+}
+
+func monitorInfoFor(hwnd uintptr) (monitorInfo, bool) {
+	monitor := win("MonitorFromWindow", hwnd, 2) // MONITOR_DEFAULTTONEAREST
+	info := monitorInfo{Size: uint32(unsafe.Sizeof(monitorInfo{}))}
+	if monitor == 0 || win("GetMonitorInfoW", monitor, uintptr(unsafe.Pointer(&info))) == 0 {
+		return monitorInfo{}, false
+	}
+	return info, true
 }
 
 func ShowExisting(title string) bool {

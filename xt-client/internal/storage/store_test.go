@@ -76,6 +76,63 @@ func TestOpenReadOnlyDoesNotCreateFiles(t *testing.T) {
 	}
 }
 
+func TestReorderAccountsPersistsRequestOrder(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acct := range []*Account{
+		{ID: "trae:first", Provider: "trae", AddedAt: 1},
+		{ID: "workbuddy:middle", Provider: "workbuddy", AddedAt: 2},
+		{ID: "trae:second", Provider: "trae", AddedAt: 3},
+	} {
+		if err := s.UpsertAccount(acct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ReorderAccounts("trae", []string{"trae:second", "trae:first"}); err != nil {
+		t.Fatal(err)
+	}
+	got := s.Accounts()
+	if got[0].ID != "trae:second" || got[1].ID != "workbuddy:middle" || got[2].ID != "trae:first" {
+		t.Fatalf("unexpected global order: %s, %s, %s", got[0].ID, got[1].ID, got[2].ID)
+	}
+
+	reopened, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = reopened.Accounts()
+	if got[0].ID != "trae:second" || got[2].ID != "trae:first" {
+		t.Fatal("request order did not survive restart")
+	}
+}
+
+func TestReorderAccountsRejectsIncompleteOrder(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acct := range []*Account{
+		{ID: "trae:first", Provider: "trae"},
+		{ID: "trae:second", Provider: "trae"},
+	} {
+		if err := s.UpsertAccount(acct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ReorderAccounts("trae", []string{"trae:second"}); err == nil {
+		t.Fatal("expected incomplete order to be rejected")
+	}
+	if err := s.ReorderAccounts("trae", []string{"trae:second", "trae:second"}); err == nil {
+		t.Fatal("expected duplicate order to be rejected")
+	}
+	if got := s.Accounts(); got[0].ID != "trae:first" || got[1].ID != "trae:second" {
+		t.Fatal("invalid reorder changed account order")
+	}
+}
+
 // Regression: encrypted blobs are binary and must survive the JSON
 // round-trip. Go's JSON encoder replaces invalid UTF-8 bytes with U+FFFD,
 // which previously corrupted secrets saved with string(blob).

@@ -59,7 +59,7 @@ func TestSessionPersistsAndRejectsUnsafeID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("hello"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	svc := NewService(data, "http://127.0.0.1:9999", "", nil, nil)
+	svc := NewService(data, "http://127.0.0.1:9999", nil, nil, nil)
 	session, err := svc.Create(Options{ProjectPath: root, Model: "test/model"})
 	if err != nil {
 		t.Fatal(err)

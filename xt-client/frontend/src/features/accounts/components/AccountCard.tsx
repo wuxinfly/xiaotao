@@ -1,26 +1,44 @@
 import React from 'react';
+import { GripVertical } from 'lucide-react';
 import type { Account } from '../../../lib/api';
 import { calculateQuotaSummary } from '../quotaUtils';
 
 interface AccountCardProps {
   account: Account;
   isBusy: boolean;
+  canReorder: boolean;
+  canMoveBackward: boolean;
+  canMoveForward: boolean;
+  onDragStart: (event: React.DragEvent<HTMLButtonElement>) => void;
+  onMove: (direction: -1 | 1) => void;
   onToggleEnable: (account: Account) => Promise<void>;
   onRefreshQuota: (account: Account) => Promise<void>;
+  onCheckin?: (account: Account) => Promise<void>;
   onOpenDetail: (account: Account) => void;
 }
 
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
   isBusy,
+  canReorder,
+  canMoveBackward,
+  canMoveForward,
+  onDragStart,
+  onMove,
   onToggleEnable,
   onRefreshQuota,
+  onCheckin,
   onOpenDetail,
 }) => {
   const summary = calculateQuotaSummary(account.quota);
   const isAuthValid = account.authState === 'valid';
   const isAuthExpired = account.authState === 'expired' || account.authState === 'invalid';
   const isQuotaError = account.quota?.status === 'error';
+
+  const isTraeCN = account.provider === 'trae' && (account.region === 'cn' || !account.region);
+  const isWorkbuddy = account.provider === 'workbuddy';
+  const supportsCheckin = isTraeCN || isWorkbuddy;
+  const isCheckedIn = !!account.checkin?.checkedIn;
 
   const displayName = account.alias || account.nickname || `用户 ${account.uid}`;
 
@@ -30,6 +48,28 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       <div className="card-top-row">
         <div className="card-primary">
           <div className="card-identity">
+            <button
+              type="button"
+              className="card-drag-handle"
+              draggable={canReorder}
+              disabled={!canReorder}
+              onDragStart={onDragStart}
+              onKeyDown={event => {
+                if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                  if (!canMoveBackward) return;
+                  event.preventDefault();
+                  onMove(-1);
+                } else if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                  if (!canMoveForward) return;
+                  event.preventDefault();
+                  onMove(1);
+                }
+              }}
+              title="拖动调整请求顺序，聚焦后可按方向键调整"
+              aria-label={`调整 ${displayName} 的请求顺序`}
+            >
+              <GripVertical size={14} aria-hidden="true" />
+            </button>
             <h4 className="card-account-name" title={displayName}>
               {displayName}
             </h4>
@@ -45,6 +85,16 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 <span className="badge-pill badge-auth-expired">
                   <span className="dot" aria-hidden="true" />
                   登录失效
+                </span>
+              )}
+              {supportsCheckin && isCheckedIn && (
+                <span className="badge-pill badge-checkin-done" title={account.checkin?.streakDays ? `已连签 ${account.checkin.streakDays} 天` : '今日已签到'}>
+                  已签到
+                </span>
+              )}
+              {supportsCheckin && !isCheckedIn && account.checkin?.active !== false && (
+                <span className="badge-pill badge-checkin-todo" title="今日可签到打卡">
+                  待签到
                 </span>
               )}
             </div>
@@ -100,6 +150,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
           {/* Actions */}
           <div className="card-actions-row">
+            {supportsCheckin && onCheckin && (
+              <button
+                type="button"
+                className={`card-action-btn checkin-btn ${isCheckedIn ? 'is-checked-in' : ''}`}
+                disabled={isBusy}
+                onClick={() => onCheckin(account)}
+                title={isCheckedIn ? (account.checkin?.streakDays ? `今日已签到 (连续 ${account.checkin.streakDays} 天)` : '今日已签到') : '每日签到打卡'}
+                aria-label="每日签到打卡"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </button>
+            )}
+
             <button
               type="button"
               className="card-action-btn refresh-btn"

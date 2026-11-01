@@ -1,7 +1,9 @@
 package workbuddy
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -127,6 +129,92 @@ func TestStreamer_ReceivesStreamedDeltas(t *testing.T) {
 	}
 	if usage["prompt_tokens"] != int64(3) {
 		t.Errorf("expected prompt_tokens 3, got %v", usage)
+	}
+}
+
+func TestStreamer_DoesNotUseAuthClientTimeout(t *testing.T) {
+	previous := defaultClient
+	defaultClient = &http.Client{Timeout: 20 * time.Millisecond}
+	defer func() { defaultClient = previous }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		flusher.Flush()
+		time.Sleep(60 * time.Millisecond)
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"slow\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		flusher.Flush()
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+	defer SetBaseURL(server.URL)()
+
+	cred := &providers.Credential{AccessToken: "test-token"}
+	var content string
+	events := &providers.ChatEvents{
+		OnDelta: func(delta map[string]any) {
+			if c, ok := delta["content"].(string); ok {
+				content += c
+			}
+		},
+	}
+	err := Streamer{}.Stream(t.Context(), cred, "auto", map[string]any{"messages": []any{}}, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content != "slow" {
+		t.Errorf("expected slow, got %q", content)
+	}
+}
+
+func TestStreamer_IdleTimeoutInterruptsBlockedRead(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	defer SetBaseURL(server.URL)()
+
+	cred := &providers.Credential{AccessToken: "test-token"}
+	err := streamWithTimeouts(t.Context(), cred, "auto", map[string]any{"messages": []any{}}, &providers.ChatEvents{}, 25*time.Millisecond, time.Second)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected idle deadline error, got %v", err)
+	}
+	if err.Error() != errStreamIdleTimeout.Error() {
+		t.Fatalf("expected idle timeout message, got %v", err)
+	}
+}
+
+func TestStreamer_ParentCancellationIsNotReportedAsIdleTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	defer SetBaseURL(server.URL)()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	cred := &providers.Credential{AccessToken: "test-token"}
+	done := make(chan error, 1)
+	go func() {
+		done <- streamWithTimeouts(ctx, cred, "auto", map[string]any{"messages": []any{}}, &providers.ChatEvents{}, time.Second, time.Second)
+	}()
+	time.Sleep(25 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected request cancellation, got %v", err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("cancellation should not be reported as idle timeout: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stream did not stop")
 	}
 }
 

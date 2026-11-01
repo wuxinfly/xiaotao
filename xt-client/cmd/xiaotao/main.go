@@ -38,6 +38,7 @@ func run() error {
 	data := flag.String("data-dir", "", "用户数据目录")
 	service := flag.Bool("service", false, "运行服务")
 	window := flag.Bool("window", false, "打开桌面窗口")
+	hudWindow := flag.Bool("hud-window", false, "打开独立请求浮窗")
 	browser := flag.Bool("browser", false, "在浏览器打开")
 	status := flag.Bool("status", false, "显示服务地址")
 	stop := flag.Bool("stop", false, "停止服务")
@@ -65,6 +66,9 @@ func run() error {
 	defer logger.Close()
 	log.SetOutput(logger)
 	if *service {
+		if current, readErr := app.Read(*data); readErr == nil && app.Alive(current) {
+			return nil
+		}
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 		return app.Serve(ctx, *data)
@@ -95,28 +99,66 @@ func run() error {
 	if e != nil {
 		return e
 	}
-	if e != nil || !app.Alive(s) {
-		if e = desktop.Start(exe, "--service", "--data-dir", *data); e != nil {
-			return e
-		}
-		ready := false
-		for i := 0; i < 100; i++ {
-			time.Sleep(100 * time.Millisecond)
+	if !app.Alive(s) {
+		release, lockErr := desktop.Lock(runtimeenv.LaunchMutex(app.Key(*data)))
+		if lockErr != nil {
+			// Another launcher may have started the service between our
+			// health check and acquiring the launch lock. Reuse it if healthy;
+			// otherwise surface the actual lock failure.
 			s, e = app.Read(*data)
 			if e == nil && app.Alive(s) {
-				ready = true
-				break
+				return openClient(*browser, *window, exe, *data, s, environment, logger)
+			}
+			return lockErr
+		}
+		defer release()
+
+		// Re-check after locking so concurrent double-clicks converge on one
+		// service and one launch path.
+		s, e = app.Read(*data)
+		if e != nil || !app.Alive(s) {
+			if e = desktop.Start(exe, "--service", "--data-dir", *data); e != nil {
+				return e
+			}
+			ready := false
+			for i := 0; i < 100; i++ {
+				time.Sleep(100 * time.Millisecond)
+				s, e = app.Read(*data)
+				if e == nil && app.Alive(s) {
+					ready = true
+					break
+				}
+			}
+			if !ready {
+				return fmt.Errorf("服务启动超时，请查看 %s", logger.Path())
 			}
 		}
-		if !ready {
-			return fmt.Errorf("服务启动超时，请查看 %s", logger.Path())
-		}
 	}
-	if *browser {
+	if *hudWindow {
+		release, e := desktop.Lock(runtimeenv.HUDWindowMutex(app.Key(*data)))
+		if e != nil {
+			return nil
+		}
+		defer release()
+		return desktop.HUDWindow(s.URL, *data, s.Token, environment.DisplayName)
+	}
+	return openClient(*browser, *window, exe, *data, s, environment, logger)
+}
+
+func openClient(
+	browser bool,
+	window bool,
+	exe string,
+	data string,
+	s app.State,
+	environment runtimeenv.Environment,
+	logger *logging.Daily,
+) error {
+	if browser {
 		return desktop.Browser(s.URL)
 	}
-	if *window {
-		release, e := desktop.Lock(runtimeenv.WindowMutex(app.Key(*data)))
+	if window {
+		release, e := desktop.Lock(runtimeenv.WindowMutex(app.Key(data)))
 		if e != nil {
 			if desktop.ShowExisting(environment.DisplayName) {
 				return nil
@@ -124,11 +166,11 @@ func run() error {
 			return desktop.Browser(s.URL)
 		}
 		defer release()
-		if e = desktop.Window(s.URL, *data, s.Token, environment.DisplayName); e != nil {
+		if e = desktop.Window(s.URL, data, s.Token, environment.DisplayName); e != nil {
 			log.Print(e)
 			return desktop.Browser(s.URL)
 		}
 		return nil
 	}
-	return desktop.Start(exe, "--window", "--data-dir", *data)
+	return desktop.Start(exe, "--window", "--data-dir", data)
 }

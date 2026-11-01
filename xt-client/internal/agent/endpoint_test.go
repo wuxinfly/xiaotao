@@ -21,7 +21,7 @@ func TestHTTPModelClientTranslatesErrorsAndToolCalls(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"README.md\"}"}}]},"finish_reason":"tool_calls"}]}`))
 	}))
 	defer server.Close()
-	client := &httpModelClient{endpoint: server.URL + "/v1/chat/completions", key: "test-key", client: server.Client()}
+	client := &httpModelClient{endpoint: server.URL + "/v1/chat/completions", key: func() string { return "test-key" }, client: server.Client()}
 	result, err := client.Complete(context.Background(), "test/model", []map[string]any{{"role": "user", "content": "read"}}, []map[string]any{{"type": "function"}})
 	if err != nil {
 		t.Fatal(err)

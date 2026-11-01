@@ -37,7 +37,7 @@ func TestUATIsolation(t *testing.T) {
 	if !filepath.IsAbs(modelSource) {
 		t.Fatal("UAT model source directory is not absolute")
 	}
-	if ServiceMutex("a") == WindowMutex("a") || got.MutexNamespace != "XiaoTao.UAT" {
+	if ServiceMutex("a") == WindowMutex("a") || ServiceMutex("a") == LaunchMutex("a") || WindowMutex("a") == LaunchMutex("a") || got.MutexNamespace != "XiaoTao.UAT" {
 		t.Fatal("UAT mutexes are not isolated")
 	}
 }

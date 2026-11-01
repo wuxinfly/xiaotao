@@ -1,12 +1,17 @@
 import {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {Activity} from 'lucide-react';
 import './style.css';
 import {AccountsPage} from './features/accounts/AccountsPage';
 import {DashboardPage} from './features/dashboard/DashboardPage';
+import {DashboardDataProvider} from './features/dashboard/DashboardData';
+import {api} from './lib/api';
 import {ToastContainer} from './components/toast';
 import {WindowMenu} from './components/WindowMenu';
 import {AgentPage} from './features/agent/AgentPage';
 import './navigation.css';
+import './ocean-tech.css';
+import './features/dashboard/request-hud-toggle.css';
 
 declare global {interface Window {xtWindow?: (action:string)=>Promise<void>}}
 type Page='agent'|'dashboard'|'accounts';
@@ -22,11 +27,35 @@ window.addEventListener('wheel', event => {
 
 function App(){
  const [page,setPage]=useState<Page>('agent'),[open,setOpen]=useState(false);
+ const [requestHudEnabled,setRequestHudEnabled]=useState(false),[hudBusy,setHudBusy]=useState(false);
  const menu=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
  const closeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
  const cancelClose=()=>clearTimeout(closeTimer.current);
  useEffect(()=>()=>clearTimeout(closeTimer.current),[]);
  const desktop=typeof window.xtWindow==='function';
+ useEffect(()=>{
+  if(!desktop)return;
+  api.requestHudEnabled().then(result=>setRequestHudEnabled(result.enabled)).catch(()=>{});
+ },[]);
+ useEffect(()=>{
+  if(!desktop)return;
+  const refresh=()=>api.requestHudEnabled().then(result=>setRequestHudEnabled(result.enabled)).catch(()=>{});
+  const timer=setInterval(refresh,5000);
+  window.addEventListener('focus',refresh);
+  return()=>{clearInterval(timer);window.removeEventListener('focus',refresh)};
+ },[]);
+ const toggleRequestHud=async()=>{
+  if(hudBusy)return;
+  const next=!requestHudEnabled;
+  setRequestHudEnabled(next);
+  setHudBusy(true);
+  try {
+   const result=await api.setRequestHudEnabled(next);
+   setRequestHudEnabled(result.enabled);
+  } catch {
+   setRequestHudEnabled(!next);
+  } finally { setHudBusy(false); }
+ };
  useEffect(()=>{const dismiss=(e:PointerEvent)=>{if(!menu.current?.contains(e.target as Node))setOpen(false)};document.addEventListener('pointerdown',dismiss);return()=>document.removeEventListener('pointerdown',dismiss)},[]);
  useEffect(()=>{
   const timer=setTimeout(()=>{window.xtWindow?.('ready')},150);
@@ -49,12 +78,17 @@ function App(){
      <div className={"dropdown"+(open?" is-open":"")} id="model-options" inert={!open} aria-hidden={!open}><small>模型工作空间</small><button className={(page==='dashboard'?'selected ':'')+'dashboard-option'} aria-current={page==='dashboard'?'page':undefined} onClick={()=>select('dashboard')}><img className="dashboard-icon" src={dashboardIcon} alt=""/><span>仪表盘</span><small>运行状态与实时用量</small></button><button className={(page==='accounts'?'selected ':'')+'quota-option'} aria-current={page==='accounts'?'page':undefined} onClick={()=>select('accounts')}><img className="dropdown-icon" src={accountQuotaIcon} alt=""/><span>账号与配额</span><small>管理渠道、账号与 API</small></button></div>
     </div>
    </nav>
-   <div className="title-right">{desktop&&<><WindowMenu/><div className="window-buttons">{[['minimize','−','最小化'],['maximize','□','最大化或还原'],['close','×','收起到托盘']].map(([action,label,title])=><button key={action} aria-label={title} title={title} onClick={()=>window.xtWindow?.(action)}>{label}</button>)}</div></>}</div>
+   <div className="title-right">
+    {desktop&&<button type="button" className="request-hud-launcher" aria-pressed={requestHudEnabled} disabled={hudBusy} onClick={()=>void toggleRequestHud()} title={requestHudEnabled?'关闭独立请求浮窗':'打开独立请求浮窗'}>
+     <Activity aria-hidden="true"/><span>请求浮窗</span><i aria-hidden="true"/>
+    </button>}
+    {desktop&&<><WindowMenu/><div className="window-buttons">{[['minimize','−','最小化'],['maximize','□','最大化或还原'],['close','×','收起到托盘']].map(([action,label,title])=><button key={action} aria-label={title} title={title} onClick={()=>window.xtWindow?.(action)}>{label}</button>)}</div></>}
+   </div>
   </header>
   <main aria-label={page} className={page==='agent'?'agent-main':undefined}>
    <div key={page} className="page-view">
     {page === 'agent' && <AgentPage />}
-    {page === 'dashboard' && <DashboardPage />}
+    {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
     {page === 'accounts' && <AccountsPage />}
    </div>
   </main>

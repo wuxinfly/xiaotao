@@ -109,6 +109,44 @@ func streamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 	return nil
 }
 
+// normalizeTokenUsage maps an upstream token_usage event onto the OpenAI usage
+// shape. Trae reports cache counters with Anthropic-style names
+// (cache_read_input_tokens / cache_creation_input_tokens) rather than
+// cached_tokens, so those feed cached_tokens and prompt_tokens_details too.
+func normalizeTokenUsage(data map[string]any) map[string]any {
+	usage := map[string]any{}
+	for _, k := range []string{
+		"prompt_tokens", "completion_tokens", "total_tokens",
+		"cached_tokens", "prompt_cache_hit_tokens", "cache_tokens",
+		"cache_read_input_tokens", "cache_creation_input_tokens",
+	} {
+		if v, ok := data[k].(float64); ok {
+			usage[k] = int64(v)
+		}
+	}
+	var cached int64
+	var found bool
+	if details, ok := data["prompt_tokens_details"].(map[string]any); ok {
+		if v, ok := details["cached_tokens"].(float64); ok {
+			cached, found = int64(v), true
+		}
+	}
+	for _, k := range []string{"cached_tokens", "cache_read_input_tokens", "prompt_cache_hit_tokens", "cache_tokens"} {
+		if found {
+			break
+		}
+		if v, ok := usage[k].(int64); ok {
+			cached, found = v, true
+		}
+	}
+	if !found {
+		return usage
+	}
+	usage["cached_tokens"] = cached
+	usage["prompt_tokens_details"] = map[string]any{"cached_tokens": cached}
+	return usage
+}
+
 func collectChat(ctx context.Context, cred *providers.Credential, machineID, deviceID, model string, body map[string]any) (*ChatResult, error) {
 	result := &ChatResult{Tools: []map[string]any{}}
 	calls := map[int]map[string]string{}
@@ -142,24 +180,7 @@ func collectChat(ctx context.Context, cred *providers.Credential, machineID, dev
 				result.FirstTokenAt = &now
 			}
 		case "token_usage":
-			usage := map[string]any{}
-			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "prompt_cache_hit_tokens", "cache_tokens"} {
-				if v, ok := data[k].(float64); ok {
-					usage[k] = int64(v)
-				}
-			}
-			if details, ok := data["prompt_tokens_details"].(map[string]any); ok {
-				if v, ok := details["cached_tokens"].(float64); ok {
-					usage["cached_tokens"] = int64(v)
-				}
-			}
-			if p, ok := usage["prompt_cache_hit_tokens"]; ok && usage["cached_tokens"] == nil {
-				usage["cached_tokens"] = p
-			}
-			if c, ok := usage["cache_tokens"]; ok && usage["cached_tokens"] == nil {
-				usage["cached_tokens"] = c
-			}
-			result.Usage = usage
+			result.Usage = normalizeTokenUsage(data)
 		case "done":
 			result.EOF = true
 		case "notify_usage":
@@ -256,23 +277,7 @@ func StreamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 				}
 			}
 		case "token_usage":
-			usage := map[string]any{}
-			for _, k := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "prompt_cache_hit_tokens", "cache_tokens"} {
-				if v, ok := data[k].(float64); ok {
-					usage[k] = int64(v)
-				}
-			}
-			if details, ok := data["prompt_tokens_details"].(map[string]any); ok {
-				if v, ok := details["cached_tokens"].(float64); ok {
-					usage["cached_tokens"] = int64(v)
-				}
-			}
-			if p, ok := usage["prompt_cache_hit_tokens"]; ok && usage["cached_tokens"] == nil {
-				usage["cached_tokens"] = p
-			}
-			if c, ok := usage["cache_tokens"]; ok && usage["cached_tokens"] == nil {
-				usage["cached_tokens"] = c
-			}
+			usage := normalizeTokenUsage(data)
 			if ev.OnUsage != nil && len(usage) > 0 {
 				ev.OnUsage(usage)
 			}

@@ -1,4 +1,4 @@
-﻿export interface QuotaItem {
+export interface QuotaItem {
   label: string;
   used?: number | null;
   total?: number | null;
@@ -14,6 +14,24 @@ export interface QuotaSnapshot {
   fetchedAt: number;
 }
 
+export interface CheckinStatus {
+  supported: boolean;
+  active: boolean;
+  checkedIn: boolean;
+  streakDays?: number;
+  dailyCredit?: number;
+  message?: string;
+  fetchedAt?: number;
+}
+
+export interface CheckinClaimResult {
+  ok: boolean;
+  checkedIn: boolean;
+  extraCredits?: number;
+  streakDays?: number;
+  message?: string;
+}
+
 export interface Account {
   id: string;
   provider: string;
@@ -25,6 +43,7 @@ export interface Account {
   authState: string;
   addedAt: number;
   quota?: QuotaSnapshot | null;
+  checkin?: CheckinStatus | null;
   usageTokens: number;
   usageCalls: number;
 }
@@ -89,6 +108,7 @@ export interface RequestSummary {
   channel: string;
   channelLabel: string;
   model: string;
+  accountId: string;
   actionTag: string;
   actionTitle: string;
   status: string;
@@ -141,6 +161,11 @@ export interface DashboardSnapshot {
 export interface AgentProject {
   path: string;
   name: string;
+}
+
+export interface AgentModelOption {
+  model: string;
+  label: string;
 }
 
 export interface AgentMessage {
@@ -200,6 +225,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function dashboardRequest(): Promise<DashboardSnapshot> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 10_000);
+  try {
+    return await request<DashboardSnapshot>('/api/dashboard', { signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('仪表盘响应超时，请重试');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export interface ModelCatalog {
   models: { id: string; displayName?: string; multimodal: boolean }[];
   source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error';
@@ -220,18 +260,32 @@ export const api = {
     request<{ status: string; accountId: string; nickname: string }>(`/api/auth/codex/${sessionId}/callback`, { method: 'POST', body: JSON.stringify({ callback }) }),
   updateAccount: (id: string, body: { alias?: string; enabled?: boolean }) =>
     request<Account>(`/api/accounts/${id}/rename`, { method: 'POST', body: JSON.stringify(body) }),
+  reorderAccounts: (providerId: string, accountIds: string[]) =>
+    request<{ accounts: Account[] }>('/api/accounts/order', {
+      method: 'POST',
+      body: JSON.stringify({ providerId, accountIds }),
+    }),
   deleteAccount: (id: string) => request<{ ok: boolean }>(`/api/accounts/${id}/delete`, { method: 'POST' }),
   refreshQuota: (id: string) => request<QuotaSnapshot>(`/api/accounts/${id}/quota`, { method: 'POST' }),
+  getCheckinStatus: (id: string) => request<CheckinStatus>(`/api/accounts/${id}/checkin`),
+  claimCheckin: (id: string) => request<CheckinClaimResult>(`/api/accounts/${id}/checkin`, { method: 'POST' }),
+  claimAllCheckin: () => request<{ results: Record<string, CheckinClaimResult> }>('/api/checkin/claim-all', { method: 'POST' }),
   proxyKey: () => request<{ key: string }>('/api/proxy/key'),
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
-  dashboard: () => request<DashboardSnapshot>('/api/dashboard'),
+  dashboard: dashboardRequest,
+  requestHudEnabled: () => request<{ enabled: boolean }>('/api/request-hud'),
+  setRequestHudEnabled: (enabled: boolean) =>
+    request<{ enabled: boolean; error?: string }>('/api/request-hud', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
   agentSessions: () => request<{ sessions: AgentSession[] }>('/api/agent/sessions'),
-  agentModels: () => request<{ models: { model: string; label: string }[] }>('/api/agent/models'),
+  agentModels: () => request<{ models: AgentModelOption[] }>('/api/agent/models'),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
-  createAgentSession: (projectPath: string, model: string) =>
+  createAgentSession: (projectPath: string, model: string, projectName = '') =>
     request<AgentSession>('/api/agent/sessions', {
       method: 'POST',
-      body: JSON.stringify({ projectPath, model }),
+      body: JSON.stringify({ projectPath, projectName, model }),
     }),
   resolveAgentProject: (path: string) =>
     request<AgentProject>('/api/agent/project', {

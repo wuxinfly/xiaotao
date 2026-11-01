@@ -1,0 +1,46 @@
+.request-hud-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(104, 173, 201, 0.24);
+  border-radius: 7px;
+  background: rgba(5, 27, 41, 0.78);
+  color: #a2bec8;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.request-hud-launcher:hover:not(:disabled) {
+  border-color: rgba(89, 223, 221, 0.3);
+  background: rgba(20, 59, 73, 0.72);
+  color: #dff6f7;
+}
+
+.request-hud-launcher[aria-pressed="true"] {
+  border-color: rgba(89, 223, 221, 0.45);
+  background: rgba(20, 74, 78, 0.75);
+  color: #dfffff;
+}
+
+.request-hud-launcher > svg {
+  width: 14px;
+  height: 14px;
+  color: #64d8d2;
+  flex: none;
+}
+
+.request-hud-launcher > i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #738f9b;
+}
+
+.request-hud-launcher[aria-pressed="true"] > i {
+  background: #5ce0d3;
+  box-shadow: 0 0 7px rgba(92, 224, 211, 0.55);
+}

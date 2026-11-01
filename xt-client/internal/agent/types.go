@@ -49,6 +49,7 @@ type Session struct {
 
 type Options struct {
 	ProjectPath string `json:"projectPath"`
+	ProjectName string `json:"projectName"`
 	Model       string `json:"model"`
 }
 

@@ -25,6 +25,7 @@ const (
 
 var (
 	defaultClient = &http.Client{Timeout: 30 * time.Second}
+	chatClient    = newChatClient()
 	testBaseURL   string
 	dsmlBuffers   = map[string]*dsmlBuffer{}
 )
@@ -38,6 +39,12 @@ func SetBaseURL(url string) func() {
 
 func client() *http.Client {
 	return defaultClient
+}
+
+func newChatClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = idleTimeout
+	return &http.Client{Transport: transport}
 }
 
 type authStateResponse struct {

@@ -36,7 +36,7 @@ func TestHTTPFlowWithMockModel(t *testing.T) {
 
 	data := t.TempDir()
 	project := t.TempDir()
-	svc := NewService(data, modelServer.URL, "user-token", modelServer.Client(), nil)
+	svc := NewService(data, modelServer.URL, func() string { return "user-token" }, modelServer.Client(), nil)
 	session, err := svc.Create(Options{ProjectPath: project, Model: "test/model"})
 	if err != nil {
 		t.Fatal(err)

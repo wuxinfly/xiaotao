@@ -347,6 +347,13 @@
   flex: 1 1 auto;
 }
 
+.req-identity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .req-status-indicator {
   width: 16px;
   height: 16px;
@@ -386,6 +393,30 @@
   white-space: nowrap;
   font-weight: 500;
   flex: none;
+}
+
+.req-account-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 150px;
+  font-size: 11.5px;
+  color: #8fb6c8;
+  flex: 0 1 auto;
+}
+
+.req-account-name svg {
+  width: 12px;
+  height: 12px;
+  color: #479bb8;
+  flex: none;
+}
+
+.req-account-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Action Tag & Title - Prominent Focus */
@@ -541,6 +572,41 @@
 }
 
 @media (max-width: 768px) {
+  .overview-card {
+    flex-direction: column;
+    padding: 22px 20px;
+  }
+  .overview-left {
+    padding-right: 0;
+  }
+  .overview-hero {
+    margin-bottom: 20px;
+  }
+  .hero-tokens {
+    font-size: 36px;
+  }
+  .overview-submetrics {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .overview-right {
+    width: 100%;
+    margin-top: 22px;
+    padding: 18px 0 0;
+    border-top: 1px solid var(--line, #163248);
+    border-left: none;
+  }
+  .req-card-left {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+    width: 100%;
+  }
+  .req-identity-row {
+    width: 100%;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
   .req-card-main {
     flex-direction: column;
     align-items: flex-start;
@@ -636,7 +702,7 @@
 .heatmap-scroll-container {
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 6px;
+  padding-bottom: 2px;
   position: relative;
   scrollbar-width: thin;
   scrollbar-color: #1a3e54 transparent;
@@ -644,17 +710,21 @@
 
 .heatmap-grid-layout {
   display: grid;
-  grid-template-columns: 36px 1fr;
-  gap: 6px;
-  min-width: 780px;
-  padding-right: 12px;
-  padding-bottom: 4px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 8px;
+  width: 100%;
+  min-width: 792px;
+  max-width: 1120px;
+  margin: 0 auto;
+  align-items: stretch;
+  --heatmap-gap: 3px;
+  --heatmap-month-height: 14px;
 }
 
 .day-labels {
   display: grid;
-  grid-template-rows: 18px repeat(7, 12px);
-  row-gap: 3px;
+  grid-template-rows: var(--heatmap-month-height) repeat(7, minmax(0, 1fr));
+  row-gap: var(--heatmap-gap);
   font-size: 10.5px;
   color: #55798e;
   user-select: none;
@@ -662,41 +732,55 @@
 }
 
 .day-labels span {
-  line-height: 12px;
+  line-height: 1;
 }
 
 .weeks-container {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-right: 8px;
-  padding-bottom: 4px;
+  gap: var(--heatmap-gap);
+  min-width: 0;
+}
+
+.weeks-container,
+.calendar-matrix {
+  overflow: clip;
 }
 
 .month-labels {
   display: grid;
-  grid-template-columns: repeat(53, 12px);
-  column-gap: 3px;
-  height: 14px;
+  grid-template-columns: repeat(53, minmax(0, 1fr));
+  column-gap: var(--heatmap-gap);
+  height: var(--heatmap-month-height);
   font-size: 10.5px;
   color: #55798e;
   user-select: none;
+  align-items: start;
 }
 
 .month-label-item {
+  position: relative;
+  height: 100%;
+}
+
+.month-label-item span {
+  position: absolute;
+  left: 0;
+  top: 0;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .calendar-matrix {
   display: grid;
-  grid-template-columns: repeat(53, 12px);
-  grid-template-rows: repeat(7, 12px);
-  gap: 3px;
+  grid-template-columns: repeat(53, minmax(0, 1fr));
+  gap: var(--heatmap-gap);
 }
 
 .day-cell {
-  width: 12px;
-  height: 12px;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
   border-radius: 2px;
   box-sizing: border-box;
   cursor: pointer;

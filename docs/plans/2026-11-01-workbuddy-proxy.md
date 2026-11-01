@@ -20,7 +20,7 @@ WorkBuddy 上游接受标准 OpenAI 格式：`model`、`stream=true`、`messages
 
 ## 超时与稳定性
 
-聊天流空闲超时 300 秒（`idleTimeoutReader`），总时长超时 30 分钟（`context.WithTimeout`）。上游非 2xx 返回 `providers.UpstreamError`，代理按其状态码透传。
+登录、刷新、账号和额度等短请求使用 30 秒超时客户端。聊天请求使用独立的无固定 `Client.Timeout` 客户端，等待响应头 300 秒、流式空闲 300 秒、总时长 30 分钟；收到新数据时重置空闲计时，超时后取消请求并中断读取。上游非 2xx 返回 `providers.UpstreamError`，代理按其状态码透传。
 
 ## 已完成
 

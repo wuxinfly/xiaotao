@@ -2,17 +2,21 @@ import React, { useState } from 'react';
 import type { Account, ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
 import { AccountCard } from './AccountCard';
-import { ModelCatalogPanel } from './ModelCatalogPanel';
 
 interface ProviderGroupProps {
   providerId: string;
   providerInfo?: ProviderInfo;
   accounts: Account[];
   busyId: string | null;
+  isReordering: boolean;
   onAddAccount: (providerId: string) => void;
   onToggleEnable: (account: Account) => Promise<void>;
   onRefreshQuota: (account: Account) => Promise<void>;
+  onCheckin?: (account: Account) => Promise<void>;
+  onCheckinAll?: (providerId: string) => Promise<void>;
+  onReorder: (providerId: string, accountIds: string[]) => Promise<void>;
   onOpenDetail: (account: Account) => void;
+  onOpenModels: () => void;
 }
 
 export const ProviderGroup: React.FC<ProviderGroupProps> = ({
@@ -20,18 +24,50 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   providerInfo,
   accounts,
   busyId,
+  isReordering,
   onAddAccount,
   onToggleEnable,
   onRefreshQuota,
+  onCheckin,
+  onCheckinAll,
+  onReorder,
   onOpenDetail,
+  onOpenModels,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
-  const [showModels, setShowModels] = useState(false);
-  const [modelsVisited, setModelsVisited] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   const displayName = providerInfo?.displayName || providerId.toUpperCase();
   const count = accounts.length;
   const toggleCollapsed = () => setCollapsed(value => !value);
+  const supportsCheckin = providerId.toLowerCase() === 'trae' || providerId.toLowerCase() === 'workbuddy';
+  const canReorder = count > 1 && !isReordering;
+
+  const moveAccount = (accountId: string, delta: -1 | 1) => {
+    const index = accounts.findIndex(account => account.id === accountId);
+    const target = index + delta;
+    if (!canReorder || index < 0 || target < 0 || target >= accounts.length) return;
+    const next = [...accounts];
+    [next[index], next[target]] = [next[target], next[index]];
+    void onReorder(providerId, next.map(account => account.id));
+  };
+
+  const dropAccount = (targetId: string) => {
+    if (!canReorder || !draggedId || draggedId === targetId) return;
+    const sourceIndex = accounts.findIndex(account => account.id === draggedId);
+    const targetIndex = accounts.findIndex(account => account.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const next = [...accounts];
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(targetIndex, 0, moved);
+    void onReorder(providerId, next.map(account => account.id));
+  };
+
+  const clearDrag = () => {
+    setDraggedId(null);
+    setDropTargetId(null);
+  };
 
   return (
     <div className={`provider-group-section ${collapsed ? 'is-collapsed' : ''}`}>
@@ -55,7 +91,30 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
         </div>
 
         <div className="group-right">
-          <button type="button" className="group-add-btn" aria-expanded={showModels} aria-controls={`models-${providerId}`} onClick={() => { setModelsVisited(true); setShowModels(!showModels); }}>{showModels ? '收起模型' : '查看模型'}</button>
+          {supportsCheckin && count > 0 && onCheckinAll && (
+            <button
+              type="button"
+              className="group-add-btn group-checkin-btn"
+              onClick={() => onCheckinAll(providerId)}
+              title={`为当前 ${displayName} 账号一键签到打卡`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>一键打卡</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="group-add-btn"
+            onClick={onOpenModels}
+            title={`查看 ${displayName} 模型目录`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+            <span>查看模型</span>
+          </button>
           <button
             type="button"
             className="group-add-btn"
@@ -71,20 +130,51 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
         </div>
       </div>
 
-      <div id={`models-${providerId}`} className={`model-catalog-reveal ${showModels ? 'is-open' : ''}`} inert={!showModels} aria-hidden={!showModels}>
-        <div>{modelsVisited && <ModelCatalogPanel accounts={accounts} providerId={providerId} />}</div>
-      </div>
       {!collapsed && (
         <div className="accounts-cards-grid" id={`accounts-${providerId}`}>
-          {accounts.map((acct) => (
-            <AccountCard
+          {accounts.map((acct, index) => (
+            <div
               key={acct.id}
-              account={acct}
-              isBusy={busyId === acct.id}
-              onToggleEnable={onToggleEnable}
-              onRefreshQuota={onRefreshQuota}
-              onOpenDetail={onOpenDetail}
-            />
+              className={[
+                'account-sort-item',
+                draggedId === acct.id ? 'is-dragging' : '',
+                dropTargetId === acct.id && draggedId !== acct.id ? 'is-drop-target' : '',
+              ].filter(Boolean).join(' ')}
+              onDragOver={event => {
+                if (!canReorder || !draggedId || draggedId === acct.id) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDropTargetId(current => current === acct.id ? current : acct.id);
+              }}
+              onDragLeave={event => {
+                if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                setDropTargetId(current => current === acct.id ? null : current);
+              }}
+              onDrop={event => {
+                event.preventDefault();
+                dropAccount(acct.id);
+                clearDrag();
+              }}
+              onDragEnd={clearDrag}
+            >
+              <AccountCard
+                account={acct}
+                isBusy={busyId === acct.id}
+                canReorder={canReorder}
+                onDragStart={event => {
+                  setDraggedId(acct.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', acct.id);
+                }}
+                onMove={direction => moveAccount(acct.id, direction)}
+                canMoveBackward={index > 0}
+                canMoveForward={index < accounts.length - 1}
+                onToggleEnable={onToggleEnable}
+                onRefreshQuota={onRefreshQuota}
+                onCheckin={onCheckin}
+                onOpenDetail={onOpenDetail}
+              />
+            </div>
           ))}
         </div>
       )}

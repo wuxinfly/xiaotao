@@ -61,13 +61,14 @@ type RequestSummary struct {
 	Channel              string       `json:"channel"`
 	ChannelLabel         string       `json:"channelLabel"`
 	Model                string       `json:"model"`
+	AccountID            string       `json:"accountId"`
 	ActionTag            string       `json:"actionTag"`
 	ActionTitle          string       `json:"actionTitle"`
 	Status               string       `json:"status"` // pending, streaming, completed, failed, interrupted, canceled
 	StatusText           string       `json:"statusText"`
-	StartedAt            int64        `json:"startedAt"` // unix ms
+	StartedAt            int64        `json:"startedAt"`              // unix ms
 	FirstTokenAt         *int64       `json:"firstTokenAt,omitempty"` // unix ms
-	EndedAt              *int64       `json:"endedAt,omitempty"` // unix ms
+	EndedAt              *int64       `json:"endedAt,omitempty"`      // unix ms
 	DurationMs           int64        `json:"durationMs"`
 	FirstTokenDurationMs *int64       `json:"firstTokenDurationMs,omitempty"`
 	Tokens               TokenMetrics `json:"tokens"`
@@ -104,8 +105,8 @@ type HeatmapDay struct {
 
 // HeatmapData is the annual daily aggregation.
 type HeatmapData struct {
-	StartDate         string                 `json:"startDate"` // YYYY-MM-DD
-	EndDate           string                 `json:"endDate"`   // YYYY-MM-DD
+	StartDate         string                 `json:"startDate"`         // YYYY-MM-DD
+	EndDate           string                 `json:"endDate"`           // YYYY-MM-DD
 	TrackingStartDate string                 `json:"trackingStartDate"` // YYYY-MM-DD
 	Days              map[string]*HeatmapDay `json:"days"`
 }

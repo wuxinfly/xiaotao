@@ -1,0 +1,93 @@
+/* The standalone surface fills its native window, independent of page breakpoints. */
+.hud-window *,
+.hud-window *::before,
+.hud-window *::after {
+  box-sizing: border-box;
+}
+
+.hud-window body {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hud-window .request-hud {
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: linear-gradient(145deg, #0a2636, #041522);
+  box-shadow: inset 0 1px 0 rgba(183, 244, 246, 0.05);
+  backdrop-filter: none;
+  animation: none;
+}
+
+.hud-window .request-hud-header {
+  flex: none;
+  min-height: 40px;
+  padding: 0 10px 0 14px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.hud-window .request-hud-header:active {
+  cursor: grabbing;
+}
+
+.hud-window .request-hud-minimize {
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease;
+}
+
+.hud-window .request-hud-minimize:focus-visible {
+  outline: 2px solid #5ce0d3;
+  outline-offset: 2px;
+}
+
+.hud-window .request-hud-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.hud-window .request-hud-current {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hud-window .request-hud-row {
+  grid-template-columns: 14px 33px minmax(0, 1fr);
+  gap: 6px;
+  min-height: 21px;
+}
+
+.hud-window .request-hud-state,
+.hud-window .request-hud-idle {
+  min-height: 100%;
+}
+
+.hud-window .request-hud-state svg,
+.hud-window .request-hud-idle svg {
+  display: block;
+}
+
+.hud-window .request-hud-today {
+  flex: none;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 10px 14px;
+}
+
+.hud-window .request-hud-today span {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-window .request-hud-minimize {
+    transition: none;
+  }
+}

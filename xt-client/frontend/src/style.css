@@ -16,8 +16,18 @@ button{transition:background-color 160ms ease,color 160ms ease,border-color 160m
 .endpoint-card{background:#0d2332;border:1px solid var(--line);border-radius:9px;padding:18px 20px;margin-bottom:24px;display:flex;flex-direction:column;gap:12px}.endpoint-head strong{font-size:14px;font-weight:500;color:#e1edf3;display:block;margin-bottom:4px}.endpoint-head small{color:var(--muted);font-size:12px}.copy-field{display:flex;align-items:center;gap:12px;min-width:0}.copy-label{flex:none;width:64px;font-size:12px;color:var(--muted)}.copy-value{display:flex;align-items:center;gap:10px;flex:1;min-width:0;background:#0a1c29;border:1px solid #1b3a4a;border-radius:7px;padding:8px 12px;font-size:12.5px;color:#cfe6ef;cursor:pointer;text-align:left;transition:border-color 140ms ease,background 140ms ease}.copy-value:hover{border-color:#2a7a76;background:#0e2536}.copy-value.static{cursor:default;color:#a9c8d6}.copy-value.static:hover{border-color:#1b3a4a;background:#0a1c29}.copy-value.mono .copy-text{font-family:var(--mono,ui-monospace,Consolas,monospace)}.copy-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.copy-hint{flex:none;font-size:11px;color:var(--muted);transition:color 140ms ease}.copy-hint.done{color:#9ee8c0}.endpoint-foot{display:flex;justify-content:flex-end}.account-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}.account-list li{background:#0d2332;border:1px solid var(--line);border-radius:9px;padding:18px 20px;transition:opacity 160ms ease}.account-list li.disabled{opacity:.55}.acct-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}.acct-head strong{font-weight:500}.badge{font-size:11px;border-radius:5px;padding:3px 9px;background:#12333f;color:#8ff0e6}.badge.auth-expired{background:#33191c;color:#ffb4a5}.acct-quota{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}.quota-line{font-size:12px;color:#a9c8d6}.quota-line.err{color:#ffb4a5}.quota-line.muted{color:var(--muted)}.acct-actions{display:flex;gap:9px;flex-wrap:wrap}.acct-actions .btn{font-size:12px;padding:7px 12px}.add-more{margin-top:26px;text-align:center}
 /* Page transition animation: subtle upward glide and fade. No fill mode, because a retained transform (even translateY(0)) makes .page-view the containing block for position:fixed children such as tooltips and modals. */
 .page-view{display:flex;flex-direction:column;flex:1;min-height:100%;animation:page-fade-in 180ms cubic-bezier(.2,.8,.2,1)}
+.workspace-shell main.agent-main{overflow:hidden}
+.workspace-shell main.agent-main>.page-view{min-height:0;height:100%}
+.workspace-shell main:not(.agent-main)>.page-view{background:rgba(2,17,30,.12)}
 @keyframes page-fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){.page-view{animation:none}}
 /* Shared content column for the model pages: dashboard and accounts read these tokens instead of carrying their own widths. */
 :root{--content-max:1240px;--content-gutter:28px}
 @media(max-width:560px){:root{--content-gutter:18px}}
+/* Keep the native scrollbar gutter visually transparent so the ocean background reaches the window edge. */
+*{scrollbar-width:thin;scrollbar-color:#31586d transparent}
+*::-webkit-scrollbar{width:8px;height:8px;background:transparent}
+*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner{background:transparent}
+*::-webkit-scrollbar-thumb{background:#31586d;border:2px solid transparent;background-clip:padding-box;border-radius:8px}
+*::-webkit-scrollbar-button{display:none;width:0;height:0}
+.workspace-shell main.agent-main{scrollbar-gutter:auto}

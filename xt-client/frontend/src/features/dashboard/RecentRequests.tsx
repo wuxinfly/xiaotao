@@ -1,3 +1,4 @@
+import { UserRound } from 'lucide-react';
 import { useState } from 'react';
 import type { RequestSummary } from '../../lib/api';
 import { formatNumber } from './UsageOverview';
@@ -7,6 +8,7 @@ interface Props {
   activeRequests: RequestSummary[];
   activeCount: number;
   nowMs: number;
+  accountNames: Map<string, string>;
 }
 
 function SpeedometerIcon() {
@@ -52,7 +54,7 @@ function getTagClass(tag: string): string {
   }
 }
 
-export function RecentRequests({ recentRequests, activeRequests, activeCount, nowMs }: Props) {
+export function RecentRequests({ recentRequests, activeRequests, activeCount, nowMs, accountNames }: Props) {
   const [expandedActive, setExpandedActive] = useState(false);
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
 
@@ -153,6 +155,10 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
               ? '工具调用'
               : '对话交互';
 
+          const accountName = req.accountId
+            ? accountNames.get(req.accountId) || `账号 ${req.accountId.split(':').pop()?.slice(0, 8)}`
+            : '未指定账号';
+
           return (
             <div
               key={req.id}
@@ -175,23 +181,30 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
               <div className="req-card-main">
                 {/* Left: Identity & Action */}
                 <div className="req-card-left">
-                  <div className={`req-status-indicator ${req.status}`} title={statusTitle}>
-                    {req.status === 'streaming' && <span className="status-dot" aria-hidden="true" />}
-                    {req.status === 'pending' && <span className="status-dot amber" aria-hidden="true" />}
-                    {req.status === 'completed' && <CheckCircleIcon />}
-                    {req.status === 'failed' && <span className="status-dot red" aria-hidden="true" />}
-                    {req.status === 'interrupted' && <span className="status-dot red" aria-hidden="true" />}
-                  </div>
+                  <div className="req-identity-row">
+                    <div className={`req-status-indicator ${req.status}`} title={statusTitle}>
+                      {req.status === 'streaming' && <span className="status-dot" aria-hidden="true" />}
+                      {req.status === 'pending' && <span className="status-dot amber" aria-hidden="true" />}
+                      {req.status === 'completed' && <CheckCircleIcon />}
+                      {req.status === 'failed' && <span className="status-dot red" aria-hidden="true" />}
+                      {req.status === 'interrupted' && <span className="status-dot red" aria-hidden="true" />}
+                    </div>
 
-                  {req.channelLabel && (
-                    <span className="channel-badge" title={`模型渠道: ${req.channelLabel}`}>
-                      {req.channelLabel}
+                    {req.channelLabel && (
+                      <span className="channel-badge" title={`模型渠道: ${req.channelLabel}`}>
+                        {req.channelLabel}
+                      </span>
+                    )}
+
+                    <span className="req-model-name" title={req.model}>
+                      {req.model}
                     </span>
-                  )}
 
-                  <span className="req-model-name" title={req.model}>
-                    {req.model}
-                  </span>
+                    <span className="req-account-name" title={`使用账号: ${accountName}`}>
+                      <UserRound aria-hidden="true" />
+                      <span>{accountName}</span>
+                    </span>
+                  </div>
 
                   <div className="req-action-wrap">
                     <span className={`action-tag ${getTagClass(req.actionTag)}`}>

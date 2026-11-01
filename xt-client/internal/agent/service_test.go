@@ -31,7 +31,7 @@ func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]
 func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
 	data := t.TempDir()
 	root := t.TempDir()
-	svc := NewService(data, "http://127.0.0.1:9999", "", nil, nil)
+	svc := NewService(data, "http://127.0.0.1:9999", nil, nil, nil)
 	session, err := svc.Create(Options{ProjectPath: root, Model: "test/model"})
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
 func TestLoopStopsAtToolCallLimit(t *testing.T) {
 	data := t.TempDir()
 	root := t.TempDir()
-	svc := NewService(data, "http://127.0.0.1:9999", "", nil, nil)
+	svc := NewService(data, "http://127.0.0.1:9999", nil, nil, nil)
 	session, err := svc.Create(Options{ProjectPath: root, Model: "test/model"})
 	if err != nil {
 		t.Fatal(err)
@@ -94,5 +94,24 @@ func TestLoopStopsAtToolCallLimit(t *testing.T) {
 	err = svc.loop(context.Background(), workspace, fake, history, nil, func(Event) {})
 	if err == nil || !strings.Contains(err.Error(), "超过") {
 		t.Fatalf("expected bounded loop error, got %v", err)
+	}
+}
+
+func TestCreateKeepsProjectDisplayName(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	root := t.TempDir()
+	session, err := svc.Create(Options{ProjectPath: root, ProjectName: "小涛 UI 重构", Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Project.Path != root || session.Project.Name != "小涛 UI 重构" {
+		t.Fatalf("unexpected project: %+v", session.Project)
+	}
+	loaded, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Project.Name != "小涛 UI 重构" {
+		t.Fatalf("project name was not persisted: %+v", loaded.Project)
 	}
 }

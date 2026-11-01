@@ -44,7 +44,7 @@ func decodeFrame(data []byte, target []byte) (int32, int32) {
 	return w, h
 }
 
-func playNativeSplash() func() {
+func showNativeSplash(width, height int32) func() {
 	runtime.LockOSThread()
 
 	r := bytes.NewReader(framesBIN)
@@ -112,6 +112,9 @@ func playNativeSplash() func() {
 		switch msg {
 		case 0x0014:
 			return 1
+		case 0x0005:
+			roundWindowRegion(h, int32(lp&0xffff), int32((lp>>16)&0xffff))
+			break
 		case 0x0113:
 			select {
 			case nextBuf, ok := <-frameChan:
@@ -210,23 +213,21 @@ func playNativeSplash() func() {
 
 	sw, _, _ := user.NewProc("GetSystemMetrics").Call(0)
 	sh, _, _ := user.NewProc("GetSystemMetrics").Call(1)
-	w, h := int32(1280), int32(720)
-	if int32(sw) < 1360 || int32(sh) < 760 {
-		w, h = 960, 540
-	}
-	x := (int32(sw) - w) / 2
-	y := (int32(sh) - h) / 2
+	x := (int32(sw) - width) / 2
+	y := (int32(sh) - height) / 2
 
 	parentHwnd = win("CreateWindowExW",
 		0x00080088,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(className)),
 		0x80000000,
-		uintptr(x), uintptr(y), uintptr(w), uintptr(h),
+		uintptr(x), uintptr(y), uintptr(width), uintptr(height),
 		0, 0, hinstance, 0,
 	)
 
 	user.NewProc("SetLayeredWindowAttributes").Call(parentHwnd, 0, 255, 2)
+	roundNativeWindow(parentHwnd)
+	roundWindowRegion(parentHwnd, width, height)
 	user.NewProc("ShowWindow").Call(parentHwnd, 5)
 	user.NewProc("UpdateWindow").Call(parentHwnd)
 	user.NewProc("SetTimer").Call(parentHwnd, 1, 42, 0)

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "candidate_id": "trae-usage-cache-field-names",
+  "created_at": "2026-11-01T14:17:50Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.trae-usage-cache-field-names",
+  "text": "Trae 上游 llm_utils_chat 的 token_usage 事件用 Anthropic 风格字段名报缓存（cache_read_input_tokens、cache_creation_input_tokens），没有 OpenAI 的 cached_tokens 或 prompt_tokens_details；按 OpenAI 字段名解析会静默丢掉缓存数据。实测同账号、同 session、39k 相同前缀连续请求仍返回 cache_read_input_tokens=0，即该通道不做隐式前缀缓存，Trae 缓存命中为零是上游行为。",
+  "rationale": "仪表盘 Trae 模型缓存命中长期为空，request_records 中 173 条 Trae 记录 cached_tokens 全为 NULL。用只读探针抓取真实上游 SSE，确认 token_usage 事件字段为 cache_read_input_tokens/cache_creation_input_tokens，现有解析只认 cached_tokens、prompt_tokens_details.cached_tokens、prompt_cache_hit_tokens、cache_tokens，全部落空；归一化后同一探针三次请求均如实上报 0。",
+  "observations": 3,
+  "source_refs": ["xt-client/internal/providers/trae/chat.go", "xt-client/internal/providers/trae/chat_usage_test.go", "xt-client/README.md"]
+}

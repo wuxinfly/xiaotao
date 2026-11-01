@@ -42,6 +42,22 @@ func TestSelectAccountUsesStoreOrder(t *testing.T) {
 	}
 }
 
+func TestSelectAccountUsesManualOrder(t *testing.T) {
+	store := newRoutingStore(t,
+		storage.Account{ID: "wb-first", Provider: "workbuddy", Enabled: true},
+		storage.Account{ID: "wb-second", Provider: "workbuddy", Enabled: true},
+	)
+	if err := store.ReorderAccounts("workbuddy", []string{"wb-second", "wb-first"}); err != nil {
+		t.Fatal(err)
+	}
+	svc := New(store, nil, "")
+
+	acct, _, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
+	if !ok || acct.ID != "wb-second" {
+		t.Fatalf("expected manually reordered account, got ok=%v acct=%s", ok, acct.ID)
+	}
+}
+
 func TestSelectAccountSkipsExhaustedQuota(t *testing.T) {
 	zero := 0.0
 	ten := 10.0

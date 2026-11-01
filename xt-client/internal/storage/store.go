@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +30,16 @@ type QuotaSnapshot struct {
 	FetchedAt int64       `json:"fetchedAt"`
 }
 
+type CheckinStatus struct {
+	Supported   bool    `json:"supported"`
+	Active      bool    `json:"active"`
+	CheckedIn   bool    `json:"checkedIn"`
+	StreakDays  int     `json:"streakDays"`
+	DailyCredit float64 `json:"dailyCredit"`
+	Message     string  `json:"message"`
+	FetchedAt   int64   `json:"fetchedAt"`
+}
+
 type Account struct {
 	ID          string         `json:"id"`
 	Provider    string         `json:"provider"`
@@ -45,6 +54,7 @@ type Account struct {
 	AddedAt     int64          `json:"addedAt"`
 	UpdatedAt   int64          `json:"updatedAt"`
 	Quota       *QuotaSnapshot `json:"quota,omitempty"`
+	Checkin     *CheckinStatus `json:"checkin,omitempty"`
 	UsageTokens int64          `json:"usageTokens"`
 	UsageCalls  int64          `json:"usageCalls"`
 }
@@ -230,8 +240,63 @@ func (s *Store) Accounts() []*Account {
 		}
 		out = append(out, &cp)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].AddedAt < out[j].AddedAt })
 	return out
+}
+
+// ReorderAccounts persists the request order for one provider while keeping
+// every account in the same global slots. Account routing reads this order.
+func (s *Store) ReorderAccounts(providerID string, orderedIDs []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	providerID = strings.ToLower(providerID)
+	if providerID == "" {
+		return fmt.Errorf("provider is required")
+	}
+	current := make([]*Account, 0)
+	byID := make(map[string]*Account)
+	for _, acct := range s.data.Accounts {
+		if acct == nil || !strings.EqualFold(acct.Provider, providerID) {
+			continue
+		}
+		current = append(current, acct)
+		byID[acct.ID] = acct
+	}
+	if len(orderedIDs) != len(current) {
+		return fmt.Errorf("account order must include every account in %s", providerID)
+	}
+
+	ordered := make([]*Account, 0, len(orderedIDs))
+	seen := make(map[string]struct{}, len(orderedIDs))
+	for _, id := range orderedIDs {
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("duplicate account %q in order", id)
+		}
+		acct, ok := byID[id]
+		if !ok {
+			return fmt.Errorf("account %q is not in %s", id, providerID)
+		}
+		seen[id] = struct{}{}
+		ordered = append(ordered, acct)
+	}
+
+	previous := s.data.Accounts
+	next := make([]*Account, len(previous))
+	position := 0
+	for i, acct := range previous {
+		if acct != nil && strings.EqualFold(acct.Provider, providerID) {
+			next[i] = ordered[position]
+			position++
+			continue
+		}
+		next[i] = acct
+	}
+	s.data.Accounts = next
+	if err := s.save(); err != nil {
+		s.data.Accounts = previous
+		return err
+	}
+	return nil
 }
 
 func (s *Store) Account(id string) (Account, bool) {

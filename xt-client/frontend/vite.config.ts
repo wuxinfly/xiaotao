@@ -23,5 +23,14 @@ const proxy = parsedTarget ? {
 
 export default defineConfig({
   server: {proxy},
-  build: {outDir: '../internal/app/web', emptyOutDir: true},
+  build: {
+    outDir: '../internal/app/web',
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        hud: 'hud.html',
+      },
+    },
+  },
 });

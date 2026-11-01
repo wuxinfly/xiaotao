@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "desktop-hud-independent-draggable",
+  "created_at": "2026-11-01T19:30:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.desktop-hud-independent-draggable",
+  "text": "xt-client 的状态浮窗必须是独立桌面窗口，不依赖主窗口，支持标题区域拖动，并可直接关闭同步服务端状态。",
+  "rationale": "用户明确纠正页面内浮层方向，要求状态浮窗是单独窗口并且可拖动；实现已改为独立 WebView 小窗并复用服务端开关状态。",
+  "observations": 2,
+  "source_refs": [
+    "xt-client/frontend/hud.html",
+    "xt-client/frontend/src/hud-main.tsx",
+    "xt-client/internal/desktop/desktop_windows.go",
+    "xt-client/README.md"
+  ]
+}

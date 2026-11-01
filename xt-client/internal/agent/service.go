@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +20,7 @@ const maxTurns = 40
 type Service struct {
 	dataDir  string
 	endpoint string
-	key      string
+	key      func() string
 	client   *http.Client
 	mu       sync.Mutex
 	runs     map[string]*run
@@ -38,7 +37,7 @@ type modelClient interface {
 
 type httpModelClient struct {
 	endpoint string
-	key      string
+	key      func() string
 	client   *http.Client
 }
 
@@ -73,7 +72,7 @@ type backendResponse struct {
 	} `json:"error"`
 }
 
-func NewService(dataDir, endpoint, key string, client *http.Client, models func() []ModelOption) *Service {
+func NewService(dataDir, endpoint string, key func() string, client *http.Client, models func() []ModelOption) *Service {
 	return &Service{
 		dataDir:  dataDir,
 		endpoint: strings.TrimRight(endpoint, "/") + "/v1/chat/completions",
@@ -92,9 +91,30 @@ func (s *Service) AvailableModels() []ModelOption {
 }
 
 func (s *Service) Create(options Options) (*Session, error) {
-	workspace, err := OpenWorkspace(options.ProjectPath)
-	if err != nil {
-		return nil, err
+	project := Project{}
+	projectName := strings.TrimSpace(options.ProjectName)
+	if strings.TrimSpace(options.ProjectPath) == "" {
+		path := filepath.Join(s.dataDir, "workspace")
+		if err := os.MkdirAll(path, 0700); err != nil {
+			return nil, err
+		}
+		workspace, err := OpenWorkspace(path)
+		if err != nil {
+			return nil, err
+		}
+		if projectName == "" {
+			projectName = "默认工作目录"
+		}
+		project = Project{Path: workspace.Root, Name: projectName}
+	} else {
+		var err error
+		project, err = s.Project(options.ProjectPath)
+		if err != nil {
+			return nil, err
+		}
+		if projectName != "" {
+			project.Name = projectName
+		}
 	}
 	model := strings.TrimSpace(options.Model)
 	if model == "" {
@@ -102,7 +122,7 @@ func (s *Service) Create(options Options) (*Session, error) {
 	}
 	session := &Session{
 		ID:        "run_" + randomID(8),
-		Project:   Project{Path: workspace.Root, Name: filepath.Base(workspace.Root)},
+		Project:   project,
 		Title:     "新任务",
 		Model:     model,
 		Status:    StatusIdle,
@@ -133,34 +153,25 @@ func (s *Service) Project(path string) (Project, error) {
 }
 
 func (s *Service) List() ([]*Session, error) {
-	entries, err := os.ReadDir(filepath.Join(s.dataDir, "sessions"))
-	if os.IsNotExist(err) {
-		return []*Session{}, nil
-	}
+	out, err := s.listSessions()
 	if err != nil {
 		return nil, err
 	}
-	out := []*Session{}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
+	for _, session := range out {
+		s.mu.Lock()
+		_, known := s.runs[session.ID]
+		if !known {
+			s.runs[session.ID] = &run{}
 		}
-		session, err := s.loadSession(strings.TrimSuffix(entry.Name(), ".json"))
-		if err == nil {
-			if session.Status == StatusRunning {
-				session.Status = StatusFailed
-				session.Error = "上次任务因服务退出而中断"
-				_ = s.saveSession(session)
+		s.mu.Unlock()
+		if !known && session.Status == StatusRunning {
+			session.Status = StatusFailed
+			session.Error = "上次任务因服务退出而中断"
+			if err := s.saveSession(session); err != nil {
+				return nil, err
 			}
-			s.mu.Lock()
-			if _, ok := s.runs[session.ID]; !ok {
-				s.runs[session.ID] = &run{}
-			}
-			s.mu.Unlock()
-			out = append(out, session)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
 }
 
@@ -182,9 +193,12 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 	if err != nil {
 		return err
 	}
-	workspace, err := OpenWorkspace(history.Project.Path)
-	if err != nil {
-		return err
+	var workspace *Workspace
+	if history.Project.Path != "" {
+		workspace, err = OpenWorkspace(history.Project.Path)
+		if err != nil {
+			return err
+		}
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
@@ -211,7 +225,7 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(workspace.Root)}}
+	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path)}}
 	for _, message := range history.Messages {
 		messages = append(messages, messageToModel(message))
 	}
@@ -243,7 +257,11 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		result, err := client.Complete(ctx, history.Model, messages, toolDefinitions)
+		var tools []map[string]any
+		if workspace != nil {
+			tools = toolDefinitions
+		}
+		result, err := client.Complete(ctx, history.Model, messages, tools)
 		if err != nil {
 			return fmt.Errorf("模型调用失败: %w", err)
 		}
@@ -287,7 +305,13 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 			history.Activity = append(history.Activity, activity)
 			history.UpdatedAt = time.Now()
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
-			output, toolErr := workspace.Execute(ctx, call.Name, call.Arguments)
+			output := "请先关联项目才能使用文件和命令工具"
+			var toolErr error
+			if workspace != nil {
+				output, toolErr = workspace.Execute(ctx, call.Name, call.Arguments)
+			} else {
+				toolErr = fmt.Errorf("%s", output)
+			}
 			end := time.Now()
 			activity.EndedAt = &end
 			activity.Status = "completed"
@@ -326,46 +350,6 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-func (s *Service) saveSession(session *Session) error {
-	dir := filepath.Join(s.dataDir, "sessions")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(dir, session.ID+".json")
-	f, err := os.CreateTemp(dir, ".session-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err = f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), path)
-}
-
-func (s *Service) loadSession(id string) (*Session, error) {
-	if !strings.HasPrefix(id, "run_") || strings.ContainsAny(id, `/\`) {
-		return nil, fmt.Errorf("任务不存在")
-	}
-	b, err := os.ReadFile(filepath.Join(s.dataDir, "sessions", id+".json"))
-	if err != nil {
-		return nil, fmt.Errorf("任务不存在")
-	}
-	var session Session
-	if err := json.Unmarshal(b, &session); err != nil {
-		return nil, fmt.Errorf("任务数据损坏")
-	}
-	return &session, nil
-}
-
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any) (*completion, error) {
 	payload := map[string]any{"model": model, "messages": messages, "stream": false}
 	if len(tools) > 0 {
@@ -381,7 +365,9 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.key)
+	if c.key != nil {
+		req.Header.Set("Authorization", "Bearer "+c.key())
+	}
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -417,6 +403,9 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 }
 
 func systemPrompt(root string) string {
+	if root == "" {
+		return "你是小涛，用中文简洁自然地帮助用户。当前未关联项目，无法访问文件或运行命令；需要这些操作时请用户新建关联项目的会话。"
+	}
 	return "你是小涛，一个直接和用户一起做软件工作的 AI 工程师。使用中文，简洁、自然、不说套话。" +
 		"\n当前项目根目录：" + root +
 		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。" +

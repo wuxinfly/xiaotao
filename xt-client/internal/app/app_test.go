@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -17,10 +18,19 @@ import (
 func TestConfigAndOrigin(t *testing.T) {
 	dir := t.TempDir()
 	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	h, e := Handler(s, dir, func() {})
-	if e != nil {
-		t.Fatal(e)
+	var h http.Handler
+	open := func() {
+		t.Helper()
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+		next, err := Handler(s, dir, func() {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		h = next
 	}
+	open()
 	defer func() {
 		if c, ok := h.(interface{ Close() error }); ok {
 			_ = c.Close()
@@ -50,18 +60,12 @@ func TestConfigAndOrigin(t *testing.T) {
 	if w := call("PUT", "/api/config", s.URL, host, `{"name":"再次保存"}`); w.Code != 200 {
 		t.Fatalf("replace: %d", w.Code)
 	}
-	if c, ok := h.(interface{ Close() error }); ok {
-		_ = c.Close()
-	}
-	h, e = Handler(s, dir, func() {})
-	if e != nil {
-		t.Fatal(e)
-	}
+	open()
 	if w := call("GET", "/api/config", "", host, ""); !strings.Contains(w.Body.String(), "再次保存") {
 		t.Fatal(w.Body.String())
 	}
 	if w := call("GET", "/", "", host, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "小涛") {
-		t.Fatal("page missing")
+		t.Fatalf("page missing: status=%d body=%s", w.Code, w.Body.String())
 	}
 	// WebView video playback needs byte ranges for seeking and metadata reads.
 	r := httptest.NewRequest("GET", s.URL+"/startup.mp4", nil)
@@ -188,6 +192,99 @@ func TestUATImportsProductionModelAccountsOnce(t *testing.T) {
 	accounts := dst.Accounts()
 	if len(accounts) != 1 {
 		t.Fatalf("repeated import changed account count: %d", len(accounts))
+	}
+}
+
+func TestCheckinEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
+	h, err := Handler(s, dir, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
+
+	call := func(method, path string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, s.URL+path, nil)
+		r.Host = "127.0.0.1:12345"
+		r.Header.Set("Origin", s.URL)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	// 1. Account not found
+	w := call("GET", "/api/accounts/non-existent/checkin")
+	if !strings.Contains(w.Body.String(), "account not found") {
+		t.Fatalf("expected error for missing account, got %s", w.Body.String())
+	}
+
+	// 2. Claim all (empty accounts returns 200 ok)
+	w = call("POST", "/api/checkin/claim-all")
+	if w.Code != 200 {
+		t.Fatalf("expected 200 for claim-all, got %d", w.Code)
+	}
+}
+
+func TestReorderAccountsEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.Open(filepath.Join(dir, "accounts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acct := range []*storage.Account{
+		{ID: "trae:first", Provider: "trae", AddedAt: 1, Enabled: true},
+		{ID: "trae:second", Provider: "trae", AddedAt: 2, Enabled: true},
+		{ID: "workbuddy:first", Provider: "workbuddy", AddedAt: 3, Enabled: true},
+	} {
+		if err := store.UpsertAccount(acct); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
+	h, err := Handler(s, dir, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, s.URL+path, strings.NewReader(body))
+		r.Host = "127.0.0.1:12345"
+		r.Header.Set("Origin", s.URL)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+
+	w := call("POST", "/api/accounts/order", `{"providerId":"trae","accountIds":["trae:second","trae:first"]}`)
+	if w.Code != 200 {
+		t.Fatalf("reorder failed: %d %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"id":"trae:second"`) {
+		t.Fatalf("reordered response missing second account: %s", w.Body.String())
+	}
+
+	w = call("POST", "/api/accounts/order", `{"providerId":"trae","accountIds":["trae:second"]}`)
+	if w.Code != 400 {
+		t.Fatalf("incomplete order should fail: %d %s", w.Code, w.Body.String())
+	}
+
+	w = call("GET", "/api/accounts", "")
+	if w.Code != 200 {
+		t.Fatalf("list accounts failed: %d", w.Code)
+	}
+	body := w.Body.String()
+	if strings.Index(body, `"id":"trae:second"`) > strings.Index(body, `"id":"trae:first"`) {
+		t.Fatalf("reordered accounts were not persisted: %s", body)
 	}
 }
 

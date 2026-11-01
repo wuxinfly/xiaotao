@@ -65,3 +65,11 @@ func ServiceMutex(dataDir string) string {
 func WindowMutex(dataDir string) string {
 	return "Local\\" + Current().MutexNamespace + ".Window." + dataDir
 }
+
+func HUDWindowMutex(dataDir string) string {
+	return "Local\\" + Current().MutexNamespace + ".HUDWindow." + dataDir
+}
+
+func LaunchMutex(dataDir string) string {
+	return "Local\\" + Current().MutexNamespace + ".Launch." + dataDir
+}

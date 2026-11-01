@@ -353,7 +353,7 @@ func postChat(ctx context.Context, baseURL string, cred *providers.Credential, b
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	resp, err := client().Do(req)
+	resp, err := chatClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func streamChat(ctx context.Context, baseURL string, cred *providers.Credential,
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
-	resp, err := client().Do(req)
+	resp, err := chatClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

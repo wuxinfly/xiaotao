@@ -23,7 +23,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		sessions, err := svc.List()
 		if err != nil {
-			apiError(w, 500, "读取任务失败")
+			apiError(w, 500, "读取任务失败: "+err.Error())
 			return
 		}
 		send(w, map[string]any{"sessions": sessions})

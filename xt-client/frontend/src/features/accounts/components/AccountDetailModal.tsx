@@ -16,6 +16,7 @@ interface AccountDetailModalProps {
   onClose: () => void;
   onToggleEnable: (account: Account) => Promise<void>;
   onRefreshQuota: (account: Account) => Promise<void>;
+  onCheckin?: (account: Account) => Promise<void>;
   onDeleteAccount: (account: Account) => Promise<void>;
   onRelogin?: (account: Account) => void;
 }
@@ -27,6 +28,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   onClose,
   onToggleEnable,
   onRefreshQuota,
+  onCheckin,
   onDeleteAccount,
   onRelogin,
 }) => {
@@ -53,6 +55,11 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   const refreshTimeStr = formatRefreshTime(account.quota?.fetchedAt);
   const isAuthValid = account.authState === 'valid';
   const isQuotaError = account.quota?.status === 'error';
+
+  const isTraeCN = account.provider === 'trae' && (account.region === 'cn' || !account.region);
+  const isWorkbuddy = account.provider === 'workbuddy';
+  const supportsCheckin = isTraeCN || isWorkbuddy;
+  const isCheckedIn = !!account.checkin?.checkedIn;
 
   return createPortal(
     <div
@@ -97,6 +104,13 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
                   <span className="capsule-dot" />
                   {isAuthValid ? '登录有效' : '登录失效'}
                 </span>
+
+                {supportsCheckin && (
+                  <span className={`status-capsule ${isCheckedIn ? 'auth-ok' : 'auth-warn'}`}>
+                    <span className="capsule-dot" />
+                    {isCheckedIn ? (account.checkin?.streakDays ? `已签到 (连续 ${account.checkin.streakDays} 天)` : '已签到') : '今日未签到'}
+                  </span>
+                )}
 
                 {/* iOS switch for enabled */}
                 <label className="capsule-switch-pill" title={account.enabled ? '点击停用' : '点击启用'}>
@@ -175,6 +189,22 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
           </div>
 
           <div className="footer-right">
+            {supportsCheckin && onCheckin && (
+              <button
+                type="button"
+                className="dialog-btn"
+                style={{ color: '#7ee787', borderColor: 'rgba(46, 125, 50, 0.35)' }}
+                disabled={isBusy}
+                onClick={() => onCheckin(account)}
+                title="每日签到打卡"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span>{isCheckedIn ? '已打卡' : '打卡签到'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               className="dialog-btn secondary"

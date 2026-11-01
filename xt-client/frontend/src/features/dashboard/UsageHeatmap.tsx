@@ -29,12 +29,18 @@ export function UsageHeatmap({ heatmap }: Props) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
 
-  // Auto-scroll to latest date on initial render
+  // Keep the latest dates in view when the calendar is wider than its container.
   useEffect(() => {
     const el = scrollContainerRef.current;
-    if (el) {
+    if (!el) return;
+
+    const scrollToLatest = () => {
       el.scrollLeft = el.scrollWidth;
-    }
+    };
+    scrollToLatest();
+    const observer = new ResizeObserver(scrollToLatest);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   // Calculate 4 quantile thresholds from all positive token days
@@ -80,20 +86,15 @@ export function UsageHeatmap({ heatmap }: Props) {
     // Our row 0=Mon, ..., 6=Sun
     const getRow = (d: Date) => (d.getDay() + 6) % 7;
 
-    // We want 53 weeks ending with this week
-    const currentWeekEnd = new Date(today);
-    const currentDayRow = getRow(today);
-    // Saturday or Sunday of this week: let's end on Sunday of current week
-    currentWeekEnd.setDate(today.getDate() + (6 - currentDayRow));
-
-    const startDate = new Date(currentWeekEnd);
-    startDate.setDate(currentWeekEnd.getDate() - 53 * 7 + 1); // 53 weeks before Monday
+    // The leading week is a partial week before the first Monday, matching how
+    // GitHub renders a 53-column contribution graph. The final column contains
+    // today and any remaining days in the current week.
+    const calendarStart = new Date(today);
+    calendarStart.setDate(today.getDate() - getRow(today) - 52 * 7);
 
     const matrix: Array<Array<{ date: Date; dateStr: string; invisible: boolean; isToday: boolean }>> = [];
-    const months: Array<{ col: number; label: string }> = [];
-
-    let lastMonth = -1;
-    const cursor = new Date(startDate);
+    const monthStarts = new Map<string, { col: number; label: string }>();
+    const cursor = new Date(calendarStart);
 
     for (let w = 0; w < 53; w++) {
       const weekCols: Array<{ date: Date; dateStr: string; invisible: boolean; isToday: boolean }> = [];
@@ -102,12 +103,13 @@ export function UsageHeatmap({ heatmap }: Props) {
         const ymd = formatYMD(cellDate);
         const isFuture = cellDate > today;
         const isTooOld = ymd < heatmap.startDate;
-
-        // Detect month transitions
         const m = cellDate.getMonth();
-        if (r === 0 && m !== lastMonth && !isFuture && !isTooOld) {
-          months.push({ col: w, label: `${m + 1}月` });
-          lastMonth = m;
+        const monthKey = `${cellDate.getFullYear()}-${m}`;
+
+        // A month label belongs to the first visible cell of that month, even
+        // when the first day falls in the middle of a week.
+        if (cellDate.getDate() <= 7 && !isFuture && !isTooOld && !monthStarts.has(monthKey)) {
+          monthStarts.set(monthKey, { col: w, label: `${m + 1}月` });
         }
 
         weekCols.push({
@@ -121,6 +123,13 @@ export function UsageHeatmap({ heatmap }: Props) {
       }
       matrix.push(weekCols);
     }
+
+    const months = Array.from(monthStarts.values())
+      .sort((a, b) => a.col - b.col)
+      .filter(
+        (month, idx, list) =>
+          month.col <= 50 && (idx === 0 || month.col - list[idx - 1].col >= 3),
+      );
 
     return { weeks: matrix, monthLabels: months, todayStr };
   }, [heatmap.startDate]);
@@ -215,13 +224,13 @@ export function UsageHeatmap({ heatmap }: Props) {
             {/* Month row */}
             <div className="month-labels" aria-hidden="true">
               {monthLabels.map((m, idx) => (
-                <span
+                <div
                   key={idx}
                   className="month-label-item"
                   style={{ gridColumnStart: m.col + 1 }}
                 >
-                  {m.label}
-                </span>
+                  <span>{m.label}</span>
+                </div>
               ))}
             </div>
 
@@ -234,8 +243,19 @@ export function UsageHeatmap({ heatmap }: Props) {
             >
               {weeks.map((week, wIdx) =>
                 week.map((cell, rIdx) => {
+                  const cellPosition = {
+                    gridColumn: wIdx + 1,
+                    gridRow: rIdx + 1,
+                  };
                   if (cell.invisible) {
-                    return <div key={`${wIdx}-${rIdx}`} className="day-cell invisible" aria-hidden="true" />;
+                    return (
+                      <div
+                        key={`${wIdx}-${rIdx}`}
+                        className="day-cell invisible"
+                        style={cellPosition}
+                        aria-hidden="true"
+                      />
+                    );
                   }
                   const levelClass = getCellLevel(cell.dateStr);
                   const isTodayClass = cell.isToday ? 'is-today' : '';
@@ -246,6 +266,7 @@ export function UsageHeatmap({ heatmap }: Props) {
                       role="gridcell"
                       tabIndex={0}
                       className={`day-cell ${levelClass} ${isTodayClass}`}
+                      style={cellPosition}
                       aria-label={`${cell.dateStr} ${DAY_NAMES[rIdx]}`}
                       onMouseEnter={(e) => handleCellHover(e, cell.dateStr, false)}
                       onFocus={(e) => handleCellHover(e, cell.dateStr, false)}
