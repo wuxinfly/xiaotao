@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "candidate_id": "model-catalog-route-identity",
+  "created_at": "2026-11-01T00:00:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.model-catalog-route-identity",
+  "text": "模型目录展示 ID 与上游名称分别保存；动态发现时同步保存大小写和档位路由，不把目录可见标成账号已验证可调用。",
+  "rationale": "对照发现 Trae 小写 ID 丢失上游大小写，Antigravity 动态发现也需 effort 路由，只有展示表无法保证调用正确。",
+  "observations": 2,
+  "source_refs": ["xt-client/internal/providers/trae/models.go", "xt-client/internal/providers/antigravity/catalog.go", "docs/plans/2026-11-01-model-catalog-followup.md"]
+}

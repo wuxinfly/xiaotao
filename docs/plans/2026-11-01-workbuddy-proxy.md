@@ -24,6 +24,8 @@ WorkBuddy 上游接受标准 OpenAI 格式：`model`、`stream=true`、`messages
 
 ## 已完成
 
+- 模型目录继续采用静态表（参考实现亦如此，尚无已确认目录接口），2026-11-01 补入 mimo-v2.6-pro；真实账号可用性待验收。
+
 - 登录链路：state → authUrl → 轮询 token → login/account，带 `Authorization`/`X-Domain`/`X-Product-Code` 及 `X-No-*` 请求头。
 - 刷新链路：refresh token 接口，`expiresAt` 毫秒转秒。
 - 聊天链路：强制 `stream=true`，SSE 解析 content/reasoning/usage/tool_calls，DSML 文本工具调用兜底解析（按模型缓冲）。

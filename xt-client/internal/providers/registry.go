@@ -10,9 +10,11 @@ import (
 )
 
 type ModelInfo struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName,omitempty"`
-	Multimodal  bool   `json:"multimodal"`
+	UpstreamID  string            `json:"-"`
+	Routes      map[string]string `json:"-"`
+	ID          string            `json:"id"`
+	DisplayName string            `json:"displayName,omitempty"`
+	Multimodal  bool              `json:"multimodal"`
 }
 
 type Info struct {
@@ -24,19 +26,20 @@ type Info struct {
 }
 
 type Credential struct {
-	RefreshToken string
-	AccessToken  string
-	ExpiresAt    int64
-	UID          string
-	Nickname     string
-	ProjectID    string
-	AuthTier     string
+	ModelRoutes    map[string]string `json:"-"`
+	RefreshToken   string
+	AccessToken    string
+	ExpiresAt      int64
+	UID            string
+	Nickname       string
+	ProjectID      string
+	AuthTier       string
 	EnterpriseID   string
 	DepartmentInfo string
-	MachineID    string
-	DeviceID     string
-	Region       string
-	Domain       string
+	MachineID      string
+	DeviceID       string
+	Region         string
+	Domain         string
 }
 
 type Provider interface {

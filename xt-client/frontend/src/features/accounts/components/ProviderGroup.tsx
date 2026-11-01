@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Account, ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
 import { AccountCard } from './AccountCard';
+import { ModelCatalogPanel } from './ModelCatalogPanel';
 
 interface ProviderGroupProps {
   providerId: string;
@@ -27,6 +28,8 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   onOpenDetail,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [showModels, setShowModels] = useState(false);
+  const [modelsVisited, setModelsVisited] = useState(false);
 
   const displayName = providerInfo?.displayName || providerId.toUpperCase();
   const count = accounts.length;
@@ -44,6 +47,7 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
         </div>
 
         <div className="group-right">
+          <button type="button" className="group-add-btn" aria-expanded={showModels} aria-controls={`models-${providerId}`} onClick={() => { setModelsVisited(true); setShowModels(!showModels); }}>{showModels ? '收起模型' : '查看模型'}</button>
           <button
             type="button"
             className="group-add-btn"
@@ -83,6 +87,9 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
       </div>
 
       {/* Cards Grid */}
+      <div id={`models-${providerId}`} className={`model-catalog-reveal ${showModels ? 'is-open' : ''}`} inert={!showModels} aria-hidden={!showModels}>
+        <div>{modelsVisited && <ModelCatalogPanel accounts={accounts} providerId={providerId} />}</div>
+      </div>
       {!collapsed && (
         <div className="accounts-cards-grid">
           {accounts.map((acct) => (

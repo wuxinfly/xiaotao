@@ -158,7 +158,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface ModelCatalog {
+  models: { id: string; displayName?: string; multimodal: boolean }[];
+  source: 'live' | 'builtin' | 'merged' | 'cached';
+}
+
 export const api = {
+  accountModels: (id: string) => request<ModelCatalog>(`/api/proxy/models?accountId=${encodeURIComponent(id)}`, { method: 'POST' }),
   providers: () => request<{ providers: ProviderInfo[] }>('/api/providers'),
   accounts: () => request<{ accounts: Account[]; proxy: ProxySettings }>('/api/accounts'),
   startLogin: (provider = 'trae') => request<LoginSession>(`/api/auth/${provider}`, { method: 'POST' }),

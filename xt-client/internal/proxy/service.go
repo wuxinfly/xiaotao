@@ -23,11 +23,17 @@ import (
 )
 
 type Service struct {
-	store  *storage.Store
-	secret func(id string) ([]byte, error)
-	usage  *usage.Service
-	mu     sync.Mutex
-	key    string
+	store    *storage.Store
+	secret   func(id string) ([]byte, error)
+	usage    *usage.Service
+	mu       sync.Mutex
+	key      string
+	catalogs map[string]catalogSnapshot
+}
+
+type catalogSnapshot struct {
+	models []providers.ModelInfo
+	at     time.Time
 }
 
 func New(store *storage.Store, secret func(id string) ([]byte, error), apiKey string) *Service {
@@ -74,7 +80,7 @@ func (s *Service) Models() ([]map[string]any, error) {
 		return []map[string]any{}, nil
 	}
 	out := []map[string]any{}
-	models := listProviderModels(acct)
+	models := s.AccountModels(acct)
 	for _, m := range models {
 		out = append(out, map[string]any{
 			"id": acct.Provider + "/" + m.ID, "object": "model", "created": 0, "owned_by": "xiaotao",
@@ -89,6 +95,79 @@ func listProviderModels(acct storage.Account) []providers.ModelInfo {
 		return []providers.ModelInfo{}
 	}
 	return p.ListModels(acct.Region)
+}
+
+// AccountModels uses the account catalog when available, otherwise the static fallback.
+func (s *Service) AccountModels(acct storage.Account) []providers.ModelInfo {
+	models, _ := s.AccountModelCatalog(acct)
+	return models
+}
+
+// AccountModelCatalog also reports whether the catalog was fetched live.
+func (s *Service) AccountModelCatalog(acct storage.Account) ([]providers.ModelInfo, string) {
+	fallback := listProviderModels(acct)
+	if acct.Provider != "trae" && acct.Provider != "antigravity" {
+		return fallback, "builtin"
+	}
+	raw, err := s.secret(acct.ID)
+	if err != nil {
+		return fallback, "builtin"
+	}
+	var cred providers.Credential
+	if json.Unmarshal(raw, &cred) != nil {
+		return fallback, "builtin"
+	}
+	cred.Region, cred.UID = acct.Region, acct.UID
+	if cred.ExpiresAt > 0 && cred.ExpiresAt-time.Now().Unix() < 300 {
+		if s.store == nil || s.refreshCredential(&acct, &cred) != nil {
+			return fallback, "builtin"
+		}
+	}
+	var models []providers.ModelInfo
+	source := "live"
+	if acct.Provider == "antigravity" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		models, err = antigravity.FetchModels(ctx, &cred)
+		source = "merged"
+	} else {
+		models, err = trae.FetchUpstreamModels(&cred, acct.MachineID, acct.DeviceID)
+	}
+	if err != nil {
+		s.mu.Lock()
+		previous, ok := s.catalogs[acct.ID]
+		s.mu.Unlock()
+		if ok {
+			return previous.models, "cached"
+		}
+		return fallback, "builtin"
+	}
+	s.mu.Lock()
+	if s.catalogs == nil {
+		s.catalogs = map[string]catalogSnapshot{}
+	}
+	s.catalogs[acct.ID] = catalogSnapshot{models: models, at: time.Now()}
+	s.mu.Unlock()
+	return models, source
+}
+
+func (s *Service) chatModelRoutes(acct storage.Account) map[string]string {
+	s.mu.Lock()
+	snapshot, ok := s.catalogs[acct.ID]
+	s.mu.Unlock()
+	if !ok || time.Since(snapshot.at) > 5*time.Minute {
+		snapshot.models, _ = s.AccountModelCatalog(acct)
+	}
+	routes := map[string]string{}
+	for _, m := range snapshot.models {
+		if m.UpstreamID != "" {
+			routes[m.ID] = m.UpstreamID
+		}
+		for effort, route := range m.Routes {
+			routes[m.ID+"@"+effort] = route
+		}
+	}
+	return routes
 }
 
 func providerCollector(provider string) (providers.ChatCollector, bool) {
@@ -107,11 +186,12 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Model      string          `json:"model"`
-		Stream     bool            `json:"stream"`
-		Messages   json.RawMessage `json:"messages"`
-		Tools      json.RawMessage `json:"tools"`
-		ToolChoice any             `json:"tool_choice"`
+		ReasoningEffort string          `json:"reasoning_effort"`
+		Model           string          `json:"model"`
+		Stream          bool            `json:"stream"`
+		Messages        json.RawMessage `json:"messages"`
+		Tools           json.RawMessage `json:"tools"`
+		ToolChoice      any             `json:"tool_choice"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<20)).Decode(&body); err != nil {
 		writeError(w, 400, "invalid_request_error", "请求体无法解析")
@@ -132,14 +212,14 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	p := s.store.Proxy()
 	acct, ok := s.store.Account(p.DefaultAccountID)
-	isWorkBuddy := ok && acct.Provider == "workbuddy"
 	model := ""
-	if isWorkBuddy {
-		if !strings.HasPrefix(body.Model, "workbuddy/") {
-			writeError(w, 400, "invalid_request_error", "模型必须以 workbuddy/ 开头")
+	if ok && acct.Provider != "trae" {
+		prefix := acct.Provider + "/"
+		if !strings.HasPrefix(body.Model, prefix) {
+			writeError(w, 400, "invalid_request_error", "模型必须以 "+prefix+" 开头")
 			return
 		}
-		model = strings.TrimPrefix(body.Model, "workbuddy/")
+		model = strings.TrimPrefix(body.Model, prefix)
 	} else {
 		model = strings.TrimPrefix(body.Model, "trae/")
 	}
@@ -203,7 +283,17 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var upstream map[string]any
-	if acct.Provider == "workbuddy" {
+	if acct.Provider == "trae" || acct.Provider == "antigravity" {
+		cred.ModelRoutes = s.chatModelRoutes(acct)
+		if acct.Provider == "trae" {
+			if route := cred.ModelRoutes[model]; route != "" {
+				model = route
+			} else {
+				model = trae.UpstreamModel(model)
+			}
+		}
+	}
+	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" {
 		upstream = map[string]any{"messages": msgs}
 		if reqChoice := normalizeToolChoice(body.ToolChoice); reqChoice != "" {
 			upstream["tool_choice"] = reqChoice
@@ -219,6 +309,9 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		if len(body.Tools) > 0 {
 			upstream["tools"] = convertTools(tools)
 		}
+	}
+	if body.ReasoningEffort != "" {
+		upstream["reasoning_effort"] = body.ReasoningEffort
 	}
 	if body.Stream {
 		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream)
@@ -361,7 +454,7 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 	var usage atomic.Value
 	var upstreamErr atomic.Value
 	var events *providers.ChatEvents
-	if acct.Provider == "workbuddy" {
+	if acct.Provider == "workbuddy" || acct.Provider == "antigravity" {
 		events = &providers.ChatEvents{
 			OnFirstToken: func() {
 				if reqTracker != nil {
@@ -410,7 +503,12 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 				}
 			},
 		}
-		err := workbuddy.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
+		var err error
+		if acct.Provider == "antigravity" {
+			err = antigravity.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
+		} else {
+			err = workbuddy.Streamer{}.Stream(ctx, cred, modelID, upstream, events)
+		}
 		if err != nil {
 			if reqTracker != nil {
 				if ctx.Err() != nil {

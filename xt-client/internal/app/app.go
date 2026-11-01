@@ -520,6 +520,16 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
+		if id := r.URL.Query().Get("accountId"); id != "" {
+			acct, ok := store.Account(id)
+			if !ok {
+				apiError(w, 404, "account not found")
+				return
+			}
+			models, source := proxySvc.AccountModelCatalog(acct)
+			send(w, map[string]any{"models": models, "source": source})
+			return
+		}
 		accs := store.Accounts()
 		if len(accs) == 0 {
 			apiError(w, 409, "no accounts")
@@ -531,7 +541,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			if !a.Enabled {
 				continue
 			}
-			for _, m := range providerModels(a) {
+			for _, m := range proxySvc.AccountModels(*a) {
 				if !seen[m.ID] {
 					seen[m.ID] = true
 					models = append(models, m)
@@ -627,13 +637,6 @@ func writeProxyError(w http.ResponseWriter, status int, code, message string) {
 	json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": message, "type": code}})
 }
 
-func providerModels(a *storage.Account) []providers.ModelInfo {
-	p, err := providers.Get(a.Provider)
-	if err != nil {
-		return []providers.ModelInfo{}
-	}
-	return p.ListModels(a.Region)
-}
 func Serve(ctx context.Context, data string) error {
 	release, e := desktop.Lock("Local\\XiaoTao.Service." + Key(data))
 	if e != nil {

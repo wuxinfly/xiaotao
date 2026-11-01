@@ -13,7 +13,7 @@
 - WorkBuddy 上游使用标准 OpenAI 消息格式（原始 messages、JSON Schema tools、字符串或函数名 tool_choice）；不要复用 Trae 的 `function: chat_v3` 信封或 NativeMessages 转换。
 - 聊天流必须带空闲 300 秒和总时长 30 分钟超时；上游非 2xx 统一返回 `providers.UpstreamError`。
 - 代理层按 `acct.Provider` 分派模型列表、聊天、额度；WorkBuddy 模型 ID 必须带 `workbuddy/` 前缀。
-- Antigravity 上游使用 Gemini 原生协议的 Antigravity 包装（`/v1internal:streamGenerateContent`），内部请求含 project/model/request envelope、身份声明注入和 `[ignore]` 包裹副本；模型 ID 必须带 `antigravity/` 前缀，走内置模型表映射。
+- Antigravity 上游使用 Gemini 原生协议的 Antigravity 包装（`/v1internal:streamGenerateContent`），内部请求含 project/model/request envelope、身份声明注入和 `[ignore]` 包裹副本；模型 ID 必须带 `antigravity/` 前缀，使用内置底表与实时目录合并后的名称及档位映射。
 - Antigravity 流式空闲 90 秒、非流式 120 秒；thoughtSignature 使用按账号隔离的内存 LRU 缓存，签名缺失时 Gemini 模型注入哨兵。
 - 修改 WorkBuddy 请求格式或超时行为时同步更新本节、README 和 docs/plans 中的接入计划。
 

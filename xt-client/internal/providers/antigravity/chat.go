@@ -21,11 +21,10 @@ type Collector struct{}
 type Streamer struct{}
 
 func (Collector) Collect(ctx context.Context, cred *providers.Credential, model string, body map[string]any) (map[string]any, error) {
-	entry, err := lookupModel(model)
+	upstreamModel, err := requestModel(cred, model, stringFromAny(body["reasoning_effort"]))
 	if err != nil {
 		return nil, &providers.UpstreamError{Status: 400, Message: err.Error()}
 	}
-	upstreamModel := resolveUpstreamModel(entry, stringFromAny(body["reasoning_effort"]))
 	cache := NewSignatureCache()
 	envelope := buildRequest(body, cred.ProjectID, upstreamModel, cache)
 	payload, err := upstreamRequest(ctx, cred.AccessToken, "generateContent", envelope, false)
@@ -36,11 +35,10 @@ func (Collector) Collect(ctx context.Context, cred *providers.Credential, model 
 }
 
 func (Streamer) Stream(ctx context.Context, cred *providers.Credential, model string, body map[string]any, ev *providers.ChatEvents) error {
-	entry, err := lookupModel(model)
+	upstreamModel, err := requestModel(cred, model, stringFromAny(body["reasoning_effort"]))
 	if err != nil {
 		return &providers.UpstreamError{Status: 400, Message: err.Error()}
 	}
-	upstreamModel := resolveUpstreamModel(entry, stringFromAny(body["reasoning_effort"]))
 	cache := NewSignatureCache()
 	envelope := buildRequest(body, cred.ProjectID, upstreamModel, cache)
 	resp, err := upstreamStream(ctx, cred.AccessToken, "streamGenerateContent", envelope)

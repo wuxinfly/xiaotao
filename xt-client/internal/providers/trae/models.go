@@ -2,9 +2,12 @@ package trae
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"xiaotao/xt-client/internal/providers"
 )
@@ -50,8 +53,7 @@ func (Provider) ListModels(region string) []providers.ModelInfo {
 }
 
 // FetchUpstreamModels pulls the live CN catalog for one account credential.
-// The proxy serves the union with static list; upstream names map through
-// lowercase IDs, and only known non-custom entries are included.
+// Successful catalogs replace the static fallback; hidden and custom entries are excluded.
 func FetchUpstreamModels(cred *providers.Credential, machineID, deviceID string) ([]providers.ModelInfo, error) {
 	r := RegionOf(cred.Region)
 	body, _ := json.Marshal(map[string]any{
@@ -59,7 +61,9 @@ func FetchUpstreamModels(cred *providers.Credential, machineID, deviceID string)
 	})
 	head := headers(cred, machineID, deviceID)
 	head["Accept"] = "application/json"
-	req, err := http.NewRequest(http.MethodPost, r.ChatBase+"/api/ide/v1/get_detail_param", bytes.NewReader(body))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.ChatBase+"/api/ide/v1/get_detail_param", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -75,37 +79,61 @@ func FetchUpstreamModels(cred *providers.Credential, machineID, deviceID string)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, &HTTPError{Code: resp.StatusCode}
 	}
+	return parseModelCatalog(raw)
+}
+
+func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 	var parsed struct {
 		ConfigInfoList []struct {
-			Name      string `json:"config_name"`
-			Switch    *bool  `json:"config_switch"`
-			Invisible *bool  `json:"is_invisible_to_user"`
-			Context   any    `json:"context_window_tokens"`
-			Display   struct {
-				IsCustom bool   `json:"is_custom_model"`
-				Builder  bool   `json:"builder"`
-				Name     string `json:"display_name"`
-				Multi    bool   `json:"multimodal"`
-			} `json:"display_config"`
+			Name      string         `json:"config_name"`
+			Switch    *bool          `json:"config_switch"`
+			Invisible *bool          `json:"is_invisible_to_user"`
+			Context   any            `json:"context_window_tokens"`
+			Display   catalogDisplay `json:"display_config"`
 		} `json:"config_info_list"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return nil, err
 	}
 	out := []providers.ModelInfo{}
+	seen := map[string]bool{}
 	for _, e := range parsed.ConfigInfoList {
-		if e.Name == "" || e.Switch != nil && !*e.Switch || e.Invisible != nil && *e.Invisible || e.Display.IsCustom || e.Display.Builder {
+		id := lower(e.Name)
+		internal := strings.HasPrefix(id, "custom_model") || id == "summary" || id == "fast_apply" || id == "fast_apply_new" || id == "title_generation" || id == "input_optimization"
+		if e.Name == "" || internal || seen[id] || e.Switch != nil && !*e.Switch || e.Invisible != nil && *e.Invisible || e.Display.IsCustom || e.Display.Builder {
 			continue
 		}
-		out = append(out, providers.ModelInfo{ID: lower(e.Name), DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi})
+		seen[id] = true
+		out = append(out, providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi})
 	}
 	if len(out) == 0 {
 		return nil, ErrEmptyCatalog
 	}
 	return out, nil
+}
+
+type catalogDisplay struct {
+	IsCustom bool   `json:"is_custom_model"`
+	Builder  bool   `json:"builder"`
+	Name     string `json:"display_name"`
+	Multi    bool   `json:"multimodal"`
+}
+
+func (d *catalogDisplay) UnmarshalJSON(raw []byte) error {
+	if len(raw) > 0 && raw[0] == '"' {
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+		raw = []byte(value)
+	}
+	type plain catalogDisplay
+	// Malformed optional display metadata must not discard the entire catalog.
+	_ = json.Unmarshal(raw, (*plain)(d))
+	return nil
 }
 
 func lower(s string) string {
@@ -123,4 +151,19 @@ func orDefault(a, b string) string {
 		return b
 	}
 	return a
+}
+
+// UpstreamModel preserves curated casing when the live catalog is unavailable.
+func UpstreamModel(id string) string {
+	aliases := map[string]string{
+		"deepseek-v4-pro":       "DeepSeek-V4-Pro",
+		"doubao-seed-evolving":  "Doubao-Seed-Evolving",
+		"doubao-seed-2.1-pro":   "Doubao-Seed-2.1-Pro",
+		"doubao-seed-2.1-turbo": "Doubao-Seed-2.1-Turbo",
+		"doubao-seed-code":      "Doubao-Seed-Code",
+	}
+	if name := aliases[id]; name != "" {
+		return name
+	}
+	return id
 }
