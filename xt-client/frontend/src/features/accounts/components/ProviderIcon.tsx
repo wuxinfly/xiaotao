@@ -1,4 +1,5 @@
 import React from 'react';
+import workbuddyIcon from '../../../assets/workbuddy-32.png';
 
 interface ProviderIconProps {
   provider: string;
@@ -8,22 +9,29 @@ interface ProviderIconProps {
 
 export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size = 32, className = '' }) => {
   const p = (provider || '').toLowerCase();
+  const traeClipId = React.useId().replace(/:/g, '');
   if (p === 'trae') {
     return (
       <svg
-        width={size}
+        width={(size * 4) / 3}
         height={size}
-        viewBox="0 0 32 32"
+        viewBox="0 0 28 21"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className={`provider-icon provider-icon-trae ${className}`}
         aria-hidden="true"
       >
-        <rect width="32" height="32" rx="7" fill="#FF5733" />
-        <path
-          d="M8 10H24V14H18.5V23H13.5V14H8V10Z"
-          fill="#FFFFFF"
-        />
+        <g clipPath={`url(#trae_logo_${traeClipId})`}>
+          <path
+            fill="currentColor"
+            d="M28.002 20.846H4v-3.998H0V.846h28.002zM4 16.848h20.002V4.845H4zm10.002-6.062-2.829 2.828-2.828-2.828 2.828-2.829zm8-.002-2.828 2.828-2.829-2.828 2.829-2.829z"
+          />
+        </g>
+        <defs>
+          <clipPath id={`trae_logo_${traeClipId}`}>
+            <path fill="currentColor" d="M0 .846h28.002v20H0z" />
+          </clipPath>
+        </defs>
       </svg>
     );
   }
@@ -57,18 +65,14 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({ provider, size = 32,
 
   if (p === 'workbuddy') {
     return (
-      <svg
+      <img
+        src={workbuddyIcon}
+        alt=""
         width={size}
         height={size}
-        viewBox="0 0 32 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
         className={`provider-icon provider-icon-workbuddy ${className}`}
         aria-hidden="true"
-      >
-        <rect width="32" height="32" rx="7" fill="#0B6BCB" />
-        <path d="M9 11l2.6 10h2.2L16 14l2.2 7h2.2L23 11h-2.4l-1.6 6.6L16.9 11h-1.8l-2.1 6.6L11.4 11H9z" fill="#fff" />
-      </svg>
+      />
     );
   }
 

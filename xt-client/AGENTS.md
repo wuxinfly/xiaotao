@@ -8,6 +8,13 @@
 - build.ps1 构建后更新当前用户桌面“小涛”快捷方式；启动动画由原生 GDI 帧流在原生窗口以 20fps 呈现并覆盖初始化阶段，后台启动流程跑完且动画就绪后自动平滑切换为主窗口，无下载弹窗、无跳过按钮，托盘恢复不播放。
 - 前端源码在 frontend，使用 React、TypeScript、Vite。先在 frontend 运行 npm ci、npm run build，再运行 Go 验证；internal/app/web 为生成资源，不手动修改。
 
+## 反代 Provider 约定
+
+- WorkBuddy 上游使用标准 OpenAI 消息格式（原始 messages、JSON Schema tools、字符串或函数名 tool_choice）；不要复用 Trae 的 `function: chat_v3` 信封或 NativeMessages 转换。
+- 聊天流必须带空闲 300 秒和总时长 30 分钟超时；上游非 2xx 统一返回 `providers.UpstreamError`。
+- 代理层按 `acct.Provider` 分派模型列表、聊天、额度；WorkBuddy 模型 ID 必须带 `workbuddy/` 前缀。
+- 修改 WorkBuddy 请求格式或超时行为时同步更新本节、README 和 docs/plans 中的接入计划。
+
 ## 交互与动效设计规则
 
 - 小涛后续所有页面都要重视交互效果，将状态反馈和动效作为设计、实现与验收的一部分。

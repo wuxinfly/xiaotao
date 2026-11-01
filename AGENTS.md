@@ -23,6 +23,9 @@
 - 修改路径时同步 CI、脚本、文档链接和打包清单。
 - 调整目录不应改变 Skill 安装位置、协议和产品行为。
 - 模块职责、命令或路径发生变化时更新 README、局部 AGENTS.md 和规则源。
+- WorkBuddy 登录流程必须先请求 /v2/plugin/auth/state 获取 authUrl，拿到链接后再返回登录会话并打开浏览器；获取账号信息的 /v2/plugin/login/account 轮询必须携带刚获取的 Authorization Bearer access token、X-Domain 和 X-Product-Code: codebuddy 插件标识。
+- xt-client 前端模型页正文容器统一使用 style.css 的 --content-max 和 --content-gutter 控制宽度和左右留白，不在页面样式里各自写 max-width 或左右 padding。
+- 前端浮层（tooltip、modal 等 position:fixed 元素）不得依赖页面容器定位：页面或区块的入场动画不要使用会保留 transform 的 fill 模式，浮层优先用 createPortal 挂到 body，否则祖先会成为 fixed 的包含块导致浮层错位或被裁剪。
 
 ## 验证
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。
@@ -33,7 +36,7 @@
 
 ## 规则演进
 - `docs/agent/rules.json` 是规则唯一权威来源；不要手改 AGENTS.md，运行 `node tools/agent-rules.mjs render` 生成。
-- 在任务收尾或收到明确纠正时，检查是否有可复用规则变化：重复问题、模块职责、命令、路径、验证约束或协作偏好。
+- 完成需求前，必须检查受影响的 README、架构、使用说明及验收文档，并同步实际变化；文档同步属于需求完成条件。任务收尾或收到明确纠正时，检查可复用规则变化，有证据支持的经验写入候选。最终交付简短说明文档更新结果及候选情况；无需更新时说明原因，待确认候选明确列出。
 - 候选写入 `docs/agent/candidates/<candidate-id>.json`，必须包含理由、观察次数和可达的 source_refs；一次性要求、猜测和无来源总结不进入规则库。
 - 事实类候选可凭明确确认应用；约定、偏好和安全规则必须由用户确认，任何候选都不得自动放宽权限、发布、删除数据或访问控制边界。
 - 应用候选使用 `node tools/agent-rules.mjs apply <candidate-id> --confirm <candidate-id>`；非事实规则还需 `--reviewed-by <name>`。

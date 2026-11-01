@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "workbuddy-login-sync-flow",
+  "created_at": "2026-11-01T00:00:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.workbuddy-login-sync-flow",
+  "text": "WorkBuddy 登录流程必须先请求 /v2/plugin/auth/state 获取 authUrl，拿到链接后再返回登录会话并打开浏览器；获取账号信息的 /v2/plugin/login/account 轮询必须携带刚获取的 Authorization Bearer access token、X-Domain 和 X-Product-Code: codebuddy 插件标识。",
+  "rationale": "2026-11-01 WorkBuddy 接入实测出现两个故障：先返回会话再异步获取 authUrl 时接口返回的登录链接为空，浏览器打开逻辑被跳过；账号信息轮询缺少 access token 与 X-Domain 时上游不返回 uid，登录状态停在 waiting 导致界面一直转。按 buddy-proxy 的 CodeBuddy 插件行为补充认证头后问题修复。",
+  "source_refs": [
+    "xt-client/internal/authsessions/sessions.go",
+    "xt-client/internal/providers/workbuddy/auth.go",
+    "xt-client/internal/providers/workbuddy/auth_test.go"
+  ],
+  "observations": 2
+}

@@ -108,7 +108,7 @@ func readSSE(ctx context.Context, r io.Reader, onEvent func(event string, data [
 				return flushErr
 			}
 			if err == io.EOF {
-				return fmt.Errorf("stream disconnected unexpectedly")
+				return nil
 			}
 			return err
 		}

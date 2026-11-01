@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "frontend-shared-content-column",
+  "created_at": "2026-11-01T00:00:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.shared-content-column",
+  "text": "xt-client 前端模型页正文容器统一使用 style.css 的 --content-max 和 --content-gutter 控制宽度和左右留白，不在页面样式里各自写 max-width 或左右 padding。",
+  "rationale": "仪表盘和账号页曾分别写死 1140/28 与 1440/32，1280x720 窗口下切换页面边线错位、网格列数跳变。现统一为 --content-max:1240px、--content-gutter:28px，小屏 gutter 18px，WorkBuddy 接入的账号页面也复用该约定。",
+  "source_refs": [
+    "xt-client/frontend/src/style.css",
+    "xt-client/frontend/src/features/dashboard/dashboard.css",
+    "xt-client/frontend/src/features/accounts/accounts.css"
+  ],
+  "observations": 2
+}

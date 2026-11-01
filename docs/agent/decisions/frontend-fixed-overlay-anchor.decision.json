@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "record_type": "agent-rule-decision",
+  "decision_id": "frontend-fixed-overlay-anchor",
+  "candidate_id": "frontend-fixed-overlay-anchor",
+  "action": "add",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.fixed-overlay-anchor",
+  "kind": "convention",
+  "outcome": "approved",
+  "decided_at": "2026-11-01T03:53:45.336Z",
+  "decided_by": "用户",
+  "reason": "仪表盘热力图 tooltip 因 .page-view 的 page-fade-in 动画使用 both fill 而永久保留 translateY(0)，Chromium 据此把 .page-view 变成 fixed 的包含块，实测提示框被渲染到视口外（视口高 720 时落在 y=1070），hover 完全看不到；新账号页的 accounts-fade-in 对包含 position:fixed 弹窗的 .accounts-page 使用了同样写法。",
+  "source_refs": [
+    "xt-client/frontend/src/style.css",
+    "xt-client/frontend/src/features/dashboard/UsageHeatmap.tsx",
+    "xt-client/frontend/src/features/accounts/accounts.css"
+  ],
+  "before": null,
+  "after": {
+    "id": "development-conventions.fixed-overlay-anchor",
+    "kind": "convention",
+    "text": "前端浮层（tooltip、modal 等 position:fixed 元素）不得依赖页面容器定位：页面或区块的入场动画不要使用会保留 transform 的 fill 模式，浮层优先用 createPortal 挂到 body，否则祖先会成为 fixed 的包含块导致浮层错位或被裁剪。",
+    "source_refs": [
+      "xt-client/frontend/src/style.css",
+      "xt-client/frontend/src/features/dashboard/UsageHeatmap.tsx",
+      "xt-client/frontend/src/features/accounts/accounts.css"
+    ]
+  }
+}

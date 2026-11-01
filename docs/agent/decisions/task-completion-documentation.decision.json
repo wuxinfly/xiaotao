@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "record_type": "agent-rule-decision",
+  "decision_id": "task-completion-documentation",
+  "candidate_id": "task-completion-documentation",
+  "action": "update",
+  "section_id": "rule-evolution",
+  "rule_id": "rule-evolution.trigger",
+  "kind": "convention",
+  "outcome": "approved",
+  "decided_at": "2026-11-01T03:55:10.870Z",
+  "decided_by": "user",
+  "reason": "两次明确输入：用户先反馈大需求完成后反复遗漏文档更新，再确认采用补齐收尾条件的建议。将文档同步设为完成条件，并报告检查结果，保留长期规则确认边界。",
+  "source_refs": [
+    "docs/agent/README.md"
+  ],
+  "before": {
+    "id": "rule-evolution.trigger",
+    "kind": "convention",
+    "text": "在任务收尾或收到明确纠正时，检查是否有可复用规则变化：重复问题、模块职责、命令、路径、验证约束或协作偏好。",
+    "source_refs": [
+      "docs/agent/README.md"
+    ]
+  },
+  "after": {
+    "id": "rule-evolution.trigger",
+    "kind": "convention",
+    "text": "完成需求前，必须检查受影响的 README、架构、使用说明及验收文档，并同步实际变化；文档同步属于需求完成条件。任务收尾或收到明确纠正时，检查可复用规则变化，有证据支持的经验写入候选。最终交付简短说明文档更新结果及候选情况；无需更新时说明原因，待确认候选明确列出。",
+    "source_refs": [
+      "docs/agent/README.md"
+    ]
+  }
+}
