@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"xiaotao/xt-client/internal/agent"
@@ -301,8 +302,8 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		var body struct {
-			Alias   string `json:"alias"`
-			Enabled *bool  `json:"enabled"`
+			Alias   *string `json:"alias"`
+			Enabled *bool   `json:"enabled"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
 			apiError(w, 400, "invalid request")
@@ -313,13 +314,13 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			apiError(w, 404, "account not found")
 			return
 		}
-		if len([]rune(body.Alias)) > 40 {
+		if body.Alias != nil && len([]rune(strings.TrimSpace(*body.Alias))) > 40 {
 			apiError(w, 400, "alias too long")
 			return
 		}
 		err := store.UpdateAccount(id, func(a *storage.Account) {
-			if body.Alias != "" {
-				a.Alias = body.Alias
+			if body.Alias != nil {
+				a.Alias = strings.TrimSpace(*body.Alias)
 			}
 			if body.Enabled != nil {
 				a.Enabled = *body.Enabled

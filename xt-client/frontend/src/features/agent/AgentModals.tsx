@@ -112,11 +112,13 @@ function ModalFrame({title, description, className = '', onClose, children, foot
 interface AgentSettingsModalProps {
   models: AgentModelOption[];
   selected: string[];
+  loading: boolean;
+  error: string;
   onSave: (models: string[]) => void;
   onClose: () => void;
 }
 
-export function AgentSettingsModal({models, selected, onSave, onClose}: AgentSettingsModalProps) {
+export function AgentSettingsModal({models, selected, loading, error, onSave, onClose}: AgentSettingsModalProps) {
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState(() => new Set(selected));
   const visibleModels = useMemo(() => {
@@ -188,7 +190,9 @@ export function AgentSettingsModal({models, selected, onSave, onClose}: AgentSet
       {query && <button type="button" onClick={() => setQuery('')} aria-label="清除搜索"><X aria-hidden="true"/></button>}
     </label>
     <div className="agent-settings-groups">
-      {!models.length && <div className="agent-modal-empty">还没有可用模型，先从“账号与配额”接入账号。</div>}
+      {loading && <div className="agent-modal-empty" role="status">正在加载模型列表，已选模型仍可使用…</div>}
+      {error && <div className="agent-modal-empty" role="alert">模型列表加载失败：{error}。已选模型仍会保留。</div>}
+      {!loading && !error && !models.length && <div className="agent-modal-empty">还没有可用模型，先从“账号与配额”接入账号。</div>}
       {models.length > 0 && !visibleModels.length && <div className="agent-modal-empty">没有匹配的模型。</div>}
       {groups.map(([provider, items]) => {
         const allSelected = items.every(item => chosen.has(item.model));
@@ -262,7 +266,7 @@ export function ProjectModal({name, path, onApply, onClose}: ProjectModalProps) 
     }
     if (!window.xtPickFolder) {
       setPicking(false);
-      setError('当前页面不支持选择文件夹，请直接填写项目目录。');
+      setError('浏览器无法获取项目文件夹路径，请在小涛桌面客户端中选择。');
       return;
     }
     void window.xtPickFolder().then(picked => {
@@ -328,14 +332,14 @@ export function ProjectModal({name, path, onApply, onClose}: ProjectModalProps) 
       <div className="agent-folder-field">
         <input
           value={draftPath}
-          onChange={event => setDraftPath(event.target.value)}
-          placeholder="选择文件夹，或填写绝对路径"
-          autoComplete="off"
+          readOnly
+          aria-label="已选项目目录"
+          placeholder="请选择项目文件夹"
           spellCheck={false}
         />
-        {(window.xtPickFolderOnly || window.xtPickFolder) && <button type="button" onClick={pickFolder} disabled={picking} title="选择文件夹">
+        <button type="button" onClick={pickFolder} disabled={picking} title="选择文件夹">
           <FolderOpen aria-hidden="true"/><span>{picking ? '打开中…' : '选择'}</span>
-        </button>}
+        </button>
       </div>
     </label>
     <div className="agent-project-note">

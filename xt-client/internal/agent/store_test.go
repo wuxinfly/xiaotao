@@ -79,3 +79,20 @@ func TestInvalidLegacyDoesNotPartiallyMigrate(t *testing.T) {
 		t.Fatalf("retry: %+v %v", items, err)
 	}
 }
+
+func TestSummariesPreserveInterruptedSessionHistory(t *testing.T) {
+	data := t.TempDir()
+	svc := NewService(data, "http://localhost", nil, nil, nil)
+	original := &Session{ID: "run_interrupted", Status: StatusRunning, Messages: []Message{{ID: "m", Content: "hello"}}, Activity: []Activity{{ID: "a", Title: "read"}}, UpdatedAt: time.Now()}
+	if err := svc.saveSession(original); err != nil {
+		t.Fatal(err)
+	}
+	items, err := svc.ListSummaries()
+	if err != nil || len(items) != 1 || items[0].Status != StatusFailed || len(items[0].Messages) != 0 || len(items[0].Activity) != 0 {
+		t.Fatalf("summary: %+v %v", items, err)
+	}
+	full, err := svc.Get(original.ID)
+	if err != nil || full.Status != StatusFailed || len(full.Messages) != 1 || len(full.Activity) != 1 {
+		t.Fatalf("history: %+v %v", full, err)
+	}
+}

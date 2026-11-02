@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Account, ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
@@ -15,6 +15,7 @@ interface AccountDetailModalProps {
   isBusy: boolean;
   onClose: () => void;
   onToggleEnable: (account: Account) => Promise<void>;
+  onSaveAlias: (account: Account, alias: string) => Promise<boolean>;
   onRefreshQuota: (account: Account) => Promise<void>;
   onCheckin?: (account: Account) => Promise<void>;
   onDeleteAccount: (account: Account) => Promise<void>;
@@ -27,12 +28,16 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   isBusy,
   onClose,
   onToggleEnable,
+  onSaveAlias,
   onRefreshQuota,
   onCheckin,
   onDeleteAccount,
   onRelogin,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+  const [alias, setAlias] = useState(account?.alias ?? '');
+
+  useEffect(() => { setAlias(account?.alias ?? ''); }, [account?.id, account?.alias]);
 
   // Keyboard handling (Escape to close)
   useEffect(() => {
@@ -127,6 +132,16 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
               </div>
             </div>
           </div>
+
+          <form className="account-alias-form" onSubmit={event => { event.preventDefault(); void onSaveAlias(account, alias); }}>
+            <label htmlFor="account-alias">账号备注</label>
+            <div className="account-alias-controls">
+              <input id="account-alias" value={alias} onChange={event => setAlias(event.target.value)} placeholder="填写备注，留空则显示账号昵称" disabled={isBusy} />
+              <button type="submit" className="dialog-btn secondary" disabled={isBusy || alias.trim() === (account.alias || '') || Array.from(alias.trim()).length > 40}>保存</button>
+            </div>
+            <span>最多 40 个字符，清空后恢复显示账号昵称</span>
+            {Array.from(alias.trim()).length > 40 && <span role="alert">备注不能超过 40 个字符</span>}
+          </form>
 
           {/* Total Quota Panel */}
           <div className="detail-total-quota-card">

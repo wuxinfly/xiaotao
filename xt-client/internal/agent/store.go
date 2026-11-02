@@ -213,6 +213,32 @@ func (s *Service) listSessions() ([]*Session, error) {
 	return out, nil
 }
 
+func (s *Service) listSessionSummaries() ([]*Session, error) {
+	db, err := s.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT metadata FROM sessions ORDER BY updated_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Session{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item Session
+		if err := json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, err
+		}
+		out = append(out, &item)
+	}
+	return out, rows.Err()
+}
+
 func (s *Service) deleteSession(id string) error {
 	db, err := s.openStore()
 	if err != nil {

@@ -21,7 +21,13 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			http.Error(w, "same-origin required", 403)
 			return
 		}
-		sessions, err := svc.List()
+		var sessions []*agent.Session
+		var err error
+		if r.URL.Query().Get("summary") == "1" {
+			sessions, err = svc.ListSummaries()
+		} else {
+			sessions, err = svc.List()
+		}
 		if err != nil {
 			apiError(w, 500, "读取任务失败: "+err.Error())
 			return

@@ -12,10 +12,12 @@ import { AccountDetailModal } from "./components/AccountDetailModal";
 import { AddAccountModal } from "./components/AddAccountModal";
 import { ModelCatalogModal } from "./components/ModelCatalogModal";
 import "./accounts.css";
+import { useConfirm } from "../../components/confirm/ConfirmProvider";
 
 type Flow = "idle" | "waiting" | "error";
 
 export function AccountsPage() {
+  const confirm = useConfirm();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -137,6 +139,21 @@ export function AccountsPage() {
     }
   };
 
+  const handleSaveAlias = async (a: Account, alias: string) => {
+    setBusyId(a.id);
+    try {
+      const updated = await api.updateAccount(a.id, { alias: alias.trim() });
+      setAccounts(current => current.map(item => item.id === a.id ? updated : item));
+      toast.success("备注已保存");
+      return true;
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e));
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleReorderAccounts = async (providerId: string, orderedIDs: string[]) => {
     if (reorderingProvider) return;
     const previous = accounts;
@@ -170,7 +187,7 @@ export function AccountsPage() {
 
   const handleDeleteAccount = async (a: Account) => {
     const name = a.alias || a.nickname || a.uid;
-    if (!window.confirm("确定移除账号「" + name + "」？本地凭据会一并删除。")) return;
+    if (!await confirm({ title: "移除账号？", description: "账号「" + name + "」的本地凭据会一并删除。", confirmLabel: "移除账号" })) return;
     setBusyId(a.id);
     try {
       await api.deleteAccount(a.id);
@@ -485,6 +502,7 @@ export function AccountsPage() {
           isBusy={busyId === selectedAccount.id}
           onClose={() => setSelectedAccountId(null)}
           onToggleEnable={handleToggleEnable}
+          onSaveAlias={handleSaveAlias}
           onRefreshQuota={handleRefreshQuota}
           onCheckin={handleCheckin}
           onDeleteAccount={handleDeleteAccount}

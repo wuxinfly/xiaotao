@@ -70,12 +70,11 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   };
 
   return (
-    <div className={`provider-group-section ${collapsed ? 'is-collapsed' : ''}`}>
-      <div className="provider-group-header">
-        <div className="group-left">
-          <button
+    <div className={`provider-group-section ${collapsed ? 'is-collapsed' : ''}`} onClick={event => { if (collapsed && event.target === event.currentTarget) toggleCollapsed(); }}>
+      <div className="provider-group-header" onClick={event => { if (event.target === event.currentTarget) toggleCollapsed(); }}>
+        <button
             type="button"
-            className="group-collapse-btn"
+            className="group-left group-collapse-btn"
             onClick={toggleCollapsed}
             aria-expanded={!collapsed}
             aria-controls={`accounts-${providerId}`}
@@ -84,11 +83,10 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="m3 9 5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </button>
           <ProviderIcon provider={providerId} size={24} />
-          <h3 className="group-title">{displayName}</h3>
+          <span className="group-title">{displayName}</span>
           <span className="group-count-badge">{count} 个账号</span>
-        </div>
+        </button>
 
         <div className="group-right">
           {supportsCheckin && count > 0 && onCheckinAll && (

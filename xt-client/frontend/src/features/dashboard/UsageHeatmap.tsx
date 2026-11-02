@@ -322,12 +322,6 @@ export function UsageHeatmap({ heatmap }: Props) {
                   <span>请求次数</span>
                   <span className="popover-val">{popover.data?.totalRequests || 0} 次</span>
                 </div>
-                {popover.data?.hasMissingUsage && (
-                  <div className="popover-row" style={{ color: '#fca5a5' }}>
-                    <span>提示</span>
-                    <span>包含用量缺失请求</span>
-                  </div>
-                )}
               </>
             )}
           </div>,

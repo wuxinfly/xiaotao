@@ -7,6 +7,7 @@ import {DashboardDataProvider} from './features/dashboard/DashboardData';
 import {ToastContainer} from './components/toast';
 import {WindowMenu} from './components/WindowMenu';
 import {AgentPage} from './features/agent/AgentPage';
+import {ConfirmProvider} from './components/confirm/ConfirmProvider';
 import './navigation.css';
 import './ocean-tech.css';
 
@@ -21,6 +22,16 @@ const accountQuotaIcon = new URL('./assets/navigation/account-quota.png', import
 window.addEventListener('wheel', event => {
  if(event.ctrlKey) event.preventDefault();
 }, {passive:false});
+
+// Scroll events do not bubble, so capture them for nested and dynamically mounted areas.
+const scrollbarTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+document.addEventListener('scroll', event => {
+ const target = event.target;
+ if (!(target instanceof HTMLElement)) return;
+ target.classList.add('is-scrolling');
+ clearTimeout(scrollbarTimers.get(target));
+ scrollbarTimers.set(target, setTimeout(() => target.classList.remove('is-scrolling'), 900));
+}, true);
 
 function App(){
  const [page,setPage]=useState<Page>('agent'),[open,setOpen]=useState(false);
@@ -57,14 +68,16 @@ function App(){
    </div>
   </header>
   <main aria-label={page} className={page==='agent'?'agent-main':undefined}>
-   <div key={page} className="page-view">
-    {page === 'agent' && <AgentPage />}
+   <div className="page-view" style={{display: page === 'agent' ? undefined : 'none'}}>
+    <AgentPage visible={page === 'agent'} />
+   </div>
+   {page !== 'agent' && <div key={page} className="page-view">
     {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
     {page === 'accounts' && <AccountsPage />}
-   </div>
+   </div>}
   </main>
   </div>
   <ToastContainer />
  </div>
 }
-createRoot(document.getElementById('root')!).render(<App/>);
+createRoot(document.getElementById('root')!).render(<ConfirmProvider><App/></ConfirmProvider>);

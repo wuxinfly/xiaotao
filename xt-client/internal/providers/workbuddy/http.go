@@ -359,7 +359,7 @@ func postChat(ctx context.Context, baseURL string, cred *providers.Credential, b
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return nil, statusError(resp.StatusCode, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(readBodyString(resp.Body), 200)))
+		return nil, chatHTTPError(resp.StatusCode, readBody(resp.Body))
 	}
 	return readAllBody(resp.Body)
 }
@@ -390,7 +390,7 @@ func streamChat(ctx context.Context, baseURL string, cred *providers.Credential,
 	}
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
-		return nil, statusError(resp.StatusCode, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(readBodyString(resp.Body), 200)))
+		return nil, chatHTTPError(resp.StatusCode, readBody(resp.Body))
 	}
 	return resp, nil
 }

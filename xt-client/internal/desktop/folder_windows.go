@@ -92,22 +92,20 @@ type iShellItemVTbl struct {
 	Compare        uintptr
 }
 
-func callCOM(obj, method uintptr, args ...uintptr) uintptr {
-	if obj == 0 || method == 0 {
+func callCOM(obj unsafe.Pointer, method uintptr, args ...uintptr) uintptr {
+	if obj == nil {
 		return 0x80004003
 	}
-	vtblOwner := *(*uintptr)(unsafe.Pointer(&obj))
-	vtbl := *(*uintptr)(unsafe.Pointer(&vtblOwner))
-	if vtbl == 0 {
+	vtbl := *(*unsafe.Pointer)(obj)
+	if vtbl == nil {
 		return 0x80004003
 	}
-	slot := vtbl + method
-	fn := *(*uintptr)(unsafe.Pointer(&slot))
+	fn := *(*uintptr)(unsafe.Add(vtbl, method))
 	if fn == 0 {
 		return 0x80004003
 	}
 	all := make([]uintptr, 0, len(args)+1)
-	all = append(all, obj)
+	all = append(all, uintptr(obj))
 	all = append(all, args...)
 	r, _, _ := syscall.SyscallN(fn, all...)
 	return r
@@ -130,7 +128,7 @@ func PickFolder(title string) (string, error) {
 		defer procCoUninitialize.Call()
 	}
 
-	var dialog uintptr
+	var dialog unsafe.Pointer
 	hr, _, _ = procCoCreateInstance.Call(
 		uintptr(unsafe.Pointer(&clsidFileOpenDialog)),
 		0,
@@ -138,7 +136,7 @@ func PickFolder(title string) (string, error) {
 		uintptr(unsafe.Pointer(&iidIFileOpenDialog)),
 		uintptr(unsafe.Pointer(&dialog)),
 	)
-	if hresultFailed(hr) || dialog == 0 {
+	if hresultFailed(hr) || dialog == nil {
 		return "", fmt.Errorf("创建文件夹选择器失败: 0x%08X", uint32(hr))
 	}
 	defer callCOM(dialog, unsafe.Offsetof(iUnknownVTbl{}.Release))
@@ -168,9 +166,9 @@ func PickFolder(title string) (string, error) {
 		return "", fmt.Errorf("打开文件夹选择器失败: 0x%08X", uint32(hr))
 	}
 
-	var item uintptr
+	var item unsafe.Pointer
 	hr = callCOM(dialog, unsafe.Offsetof(iFileOpenDialogVTbl{}.GetResult), uintptr(unsafe.Pointer(&item)))
-	if hresultFailed(hr) || item == 0 {
+	if hresultFailed(hr) || item == nil {
 		return "", fmt.Errorf("读取所选文件夹失败: 0x%08X", uint32(hr))
 	}
 	defer callCOM(item, unsafe.Offsetof(iUnknownVTbl{}.Release))

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from '../../../components/toast';
+import { useConfirm } from '../../../components/confirm/ConfirmProvider';
 
 interface ModelEndpointCardProps {
   origin: string;
@@ -42,6 +43,7 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
   apiKey,
   onRotateKey,
 }) => {
+  const confirm = useConfirm();
   const [showKey, setShowKey] = useState(false);
   const [copiedField, setCopiedField] = useState<'url' | 'key' | null>(null);
   const [rotating, setRotating] = useState(false);
@@ -62,7 +64,7 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
 
   const handleRotate = async () => {
     if (rotating) return;
-    if (!window.confirm('确定重新生成 API 密钥？已在其它工具中配置的旧密钥将会失效。')) {
+    if (!await confirm({title: '重新生成 API 密钥？', description: '已在其它工具中配置的旧密钥将会失效。', confirmLabel: '重新生成'})) {
       return;
     }
     setRotating(true);

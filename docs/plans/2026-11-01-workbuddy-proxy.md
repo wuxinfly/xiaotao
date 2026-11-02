@@ -18,6 +18,8 @@
 
 WorkBuddy 上游接受标准 OpenAI 格式：`model`、`stream=true`、`messages`（原始结构）、`tools`（JSON Schema 对象）、`tool_choice`（字符串或 function name）。与 Trae 不同：不使用 `function: chat_v3` 信封、不做 NativeMessages 转换、不将 tools 参数字符串化。
 
+2026-11-02 兼容性补充：相同的同名工具定义在转发前去重；同名定义不一致时返回 400，避免使用错误 schema。仅对 WorkBuddy 请求，developer 角色转为 system；首条 system 提示词以已知 DeepSeek Harness 或 Claude Code 身份句开头时替换该句为中性占位，保留其余内容；上游仍返回 11128 时显示渠道身份拒绝说明。模拟上游覆盖流式和非流式，修改后的请求尚未用真实账号验证。
+
 ## 超时与稳定性
 
 登录、刷新、账号和额度等短请求使用 30 秒超时客户端。聊天请求使用独立的无固定 `Client.Timeout` 客户端，等待响应头 300 秒、流式空闲 300 秒、总时长 30 分钟；收到新数据时重置空闲计时，超时后取消请求并中断读取。上游非 2xx 返回 `providers.UpstreamError`，代理按其状态码透传。
@@ -67,4 +69,4 @@ cd ..
 | system：You are an AI agent powered by DeepSeek Harness. | HTTP 400 / code 11128 |
 | developer：You are an AI agent powered by DeepSeek Harness. | HTTP 400 / code 11128 |
 
-本机已安装 DSH 的 dsh-system-prompt 含上述 Harness 身份文本；其 pi-ai OpenAI 转换器在 reasoning 且 supportsDeveloperRole 时生成 developer 角色。对照证明消息角色与内容均可触发渠道校验，不证明完整 DSH 请求只有这两个触发因素。无需继续将 MachineID 格式视为已确认根因。未修改 DSH 身份提示词或伪装官方客户端，未改变已保存凭据。后续兼容方案应使用上游支持的调用渠道或接入允许通用 Harness 的 API。
+本机已安装 DSH 的 dsh-system-prompt 含上述 Harness 身份文本；其 pi-ai OpenAI 转换器在 reasoning 且 supportsDeveloperRole 时生成 developer 角色。对照证明消息角色与内容均可触发渠道校验，不证明完整 DSH 请求只有这两个触发因素。无需继续将 MachineID 格式视为已确认根因。上述为当时的对照结果；后续兼容处理见本计划的兼容性补充，尚待真实账号验证。

@@ -705,7 +705,6 @@
   padding-bottom: 2px;
   position: relative;
   scrollbar-width: thin;
-  scrollbar-color: #1a3e54 transparent;
 }
 
 .heatmap-grid-layout {
@@ -839,6 +838,7 @@
 /* Heatmap Popover Tooltip */
 .heatmap-popover {
   position: fixed;
+  width: min(260px, calc(100vw - 24px));
   transform: translate(-50%, -100%);
   background: #071522;
   border: 1px solid #1a3e54;
@@ -878,8 +878,8 @@
 }
 
 .popover-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 16px;
   color: var(--muted, #7a9eb3);
 }
@@ -887,6 +887,8 @@
 .popover-row .popover-val {
   font-family: var(--mono, ui-monospace, Consolas, monospace);
   color: #d1e7f0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .popover-row.highlight .popover-val {

@@ -218,6 +218,7 @@ func (w *Workspace) searchWindows(relative, query string) (string, error) {
 		`Where-Object { $_.FullName -notmatch '[\\/](node_modules|vendor|dist|\\.git)[\\/]' -and $_.Length -le 1048576 } | ` +
 		`Select-String -SimpleMatch $q -List | Select-Object -First 80 | ForEach-Object { $_.Path + ':' + $_.LineNumber + ': ' + $_.Line.Trim() }`
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+	hideCommandWindow(cmd)
 	cmd.Dir = w.Root
 	cmd.Env = append(cmd.Environ(), "XIAOTAO_SEARCH_ROOT="+target, "XIAOTAO_QUERY="+query)
 	output, err := cmd.Output()
@@ -262,6 +263,7 @@ func (w *Workspace) runCommand(parent context.Context, command string, timeoutSe
 	} else {
 		cmd = exec.CommandContext(ctx, "/bin/sh", "-lc", command)
 	}
+	hideCommandWindow(cmd)
 	cmd.Dir = w.Root
 	var output cappedBuffer
 	cmd.Stdout = &output

@@ -230,6 +230,49 @@ func TestCheckinEndpoints(t *testing.T) {
 	}
 }
 
+func TestAccountAliasEndpoint(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.Open(filepath.Join(dir, "accounts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertAccount(&storage.Account{ID: "trae:1", Provider: "trae", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
+	h, err := Handler(s, dir, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if c, ok := h.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
+	call := func(body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", s.URL+"/api/accounts/trae:1/rename", strings.NewReader(body))
+		r.Host = "127.0.0.1:12345"
+		r.Header.Set("Origin", s.URL)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	for _, tc := range []struct {
+		body, expected string
+		code           int
+	}{
+		{`{"alias":"  工作账号  "}`, `"alias":"工作账号"`, 200},
+		{`{"enabled":false}`, `"alias":"工作账号"`, 200},
+		{`{"alias":""}`, `"alias":""`, 200},
+		{`{"alias":"` + strings.Repeat("中", 41) + `"}`, "alias too long", 400},
+	} {
+		w := call(tc.body)
+		if w.Code != tc.code || !strings.Contains(w.Body.String(), tc.expected) {
+			t.Fatalf("body %s: got %d %s", tc.body, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestReorderAccountsEndpoint(t *testing.T) {
 	dir := t.TempDir()
 	store, err := storage.Open(filepath.Join(dir, "accounts"))

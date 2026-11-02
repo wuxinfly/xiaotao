@@ -197,6 +197,37 @@ func (s *Service) List() ([]*Session, error) {
 	return out, nil
 }
 
+// ListSummaries avoids loading message and activity history for the sidebar.
+func (s *Service) ListSummaries() ([]*Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out, err := s.listSessionSummaries()
+	if err != nil {
+		return nil, err
+	}
+	for i, session := range out {
+		s.markDefault(session)
+		_, known := s.runs[session.ID]
+		if !known {
+			s.runs[session.ID] = &run{}
+		}
+		if !known && session.Status == StatusRunning {
+			full, err := s.loadSession(session.ID)
+			if err != nil {
+				return nil, err
+			}
+			full.Status = StatusFailed
+			full.Error = "上次任务因服务退出而中断"
+			if err := s.saveSession(full); err != nil {
+				return nil, err
+			}
+			session.Status, session.Error = full.Status, full.Error
+			out[i] = session
+		}
+	}
+	return out, nil
+}
+
 func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Event)) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -228,6 +259,14 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 		}
 	}
 
+	instructions := ""
+	if workspace != nil {
+		instructions, err = workspace.projectInstructions()
+		if err != nil {
+			return err
+		}
+	}
+
 	history.Status = StatusRunning
 	history.Error = ""
 	now := time.Now()
@@ -242,7 +281,7 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path)}}
+	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + "\n" + instructions}}
 	for _, message := range history.Messages {
 		messages = append(messages, messageToModel(message))
 	}
@@ -425,7 +464,7 @@ func systemPrompt(root string) string {
 	}
 	return "你是小涛，一个直接和用户一起做软件工作的 AI 工程师。使用中文，简洁、自然、不说套话。" +
 		"\n当前项目根目录：" + root +
-		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。" +
+		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。操作子目录前检查并遵守该目录及其上级目录中的 AGENTS.override.md 或 AGENTS.md；同目录优先前者。" +
 		"\n修改后必须运行相关验证。不要声称执行过没有实际执行的命令。" +
 		"\n不要访问项目目录以外的路径。不要泄露凭据、token 或隐私信息。" +
 		"\n只有在工作完成、遇到阻碍或需要用户决定时才给最终答复。"
