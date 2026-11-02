@@ -3,8 +3,10 @@ package workbuddy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"reflect"
 	"strings"
 	"time"
@@ -20,6 +22,46 @@ const (
 )
 
 var errStreamIdleTimeout = fmt.Errorf("WorkBuddy stream idle timeout: %w", context.DeadlineExceeded)
+
+// requestShape contains only allowlisted structural values, never message text.
+func requestShape(body map[string]any) string {
+	messages, ok := body["messages"].([]map[string]any)
+	if !ok {
+		return "messages=other"
+	}
+	shapes := make([]string, 0, min(len(messages), 20))
+	for i, message := range messages {
+		if i == 20 {
+			break
+		}
+		role, _ := message["role"].(string)
+		switch role {
+		case "system", "developer", "user", "assistant", "tool":
+		default:
+			role = "other"
+		}
+		kind := "other"
+		match := false
+		switch content := message["content"].(type) {
+		case string:
+			kind = "text"
+			match = strings.Contains(content, "You are an AI agent powered by DeepSeek Harness.") || strings.Contains(content, "You are Claude Code, Anthropic's official CLI for Claude.")
+		case []any:
+			kind = "blocks"
+		case nil:
+			kind = "null"
+		}
+		shapes = append(shapes, fmt.Sprintf("%s:%s:known_identity=%t", role, kind, match))
+	}
+	return fmt.Sprintf("count=%d first20=[%s]", len(messages), strings.Join(shapes, ","))
+}
+
+func logChannelRejection(err error, before, after string) {
+	var upstream *providers.UpstreamError
+	if errors.As(err, &upstream) && strings.Contains(upstream.Message, "（11128）") {
+		log.Printf("workbuddy 11128 request shape: before={%s} after={%s}", before, after)
+	}
+}
 
 func statusError(status int, message string) error {
 	return &providers.UpstreamError{Status: status, Message: message}
@@ -109,6 +151,7 @@ func chatHTTPError(status int, raw []byte) error {
 }
 
 func (Collector) Collect(ctx context.Context, cred *providers.Credential, model string, body map[string]any) (map[string]any, error) {
+	before := requestShape(body)
 	if err := prepareTools(body); err != nil {
 		return nil, err
 	}
@@ -122,6 +165,7 @@ func (Collector) Collect(ctx context.Context, cred *providers.Credential, model 
 	}
 	payload, err := postChat(ctx, "", cred, body)
 	if err != nil {
+		logChannelRejection(err, before, requestShape(body))
 		return nil, err
 	}
 	return collectUpstream(model, payload)
@@ -134,6 +178,7 @@ func (Streamer) Stream(ctx context.Context, cred *providers.Credential, model st
 }
 
 func streamWithTimeouts(ctx context.Context, cred *providers.Credential, model string, body map[string]any, ev *providers.ChatEvents, idle, total time.Duration) error {
+	before := requestShape(body)
 	if err := prepareTools(body); err != nil {
 		return err
 	}
@@ -149,6 +194,7 @@ func streamWithTimeouts(ctx context.Context, cred *providers.Credential, model s
 	}
 	resp, err := streamChat(requestCtx, "", cred, body)
 	if err != nil {
+		logChannelRejection(err, before, requestShape(body))
 		if cause := context.Cause(requestCtx); cause != nil {
 			return cause
 		}

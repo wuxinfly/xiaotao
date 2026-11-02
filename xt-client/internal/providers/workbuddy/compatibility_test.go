@@ -96,3 +96,14 @@ func TestDeveloperRoleConvertedWithoutMutatingOriginal(t *testing.T) {
 		t.Fatalf("unexpected messages: %v", body["messages"])
 	}
 }
+
+func TestRequestShapeExcludesContentAndUnknownRoles(t *testing.T) {
+	body := map[string]any{"messages": []map[string]any{
+		{"role": "developer", "content": "private text You are an AI agent powered by DeepSeek Harness."},
+		{"role": "secret role", "content": []any{map[string]any{"text": "private block"}}},
+	}}
+	shape := requestShape(body)
+	if strings.Contains(shape, "private") || strings.Contains(shape, "secret") || !strings.Contains(shape, "developer:text:known_identity=true") || !strings.Contains(shape, "other:blocks:known_identity=false") {
+		t.Fatal(shape)
+	}
+}

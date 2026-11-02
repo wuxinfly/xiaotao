@@ -30,7 +30,7 @@
 
 ## Trae 与 WorkBuddy 签到（2026-11-01）
 
-WorkBuddy 代理会合并完全相同的同名工具；同名工具定义不同时返回冲突错误，请客户端合并后重试。为兼容上游渠道校验，WorkBuddy 请求中的 developer 角色会转为 system；首条 system 提示词若以已知 DeepSeek Harness 或 Claude Code 身份句开头，会将该句替换为中性占位文本，其余内容保留。上游仍返回 11128 时会说明原因，实际可用性取决于上游策略。
+WorkBuddy 代理会合并完全相同的同名工具；同名工具定义不同时返回冲突错误，请客户端合并后重试。为兼容上游渠道校验，WorkBuddy 请求中的 developer 角色会转为 system；首条 system 提示词若以已知 DeepSeek Harness 或 Claude Code 身份句开头，会将该句替换为中性占位文本，其余内容保留。上游仍返回 11128 时会说明原因，并在本机运行日志记录前 20 条消息的角色、内容类型及是否包含已知身份句，不记录消息正文或凭据；实际可用性取决于上游策略。
 
 针对具备每日签到积分的上游平台（Trae 国内版、WorkBuddy），客户端支持手动打卡与签到状态查看：
 - **Trae**：针对国内区（CN）账号接入 `/trae/api/v2/ug/checkin_credits/{status,claim}`，内置稳定设备指纹派生与风控换机重试（海外账号自动跳过不请求）。
@@ -146,7 +146,7 @@ build.ps1 构建成功后会在当前用户桌面创建或更新“小涛”快�
   - 第一版不包含全量请求历史查询页，仅展示最近三条请求及超过三条时的进行中展开列表。
   - 依赖上游模型接口返回的真实 token 数据，若上游仅在流结束时返回 usage，则本次启动和今日用量在流结束时更新。
 
-config.json 保留底层基础配置接口，当前页面不提供配置表单；runtime.json 保存临时地址、进程号和管理令牌（不要分享该文件），正常退出会删除；运行日志按本地日期写入 `logs` 目录下的 `client-YYYY-MM-DD.log`，跨天自动换新文件，同一天多次启动继续追加，目前只记录启动错误和窗口回退浏览器；logs 目录跟随 `--data-dir`，旧版数据目录下的 `client.log` 已不再写入。webview 目录保存窗口浏览器数据。账号元数据保存在 accounts/accounts.json，上游凭据经 Windows DPAPI 保护后存放在 accounts/keys 下。
+config.json 保留底层基础配置接口，当前页面不提供配置表单；runtime.json 保存临时地址、进程号和管理令牌（不要分享该文件），正常退出会删除；运行日志按本地日期写入 `logs` 目录下的 `client-YYYY-MM-DD.log`，跨天自动换新文件，同一天多次启动继续追加，记录启动错误、窗口回退浏览器和 WorkBuddy 11128 请求结构诊断；logs 目录跟随 `--data-dir`，旧版数据目录下的 `client.log` 已不再写入。webview 目录保存窗口浏览器数据。账号元数据保存在 accounts/accounts.json，上游凭据经 Windows DPAPI 保护后存放在 accounts/keys 下。
 
 ## 已验证与限制
 
