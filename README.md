@@ -1,6 +1,6 @@
 # XiaoTao
 
-小涛是面向软件协作的 AI 项目，目前提供 Agent Skill、安装管理 CLI 和多宿主适配，客户端待开发。
+小涛是面向软件协作的 AI 项目，目前提供 Agent Skill、安装管理 CLI、多宿主适配和 Windows 客户端。
 
 ## 目录
 
@@ -30,3 +30,5 @@ cd website
 npm install
 npm run dev
 ```
+
+网站首页介绍 Windows 客户端，并链接到当前发布版本；Skill 的安装和使用说明位于独立的 Skills 页面。网站修改推送到 master 后由 GitHub Actions 构建并部署到 GitHub Pages。
