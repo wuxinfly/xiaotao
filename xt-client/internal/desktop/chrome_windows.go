@@ -194,7 +194,12 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 			if lp == 0x205 {
 				menu := win("CreatePopupMenu")
 				defer win("DestroyMenu", menu)
-				for i, label := range []string{"打开" + displayName, "在浏览器打开", "退出" + displayName} {
+				hudEnabled := WindowExists(HUDWindowTitle(displayName))
+				hudLabel := "打开浮窗"
+				if hudEnabled {
+					hudLabel = "关闭浮窗"
+				}
+				for i, label := range []string{"打开" + displayName, "在浏览器打开", hudLabel, "退出" + displayName} {
 					win("AppendMenuW", menu, 0, uintptr(i+1), uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(label))))
 				}
 				var p point
@@ -210,6 +215,29 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 				case 2:
 					Browser(url)
 				case 3:
+					go func() {
+						payload := []byte(`{"enabled":true}`)
+						if hudEnabled {
+							payload = []byte(`{"enabled":false}`)
+						}
+						req, err := http.NewRequest("POST", url+"/api/request-hud", bytes.NewReader(payload))
+						if err != nil {
+							return
+						}
+						req.Header.Set("Authorization", "Bearer "+token)
+						req.Header.Set("Content-Type", "application/json")
+						client := http.Client{Timeout: 10 * time.Second}
+						response, err := client.Do(req)
+						if err != nil {
+							Alert("浮窗操作失败", err.Error())
+							return
+						}
+						defer response.Body.Close()
+						if response.StatusCode != http.StatusOK {
+							Alert("浮窗操作失败", "服务未能切换浮窗，请重试。")
+						}
+					}()
+				case 4:
 					exit()
 				}
 			}

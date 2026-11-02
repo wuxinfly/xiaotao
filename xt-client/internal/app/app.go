@@ -31,7 +31,7 @@ import (
 	"xiaotao/xt-client/internal/usage"
 )
 
-const Version = "0.1.0-dev"
+var Version = "1.0.0-dev"
 
 //go:embed web/*
 var assets embed.FS

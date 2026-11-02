@@ -57,6 +57,17 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, session)
 	})
+	mux.HandleFunc("DELETE /api/agent/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		if err := svc.Delete(r.PathValue("id")); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]any{"ok": true})
+	})
 	mux.HandleFunc("POST /api/agent/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

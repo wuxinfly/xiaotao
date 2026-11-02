@@ -11,8 +11,9 @@ const (
 )
 
 type Project struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"isDefault,omitempty"`
 }
 
 type Message struct {

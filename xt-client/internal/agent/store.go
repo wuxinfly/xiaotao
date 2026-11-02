@@ -212,3 +212,33 @@ func (s *Service) listSessions() ([]*Session, error) {
 	}
 	return out, nil
 }
+
+func (s *Service) deleteSession(id string) error {
+	db, err := s.openStore()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec("DELETE FROM sessions WHERE id=?", id)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("任务不存在")
+	}
+	for _, table := range []string{"messages", "activities"} {
+		if _, err = tx.Exec("DELETE FROM "+table+" WHERE session_id=?", id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

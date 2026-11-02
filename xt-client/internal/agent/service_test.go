@@ -115,3 +115,45 @@ func TestCreateKeepsProjectDisplayName(t *testing.T) {
 		t.Fatalf("project name was not persisted: %+v", loaded.Project)
 	}
 }
+
+func TestDeleteSession(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	session, err := svc.Create(Options{Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Messages = []Message{{ID: "m", Content: "hello"}}
+	session.Activity = []Activity{{ID: "a"}}
+	if err := svc.saveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	svc.mu.Lock()
+	svc.runs[session.ID].cancel = func() {}
+	svc.mu.Unlock()
+	if err := svc.Delete(session.ID); err == nil {
+		t.Fatal("running session was deleted")
+	}
+	svc.mu.Lock()
+	svc.runs[session.ID].cancel = nil
+	svc.mu.Unlock()
+	if err := svc.Delete(session.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Get(session.ID); err == nil {
+		t.Fatal("deleted session remains")
+	}
+	db, err := svc.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, table := range []string{"messages", "activities"} {
+		var count int
+		if err := db.QueryRow("SELECT count(*) FROM "+table+" WHERE session_id=?", session.ID).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s: count=%d err=%v", table, count, err)
+		}
+	}
+	if err := svc.Delete(session.ID); err == nil {
+		t.Fatal("missing session deletion succeeded")
+	}
+}

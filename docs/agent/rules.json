@@ -230,7 +230,7 @@
         {
           "id": "verification.client",
           "kind": "convention",
-          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；正式构建运行 `./build.ps1`，UAT 构建运行 `./build.ps1 -Env uat`，详见局部 AGENTS.md。",
+          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；手动打包使用 `./build.ps1` 或 `./build.ps1 -Env uat`，AI 自行构建验证必须添加 `-Verify`，不得递增版本，详见局部 AGENTS.md。",
           "source_refs": [
             "xt-client/AGENTS.md",
             "xt-client/build.ps1"

@@ -14,6 +14,7 @@ import {
   LoaderCircle,
   MessageSquarePlus,
   Settings2,
+  Trash2,
   Square,
   X,
 } from 'lucide-react';
@@ -204,6 +205,8 @@ function exitEmptyListItem(editor: Editor): boolean {
 
 export function AgentPage() {
   const [sessions, setSessions] = useState<AgentSession[]>([]), [active, setActive] = useState<AgentSession | null>(null);
+  const [view, setView] = useState<'project' | 'session'>(() => localStorage.getItem('xiaotao.agent.historyView') === 'session' ? 'session' : 'project');
+  const [deleting, setDeleting] = useState('');
   const [models, setModels] = useState<AgentModelOption[]>([]), [enabledModels, setEnabledModels] = useState<string[]>([]);
   const [model, setModel] = useState(''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
@@ -352,6 +355,18 @@ export function AgentPage() {
     editor?.commands.focus();
   }
 
+  async function deleteSession(item: AgentSession) {
+    if (busy || deleting || !window.confirm('删除会话“' + item.title + '”？会话消息和执行记录将一并删除。')) return;
+    setDeleting(item.id);
+    try {
+      await api.deleteAgentSession(item.id);
+      setSessions(current => current.filter(session => session.id !== item.id));
+      if (active?.id === item.id) newChat();
+      setError('');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setDeleting(''); }
+  }
+
   function saveAgentSettings(nextModels: string[]) {
     setEnabledModels(nextModels);
     localStorage.setItem(enabledModelsKey, JSON.stringify(nextModels));
@@ -370,26 +385,38 @@ export function AgentPage() {
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const availablePickerModels = models.filter(item => enabledModels.includes(item.model) || item.model === active?.model);
 
+  const sortedSessions = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const groups = new Map<string, {name: string; path: string; items: AgentSession[]}>();
+  for (const item of sortedSessions) {
+    const path = item.project.isDefault || !item.project.path ? '' : item.project.path;
+    const key = path.toLowerCase().replaceAll('\\', '/').replace(/[/]+$/, '');
+    const group = groups.get(key) || {name: path ? item.project.name : '最新', path, items: []};
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  const renderSession = (item: AgentSession) => <div className="agent-session-row" key={item.id}>
+    <button type="button" disabled={busy} className={'agent-session-select ' + (item.id === active?.id ? 'is-active' : '')} onClick={() => selectSession(item)} title={item.title}>
+      <span>{item.title}</span>
+      {view === 'session' && <small>{item.project.name || '默认工作目录'}</small>}
+    </button>
+    <button type="button" className="agent-session-delete" disabled={busy || !!deleting} onClick={() => void deleteSession(item)} aria-label={'删除会话 ' + item.title} title="删除会话"><Trash2 aria-hidden="true"/></button>
+  </div>;
+
   return <section className="agent-workspace" aria-label="小涛 Agent">
     <aside className="agent-sidebar">
       <button className="agent-new" type="button" onClick={newChat} disabled={busy}>
         <MessageSquarePlus aria-hidden="true"/><span>新会话</span>
       </button>
-      <div className="agent-history-label">最近会话</div>
+      <div className="agent-history-tabs" aria-label="会话排列方式">
+        {(['project', 'session'] as const).map(option => <button type="button" key={option} className={view === option ? 'is-active' : ''} aria-pressed={view === option} onClick={() => {setView(option); localStorage.setItem('xiaotao.agent.historyView', option);}}>{option === 'project' ? '项目' : '会话'}</button>)}
+      </div>
       <nav className="agent-session-list" aria-label="会话历史">
         {loading && <p>正在读取…</p>}
         {!loading && !sessions.length && <p>还没有会话</p>}
-        {sessions.map(item => <button
-          type="button"
-          key={item.id}
-          disabled={busy}
-          className={item.id === active?.id ? 'is-active' : ''}
-          onClick={() => selectSession(item)}
-          title={item.title}
-        >
-          <span>{item.title}</span>
-          <small>{item.project.name || '默认工作目录'}</small>
-        </button>)}
+        {view === 'session' ? sortedSessions.map(renderSession) : <>
+          {[...groups.entries()].filter(([key]) => key !== '').map(([key, group]) => <div className="agent-session-group" key={key}><div className="agent-group-label" title={group.path}><Folder aria-hidden="true"/><span>{group.name}</span></div>{group.items.map(renderSession)}</div>)}
+          {groups.has('') && <div className="agent-session-group"><div className="agent-group-label">最新</div>{groups.get('')!.items.map(renderSession)}</div>}
+        </>}
       </nav>
       <div className="agent-sidebar-foot">
         <span className="agent-status-dot"/>
@@ -509,3 +536,4 @@ export function AgentPage() {
     />}
   </section>;
 }
+

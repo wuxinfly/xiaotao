@@ -105,7 +105,7 @@ func (s *Service) Create(options Options) (*Session, error) {
 		if projectName == "" {
 			projectName = "默认工作目录"
 		}
-		project = Project{Path: workspace.Root, Name: projectName}
+		project = Project{Path: workspace.Root, Name: projectName, IsDefault: true}
 	} else {
 		var err error
 		project, err = s.Project(options.ProjectPath)
@@ -141,7 +141,28 @@ func (s *Service) Create(options Options) (*Session, error) {
 }
 
 func (s *Service) Get(id string) (*Session, error) {
-	return s.loadSession(id)
+	item, err := s.loadSession(id)
+	if err == nil {
+		s.markDefault(item)
+	}
+	return item, err
+}
+
+func (s *Service) markDefault(item *Session) {
+	item.Project.IsDefault = item.Project.Path == "" || strings.EqualFold(filepath.Clean(item.Project.Path), filepath.Clean(filepath.Join(s.dataDir, "workspace")))
+}
+
+func (s *Service) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r := s.runs[id]; r != nil && r.cancel != nil {
+		return fmt.Errorf("请先停止正在运行的会话")
+	}
+	if err := s.deleteSession(id); err != nil {
+		return err
+	}
+	delete(s.runs, id)
+	return nil
 }
 
 func (s *Service) Project(path string) (Project, error) {
@@ -153,17 +174,18 @@ func (s *Service) Project(path string) (Project, error) {
 }
 
 func (s *Service) List() ([]*Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	out, err := s.listSessions()
 	if err != nil {
 		return nil, err
 	}
 	for _, session := range out {
-		s.mu.Lock()
+		s.markDefault(session)
 		_, known := s.runs[session.ID]
 		if !known {
 			s.runs[session.ID] = &run{}
 		}
-		s.mu.Unlock()
 		if !known && session.Status == StatusRunning {
 			session.Status = StatusFailed
 			session.Error = "上次任务因服务退出而中断"
@@ -182,13 +204,18 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 	}
 	s.mu.Lock()
 	r, ok := s.runs[sessionID]
-	s.mu.Unlock()
 	if !ok {
+		s.mu.Unlock()
 		return fmt.Errorf("任务不存在")
 	}
 	if r.cancel != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("小涛还在处理上一条消息")
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	r.cancel = cancel
+	s.mu.Unlock()
+	defer func() { cancel(); s.mu.Lock(); r.cancel = nil; s.mu.Unlock() }()
 	history, err := s.loadSession(sessionID)
 	if err != nil {
 		return err
@@ -200,16 +227,6 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 			return err
 		}
 	}
-	runCtx, cancel := context.WithCancel(ctx)
-	s.mu.Lock()
-	r.cancel = cancel
-	s.mu.Unlock()
-	defer func() {
-		cancel()
-		s.mu.Lock()
-		r.cancel = nil
-		s.mu.Unlock()
-	}()
 
 	history.Status = StatusRunning
 	history.Error = ""

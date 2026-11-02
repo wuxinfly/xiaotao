@@ -159,6 +159,7 @@ export interface DashboardSnapshot {
 }
 
 export interface AgentProject {
+  isDefault?: boolean;
   path: string;
   name: string;
 }
@@ -280,6 +281,7 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }),
   agentSessions: () => request<{ sessions: AgentSession[] }>('/api/agent/sessions'),
+  deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
   agentModels: () => request<{ models: AgentModelOption[] }>('/api/agent/models'),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
   createAgentSession: (projectPath: string, model: string, projectName = '') =>

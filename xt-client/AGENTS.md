@@ -1,7 +1,7 @@
 ﻿# 客户端开发约定
 
 - Windows Go 服务和 WebView2 壳，页面嵌入服务。
-- 本目录执行 go test ./...、go vet ./...；正式构建运行 ./build.ps1，UAT 构建运行 ./build.ps1 -Env uat。
+- 本目录执行 go test ./...、go vet ./...；手动打包使用 ./build.ps1 或 ./build.ps1 -Env uat。AI 自行构建验证时必须添加 -Verify，不递增版本，也不覆盖正式产物或快捷方式。
 - 不主动写注册表，不携带 WebView2 运行时。
 - 数据写用户目录；管理写接口校验同源。
 - 不提交 dist、日志和本机数据。不用模拟数据冒充用量。

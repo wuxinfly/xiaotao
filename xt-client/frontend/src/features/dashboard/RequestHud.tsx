@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Cpu, Gauge, Minus, UserRound } from 'lucide-react';
+import { Activity, Minus } from 'lucide-react';
 import type { Account, RequestSummary } from '../../lib/api';
 import { useDashboardData } from './DashboardData';
 import './request-hud.css';
@@ -46,20 +46,14 @@ function speedText(request: RequestSummary): string {
 export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose }: RequestHudProps) {
   const { snap, accounts, connected, loading, error, nowMs } = useDashboardData();
   const restoreRef = useRef<HTMLButtonElement>(null);
-  const current = snap?.activeRequests[0] ?? null;
-  const displayStatus = current
-    ? '实时请求'
-    : snap
-      ? '当前空闲'
-      : connected
-        ? '等待请求'
-        : '连接中';
+  const requests = snap ? [...new Map(
+    [...snap.activeRequests, ...snap.recentRequests].map(request => [request.id, request]),
+  ).values()].sort((a, b) => {
+    const active = (request: RequestSummary) => request.status === 'pending' || request.status === 'streaming' ? 1 : 0;
+    return active(b) - active(a) || b.startedAt - a.startedAt;
+  }).slice(0, 3) : [];
+  const displayStatus = '最近请求';
   const todayTokens = snap ? snap.today.promptTokens + snap.today.completionTokens : 0;
-  const accountLabel = useMemo(
-    () => (current ? accountName(current.accountId, accounts) : '—'),
-    [accounts, current],
-  );
-
   useEffect(() => {
     if (!enabled) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -126,34 +120,27 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
               <Activity aria-hidden="true" />
               <span>{error || '正在读取请求状态…'}</span>
             </div>
-          ) : current ? (
-            <div className="request-hud-current">
-              <div className="request-hud-status">
-                <span className={`request-hud-status-dot ${current.status}`} aria-hidden="true" />
-                <span>{requestStatus(current, nowMs)}</span>
-                {snap.activeCount > 1 && <small>共 {snap.activeCount} 个</small>}
-              </div>
-
-              <div className="request-hud-row" title={`账号：${accountLabel}`}>
-                <UserRound aria-hidden="true" />
-                <span>账号</span>
-                <strong>{accountLabel}</strong>
-              </div>
-              <div className="request-hud-row" title={`模型：${current.model}`}>
-                <Cpu aria-hidden="true" />
-                <span>模型</span>
-                <strong className="is-code">{current.model}</strong>
-              </div>
-              <div className="request-hud-row is-speed" title={`输出速度：${speedText(current)}`}>
-                <Gauge aria-hidden="true" />
-                <span>速度</span>
-                <strong>{speedText(current)}</strong>
-              </div>
-            </div>
-          ) : (
+          ) : requests.length > 0 ? (
+            <div className="hud-request-list" role="list" aria-label="最近三条请求">
+              {requests.map(request => {
+                const elapsed = Math.max(0, ((request.endedAt || nowMs) - request.startedAt) / 1000);
+                const account = accountName(request.accountId, accounts);
+                return <div className={`hud-request-item is-${request.status}`} role="listitem" key={request.id}>
+                  <div className="hud-request-line">
+                    <i className={`request-hud-status-dot ${request.status}`} aria-hidden="true" />
+                    <strong title={request.model}>{request.model}</strong>
+                    <span className="hud-request-speed">{speedText(request)}</span>
+                  </div>
+                  <div className="hud-request-meta">
+                    <span title={account}>{account}</span>
+                    <span title={requestStatus(request, nowMs)}>{request.status === 'pending' ? '等待响应' : request.status === 'streaming' ? '正在输出' : request.statusText} · {elapsed.toFixed(1)}s</span>
+                  </div>
+                </div>;
+              })}
+            </div>          ) : (
             <div className="request-hud-idle">
               <Activity aria-hidden="true" />
-              <strong>当前空闲</strong>
+              <strong>暂无请求</strong>
               <span>下一条请求会自动显示在这里</span>
             </div>
           )}

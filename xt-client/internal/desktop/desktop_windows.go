@@ -76,22 +76,15 @@ func HUDWindow(url, data, token, displayName string) error {
 		WindowOptions: webview.WindowOptions{
 			Title:  title,
 			Width:  340,
-			Height: 260,
+			Height: 240,
 		},
 	})
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
 	hwnd := uintptr(w.Window())
-	style := win("GetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)))
-	// Borderless tool window: the WebView header owns dragging, and the
-	// fixed 340x260 surface stays lightweight like a status overlay.
-	win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)), style&^uintptr(0x00c00000|0x00040000|0x00010000|0x00080000))
-	roundNativeWindow(hwnd)
-	// Recalculate the client area after removing the frame, then resize the
-	// WebView controller to match it (otherwise the old frame leaves white strips).
-	win("SetWindowPos", hwnd, uintptr(^uint32(0)), 0, 0, 340, 260, 0x0022)
-	win("SendMessageW", hwnd, 0x0005, 0, 260<<16|340) // WM_SIZE refreshes WebView bounds.
+	cleanupHUD := configureHUDWindow(hwnd)
+	defer cleanupHUD()
 	defer w.Destroy()
 	if err := w.Bind("xtHud", func(action string) error {
 		if action == "close" {
@@ -132,6 +125,49 @@ func HUDWindow(url, data, token, displayName string) error {
 	return nil
 }
 
+func configureHUDWindow(hwnd uintptr) func() {
+	// Changing taskbar eligibility requires hiding the already-created window.
+	win("ShowWindow", hwnd, 0)
+	exStyle := win("GetWindowLongPtrW", hwnd, uintptr(uint32(0xffffffec)))
+	win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xffffffec)), (exStyle&^uintptr(0x00040000))|0x00000080) // TOOLWINDOW, no APPWINDOW
+	style := win("GetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)))
+	win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)), style&^uintptr(0x00c00000|0x00040000|0x00010000|0x00080000))
+	resizeChild := func() {
+		var client rect
+		win("GetClientRect", hwnd, uintptr(unsafe.Pointer(&client)))
+		child := win("GetWindow", hwnd, 5)
+		if child != 0 {
+			win("SetWindowPos", child, 0, 0, 0, uintptr(client.Right), uintptr(client.Bottom), 0x0014)
+		}
+	}
+	var old uintptr
+	callback := syscall.NewCallback(func(h uintptr, msg uint32, wp, lp uintptr) uintptr {
+		if msg == 0x83 && wp != 0 {
+			return 0
+		} // WM_NCCALCSIZE
+		result := win("CallWindowProcW", old, h, uintptr(msg), wp, lp)
+		if msg == 0x5 {
+			resizeChild()
+		} // Controller first, child second.
+		if msg == 0x02e0 {
+			dpi := wp & 0xffff
+			win("SetWindowPos", h, 0, 0, 0, (340*dpi+48)/96, (240*dpi+48)/96, 0x0016)
+		}
+		return result
+	})
+	old = win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), callback)
+	dpi := win("GetDpiForWindow", hwnd)
+	if dpi == 0 {
+		dpi = 96
+	}
+	width, height := (340*dpi+48)/96, (240*dpi+48)/96
+	// HWND_TOPMOST must be pointer-sized -1 on Windows amd64.
+	win("SetWindowPos", hwnd, ^uintptr(0), 0, 0, width, height, 0x0032)
+	resizeChild()
+	roundNativeWindow(hwnd)
+	win("ShowWindow", hwnd, 4) // SW_SHOWNOACTIVATE
+	return func() { win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), old) }
+}
 func disableHUD(url, token string) {
 	request, err := http.NewRequest("POST", url+"/api/request-hud", bytes.NewBufferString(`{"enabled":false}`))
 	if err != nil {

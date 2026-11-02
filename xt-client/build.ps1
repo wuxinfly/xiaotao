@@ -1,10 +1,12 @@
-param(
+﻿param(
   [ValidateSet('prod', 'uat')]
-  [string]$Env = 'prod'
+  [string]$Env = 'prod',
+  [switch]$Verify
 )
 
 $ErrorActionPreference = 'Stop'
 Push-Location $PSScriptRoot
+$versionFile = $null
 try {
   $environment = if ($Env -eq 'uat') {
     [pscustomobject]@{
@@ -21,6 +23,18 @@ try {
       Description = '小涛 · 你的 AI 工作空间'
     }
   }
+  $versionFile = [System.IO.File]::Open((Join-Path $PSScriptRoot 'VERSION'), [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+  $reader = [System.IO.StreamReader]::new($versionFile, [System.Text.Encoding]::UTF8, $true, 1024, $true)
+  try { $previousVersion = $reader.ReadToEnd().Trim() } finally { $reader.Dispose() }
+  if ($previousVersion -notmatch '^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$') {
+    throw 'VERSION must contain a numeric version in major.minor.patch format'
+  }
+  $version = $previousVersion
+  if (-not $Verify) {
+    $patch = [System.Numerics.BigInteger]::Parse($Matches[3]) + [System.Numerics.BigInteger]::One
+    $version = "$($Matches[1]).$($Matches[2]).$patch"
+  }
+  $versionedExe = [System.IO.Path]::GetFileNameWithoutExtension($environment.Exe) + '-v' + $version + '.exe'
   Push-Location frontend
   try {
     npm ci
@@ -31,10 +45,17 @@ try {
   New-Item -ItemType Directory -Force dist | Out-Null
   go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 --out cmd/xiaotao/rsrc
   if ($LASTEXITCODE -ne 0) { throw 'Icon resource generation failed' }
-  $ldflags = "-s -w -H=windowsgui -X xiaotao/xt-client/internal/runtimeenv.Active=$($environment.Name)"
-  $buildArgs = @('-trimpath', '-ldflags', $ldflags, '-o', "dist/$($environment.Exe)", './cmd/xiaotao')
+  $ldflags = "-s -w -H=windowsgui -X xiaotao/xt-client/internal/runtimeenv.Active=$($environment.Name) -X xiaotao/xt-client/internal/app.Version=$version"
+  $outputDir = if ($Verify) { 'dist/verify' } else { 'dist' }
+  New-Item -ItemType Directory -Force $outputDir | Out-Null
+  $buildArgs = @('-trimpath', '-ldflags', $ldflags, '-o', "$outputDir/$($environment.Exe)", './cmd/xiaotao')
   & go build @buildArgs
   if ($LASTEXITCODE -ne 0) { throw 'Go build failed' }
+  if ($Verify) {
+    Get-Item "$outputDir/$($environment.Exe)" | Select-Object FullName, Length
+    return
+  }
+  Copy-Item -LiteralPath "dist/$($environment.Exe)" -Destination "dist/$versionedExe" -Force
   $desktopPath = [Environment]::GetFolderPath('Desktop')
   $shell = New-Object -ComObject WScript.Shell
   $shortcut = $shell.CreateShortcut((Join-Path $desktopPath $environment.Shortcut))
@@ -43,5 +64,13 @@ try {
   $shortcut.IconLocation = $shortcut.TargetPath + ',0'
   $shortcut.Description = $environment.Description
   $shortcut.Save()
-  Get-Item "dist/$($environment.Exe)" | Select-Object FullName, Length
-} finally { Pop-Location }
+  $versionBytes = [System.Text.Encoding]::UTF8.GetBytes($version + [Environment]::NewLine)
+  $versionFile.Position = 0
+  $versionFile.Write($versionBytes, 0, $versionBytes.Length)
+  $versionFile.SetLength($versionBytes.Length)
+  $versionFile.Flush()
+  Get-Item "dist/$($environment.Exe)", "dist/$versionedExe" | Select-Object FullName, Length
+} finally {
+  if ($null -ne $versionFile) { $versionFile.Dispose() }
+  Pop-Location
+}
