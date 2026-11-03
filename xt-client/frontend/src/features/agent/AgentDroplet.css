@@ -1,0 +1,264 @@
+/* Self-contained palette. Only --size is needed; no host theme colors are consumed. */
+.agent-droplet {
+
+  display: inline-block;
+  position: relative;
+  width: var(--size, 32px);
+  height: var(--size, 32px);
+  flex: 0 0 auto;
+  vertical-align: middle;
+  isolation: isolate;
+
+}
+.agent-droplet *, .agent-droplet::before, .agent-droplet::after { box-sizing: border-box; }
+.agent-droplet__wave {
+  position: absolute;
+  inset: 4% 2% 4% 15%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00dadd, #00b5f0 45%, #0062ff);
+  /* Solid body beneath the face avoids a gap along the inner edge. */
+  -webkit-mask: conic-gradient(from -45deg, #000 0deg 270deg, transparent 270deg);
+  mask: conic-gradient(from -45deg, #000 0deg 270deg, transparent 270deg);
+}
+.agent-droplet__face {
+  position: absolute;
+  inset: 30% 20% 22% 28%;
+  border-radius: 50%;
+  background: #effbff;
+}
+.agent-droplet__face::before, .agent-droplet__face::after {
+  content: "";
+  position: absolute;
+  top: 30%;
+  width: 17%;
+  height: 38%;
+  border-radius: 50%;
+  background: #102050;
+  transform-origin: center;
+  animation: agent-eyes 2.4s ease-in-out infinite;
+}
+.agent-droplet__face::before { left: 20%; }
+.agent-droplet__face::after { right: 20%; }
+.agent-droplet__dot {
+  position: absolute;
+  width: 19%; height: 19%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #42e6e5, #00b7ef 55%, #0085ff);
+  box-shadow: none;
+  animation: agent-bubble 1.1s ease-in-out infinite;
+}
+.agent-droplet__dot--one { top: 22%; left: 8%; animation-delay: -.4s; }
+.agent-droplet__dot--two { top: 43%; left: 0; animation-delay: -.2s; }
+.agent-droplet__dot--three { top: 64%; left: 6%; }
+@keyframes agent-eyes {
+  0%, 12%, 90%, 100% { transform: translateX(0) scaleY(1); }
+  24%, 34% { transform: translateX(-55%) scaleY(1); }
+  46%, 56% { transform: translateX(55%) scaleY(1); }
+  66%, 78% { transform: translateX(0) scaleY(1); }
+  72% { transform: translateX(0) scaleY(.08); }
+}
+@keyframes agent-bubble {
+  0%, 60%, 100% { transform: translateY(6%) scale(.82); }
+  30% { transform: translateY(-38%) scale(1.18); }
+}
+/* State API: data-state="waiting|thinking|tool|reading|writing|output". */
+.agent-droplet[data-state="waiting"] .agent-droplet__dot { animation: agent-wait 2s ease-in-out infinite; }
+.agent-droplet[data-state="waiting"] .agent-droplet__face::before,
+.agent-droplet[data-state="waiting"] .agent-droplet__face::after { animation: agent-idle 3s ease-in-out infinite; }
+.agent-droplet[data-state="tool"] .agent-droplet__dot { border-radius: 28%; animation: agent-tool .8s ease-in-out infinite; }
+.agent-droplet[data-state="tool"] .agent-droplet__face::before,
+.agent-droplet[data-state="tool"] .agent-droplet__face::after { animation: agent-idle 2s ease-in-out infinite; }
+.agent-droplet[data-state="reading"] .agent-droplet__face::before,
+.agent-droplet[data-state="reading"] .agent-droplet__face::after { animation: agent-read 1.4s linear infinite; }
+.agent-droplet[data-state="reading"] .agent-droplet__dot { animation: agent-wait 1.2s ease-in-out infinite; }
+.agent-droplet[data-state="writing"] .agent-droplet__dot,
+.agent-droplet[data-state="output"] .agent-droplet__dot { width: 22%; height: 8%; border-radius: 999px; box-shadow: none; }
+.agent-droplet[data-state="writing"] .agent-droplet__dot { animation: agent-write .95s ease-in-out infinite; transform-origin: left; }
+.agent-droplet[data-state="writing"] .agent-droplet__face::before,
+.agent-droplet[data-state="writing"] .agent-droplet__face::after { animation: agent-idle 2.4s ease-in-out infinite; }
+.agent-droplet[data-state="output"] .agent-droplet__dot { left: 81%; animation: agent-output 1s ease-out infinite; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--one { top: 28%; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--two { top: 46%; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--three { top: 64%; }
+.agent-droplet[data-state="output"] .agent-droplet__face::before,
+.agent-droplet[data-state="output"] .agent-droplet__face::after { animation: agent-output-eyes 2s ease-in-out infinite; }
+/* Stagger every state after its animation shorthand. */
+.agent-droplet[data-state] .agent-droplet__dot--one { animation-delay: -.4s; }
+.agent-droplet[data-state] .agent-droplet__dot--two { animation-delay: -.2s; }
+.agent-droplet[data-state] .agent-droplet__dot--three { animation-delay: 0s; }
+@keyframes agent-wait { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+@keyframes agent-idle { 0%,68%,80%,100% { transform:scaleY(1); } 74% { transform:scaleY(.08); } }
+@keyframes agent-tool { 0%,100% { transform:scale(.65); opacity:.4; } 50% { transform:scale(1.2); opacity:1; } }
+@keyframes agent-read { 0%,12% { transform:translateX(-55%); } 72%,85% { transform:translateX(55%); } 92% { transform:translateX(-55%) scaleY(.1); } 100% { transform:translateX(-55%); } }
+@keyframes agent-write { 0%,100% { transform:scaleX(.2); opacity:.35; } 45%,65% { transform:scaleX(1); opacity:1; } }
+@keyframes agent-output { 0% { transform:translateX(-20%) scaleX(.4); opacity:0; } 25% { opacity:1; } 100% { transform:translateX(85%) scaleX(1); opacity:0; } }
+@keyframes agent-output-eyes { 0%,65%,85%,100% { transform:translateX(35%) scaleY(1); } 75% { transform:translateX(35%) scaleY(.08); } }
+@media (prefers-reduced-motion: reduce) {
+  .agent-droplet, .agent-droplet *, .agent-droplet *::before, .agent-droplet *::after { animation: none !important; }
+}
+
+/* The mascot stays visible in every state; symbols are small supporting badges. */
+.agent-droplet__symbol { display:none; position:absolute; right:-9%; bottom:-4%; width:43%; height:43%; color:#007fea; background:#effbff; border-radius:30%; padding:3%; overflow:visible; box-sizing:content-box; }
+.agent-droplet[data-state="tool"] .agent-droplet__symbol,
+.agent-droplet[data-state="reading"] .agent-droplet__symbol,
+.agent-droplet[data-state="writing"] .agent-droplet__symbol,
+.agent-droplet[data-state="output"] .agent-droplet__symbol { display:block; }
+.agent-symbol-stroke { fill:none; stroke:currentColor; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+.agent-droplet[data-state="tool"] .tool-gear { transform-origin:12px 12px; animation:symbol-gear 4s linear infinite; }
+.agent-droplet[data-state="reading"] .read-scan { animation:symbol-scan 1.3s ease-in-out infinite alternate; }
+.agent-droplet[data-state="writing"] .write-pen { animation:symbol-pen .65s ease-in-out infinite alternate; }
+.agent-droplet[data-state="writing"] .write-line { stroke-dasharray:7; animation:symbol-line 1.3s ease-in-out infinite; }
+.agent-droplet[data-state="output"] .output-arrow { animation:symbol-arrow .9s ease-in-out infinite; }
+@keyframes symbol-gear { to{transform:rotate(360deg)} }
+@keyframes symbol-scan { from{transform:translateY(-4px)} to{transform:translateY(5px)} }
+@keyframes symbol-pen { from{transform:translate(0,0)} to{transform:translate(2px,-2px)} }
+@keyframes symbol-line { 0%{stroke-dashoffset:7} 70%,100%{stroke-dashoffset:0} }
+@keyframes symbol-arrow { 0%,100%{transform:translateX(-1px);opacity:.55} 55%{transform:translateX(3px);opacity:1} }
+@media(prefers-reduced-motion:reduce){.agent-droplet svg *{animation:none!important}}
+
+/* Semantic accent colors; the mascot keeps its brand gradient. */
+.agent-droplet[data-state="waiting"] { --agent-state-color:#718b9e; }
+.agent-droplet[data-state="thinking"] { --agent-state-color:#00b6e9; }
+.agent-droplet[data-state="tool"] { --agent-state-color:#6366e8; }
+.agent-droplet[data-state="reading"] { --agent-state-color:#009da9; }
+.agent-droplet[data-state="writing"] { --agent-state-color:#ca850c; }
+.agent-droplet[data-state="output"] { --agent-state-color:#18a66d; }
+.agent-droplet[data-state] .agent-droplet__symbol { color:var(--agent-state-color,#00b6e9); }
+/* Waiting has no badge: its three dots carry the muted status accent. */
+.agent-droplet[data-state="waiting"] .agent-droplet__dot { background:var(--agent-state-color); }
+
+/* Speaking: keep the mascot, animate only its mouth and gentle bubble pulses. */
+.agent-droplet[data-state="output"] .agent-droplet__symbol { display:none; }
+.agent-droplet[data-state="output"] .agent-droplet__dot {
+  width:19%; height:19%; border-radius:50%;
+  box-shadow:none;
+  animation:agent-speaking-bubble .8s ease-in-out infinite;
+}
+.agent-droplet[data-state="output"] .agent-droplet__dot--one { top:22%; left:8%; animation-delay:-.4s; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--two { top:43%; left:0; animation-delay:-.2s; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--three { top:64%; left:6%; animation-delay:0s; }
+.agent-droplet[data-state="output"] .agent-droplet__face::before,
+.agent-droplet[data-state="output"] .agent-droplet__face::after {
+  top:23%; height:32%; animation:agent-idle 2.4s ease-in-out infinite;
+}
+.agent-droplet[data-state="output"]::after {
+  content:""; position:absolute; left:49%; top:61%; width:11%; height:9%;
+  background:#102050; border-radius:45% 45% 55% 55%;
+  transform-origin:center; animation:agent-speaking-mouth .9s ease-in-out infinite;
+}
+@keyframes agent-speaking-mouth {
+  0%,100% { transform:scale(1,.25); }
+  15% { transform:scale(.8,1.15); }
+  30% { transform:scale(1.15,.5); }
+  47% { transform:scale(.85,1); }
+  62% { transform:scale(1,.25); }
+  78% { transform:scale(1.1,.85); }
+}
+@keyframes agent-speaking-bubble {
+  0%,100% { transform:scale(.85); opacity:.65; }
+  50% { transform:scale(1.08); opacity:1; }
+}
+@media(prefers-reduced-motion:reduce){
+  .agent-droplet[data-state="output"]::after,
+  .agent-droplet[data-state="output"] .agent-droplet__dot,
+  .agent-droplet[data-state="output"] .agent-droplet__face::before,
+  .agent-droplet[data-state="output"] .agent-droplet__face::after { animation:none!important; }
+}
+
+/* Speaking sound bars sit in the left opening, without moving the mascot. */
+.agent-droplet[data-state="output"] .agent-droplet__dot {
+  width:9%; height:32%; top:37%; border-radius:999px;
+  background:linear-gradient(180deg,#62ead8,#00a7e6);
+  box-shadow:none; transform-origin:center;
+  animation:agent-voice .65s ease-in-out infinite;
+}
+.agent-droplet[data-state="output"] .agent-droplet__dot--one { left:0; top:37%; animation-delay:-.15s; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--two { left:12%; top:37%; animation-delay:-.4s; }
+.agent-droplet[data-state="output"] .agent-droplet__dot--three { left:24%; top:37%; animation-delay:-.05s; }
+@keyframes agent-voice {
+  0%,100% { transform:scaleY(.3); }
+  25% { transform:scaleY(.85); }
+  50% { transform:scaleY(.45); }
+  75% { transform:scaleY(1.2); }
+}
+@media(prefers-reduced-motion:reduce){
+  .agent-droplet[data-state="output"] .agent-droplet__dot { animation:none!important; transform:scaleY(.65); }
+}
+
+/* Component colors are explicit, independent of inherited text color or theme. */
+.agent-droplet { color:#102050; color-scheme:light; background:transparent; }
+.agent-droplet__symbol { opacity:1; }
+
+/* Fixed badge background, identical on every host theme. */
+.agent-droplet[data-state="tool"] .agent-droplet__symbol,
+.agent-droplet[data-state="reading"] .agent-droplet__symbol,
+.agent-droplet[data-state="writing"] .agent-droplet__symbol {
+  background-color:#d6efff;
+  background-image:none;
+}
+
+/* Completed: smiling eyes and a fixed green check badge. */
+.agent-droplet[data-state="completed"] .agent-droplet__symbol,
+.agent-droplet[data-state="asking"] .agent-droplet__symbol { display:block; background:#d6efff; }
+.agent-droplet[data-state="completed"] .agent-droplet__symbol { color:#18a66d; }
+.agent-droplet[data-state="completed"] .agent-droplet__dot { animation:none; transform:scale(.9); }
+.agent-droplet[data-state="completed"] .agent-droplet__face::before,
+.agent-droplet[data-state="completed"] .agent-droplet__face::after {
+  top:35%;height:22%;width:22%;background:transparent;
+  border:calc(var(--size,32px) * .045) solid #102050;border-bottom:0;
+  border-radius:100% 100% 0 0;animation:none;transform:none;
+}
+/* Asking: a question bubble, attentive gaze and a slow bubble pulse. */
+.agent-droplet[data-state="asking"] .agent-droplet__symbol { color:#6374e8;width:47%;height:47%;bottom:-2%; }
+.agent-droplet[data-state="asking"] .agent-droplet__face::before,
+.agent-droplet[data-state="asking"] .agent-droplet__face::after { animation:agent-ask-eyes 3s ease-in-out infinite; }
+.agent-droplet[data-state="asking"] .agent-droplet__dot { animation:agent-wait 1.8s ease-in-out infinite; }
+@keyframes agent-ask-eyes {
+  0%,65%,85%,100%{transform:translate(30%,-15%) scaleY(1)}
+  75%{transform:translate(30%,-15%) scaleY(.08)}
+}
+@media(prefers-reduced-motion:reduce){.agent-droplet[data-state="asking"] .agent-droplet__dot,.agent-droplet[data-state="asking"] .agent-droplet__face::before,.agent-droplet[data-state="asking"] .agent-droplet__face::after{animation:none!important}}
+
+/* Completion: clean smile arcs and one brand-colored thumbs-up on the left. */
+.agent-droplet[data-state="completed"] .agent-droplet__dot { display:none; }
+.agent-droplet[data-state="completed"] .agent-droplet__symbol {
+  display:block;left:-5%;right:auto;top:30%;bottom:auto;
+  width:35%;height:40%;padding:0;border-radius:0;
+  background:transparent;color:#08c8e6;overflow:visible;
+}
+.agent-droplet[data-state="completed"] .agent-droplet__face::before,
+.agent-droplet[data-state="completed"] .agent-droplet__face::after {
+  top:37%;width:23%;height:17%;background:transparent;
+  border:0;border-top:calc(var(--size,32px) * .031) solid #102050;
+  border-radius:50% 50% 0 0;transform:none;animation:none;
+}
+.agent-droplet[data-state="completed"] .agent-droplet__face::before { left:16%; }
+.agent-droplet[data-state="completed"] .agent-droplet__face::after { right:16%; }
+
+/* Error: fixed brand mascot with an explicit red warning badge. */
+.agent-droplet[data-state="error"] .agent-droplet__symbol {display:block;background:#d6efff;color:#e44c59;}
+.agent-droplet[data-state="error"] .agent-droplet__dot {animation:none;transform:scale(.85);}
+.agent-droplet[data-state="error"] .agent-droplet__face::before,
+.agent-droplet[data-state="error"] .agent-droplet__face::after {top:40%;height:25%;animation:none;transform:rotate(12deg);}
+.agent-droplet[data-state="error"] .agent-droplet__face::after {transform:rotate(-12deg);}
+
+/* Error uses the left opening itself, with a fixed coral-red palette. */
+.agent-droplet[data-state="error"] .agent-droplet__dot { display:none; }
+.agent-droplet[data-state="error"] .agent-droplet__wave {
+  background:linear-gradient(135deg,#ffae8f,#ff707c 45%,#e94062);
+}
+.agent-droplet[data-state="error"] .agent-droplet__face { background:#fff1ef; }
+.agent-droplet[data-state="error"] .agent-droplet__face::before,
+.agent-droplet[data-state="error"] .agent-droplet__face::after { background:#7b233e; }
+.agent-droplet[data-state="error"] .agent-droplet__symbol {
+  display:block;left:0;right:auto;top:26%;bottom:auto;
+  width:23%;height:48%;padding:0;border-radius:0;
+  background:transparent;color:#ff687d;
+}
+
+.agent-droplet { --size:30px; width:var(--size); height:var(--size); }
+.agent-workspace .agent-droplet__symbol { width:43%; height:43%; stroke-width:2.5; }
+
+.agent-droplet[data-state="idle"] *, .agent-droplet[data-state="idle"] *::before, .agent-droplet[data-state="idle"] *::after { animation:none; }
+.agent-workspace .agent-droplet[data-state="completed"] .agent-droplet__symbol { width:35%; height:40%; }
+.agent-workspace .agent-droplet[data-state="error"] .agent-droplet__symbol { width:23%; height:48%; }

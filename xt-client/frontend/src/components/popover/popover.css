@@ -1,0 +1,14 @@
+.app-popover {
+  position: fixed; z-index: 1100; box-sizing: border-box;
+  max-width: calc(100vw - 16px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 5px; border: 1px solid rgba(127, 174, 190, .23); border-radius: 11px;
+  background: linear-gradient(150deg, #112f3e, #0b2432);
+  box-shadow: 0 16px 40px rgba(0, 8, 17, .42), 0 2px 7px rgba(0, 8, 17, .18);
+  opacity: 0; pointer-events: none; transform: translateY(var(--popover-shift, -8px)) scale(.97);
+  transition: opacity 130ms ease, transform 160ms cubic-bezier(.22, 1, .36, 1);
+}
+.app-popover.is-visible {opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); transition-duration: 150ms, 210ms;}
+.app-popover button {cursor: pointer;}
+@media (prefers-reduced-motion: reduce) {
+  .app-popover, .app-popover.is-visible {transform: none; transition: opacity 80ms ease;}
+}

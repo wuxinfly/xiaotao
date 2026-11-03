@@ -71,7 +71,7 @@
 
 .workspace-shell .btn.primary,
 .workspace-shell .dialog-btn.primary-finish,
-.workspace-shell .agent-modal-button.primary {
+.workspace-shell .app-modal-button.primary {
   border-color: rgba(126, 247, 234, 0.42);
   background: linear-gradient(120deg, var(--ocean-teal), var(--ocean-deep-blue));
   color: #f4fffd;
@@ -82,7 +82,7 @@
 
 .workspace-shell .btn.primary:hover:not(:disabled),
 .workspace-shell .dialog-btn.primary-finish:hover:not(:disabled),
-.workspace-shell .agent-modal-button.primary:hover:not(:disabled) {
+.workspace-shell .app-modal-button.primary:hover:not(:disabled) {
   border-color: rgba(151, 255, 243, 0.66);
   background: linear-gradient(120deg, #0a959d, #0b8bc9);
   color: #ffffff;
@@ -315,7 +315,7 @@
   background: linear-gradient(135deg, #ffd4ca, #f3aaa0);
 }
 
-.agent-modal {
+.app-modal {
   border-color: rgba(92, 189, 212, 0.34);
   background: linear-gradient(145deg, rgba(8, 43, 60, 0.99), rgba(4, 23, 37, 0.99));
   box-shadow:
@@ -323,13 +323,13 @@
     inset 0 1px 0 rgba(193, 247, 244, 0.05);
 }
 
-.agent-modal-button.secondary {
+.app-modal-button.secondary {
   border-color: rgba(96, 169, 191, 0.24);
   background: rgba(14, 55, 70, 0.55);
   color: #bad8e0;
 }
 
-.agent-modal-button.secondary:hover:not(:disabled) {
+.app-modal-button.secondary:hover:not(:disabled) {
   border-color: rgba(88, 227, 213, 0.32);
   background: rgba(22, 81, 96, 0.72);
   color: #f3fffe;
@@ -571,7 +571,7 @@
 }
 
 .dialog-close-btn:hover:not(:disabled),
-.agent-modal-close:hover:not(:disabled) {
+.app-modal-close:hover:not(:disabled) {
   background: rgba(22, 81, 96, 0.62);
   color: #f3fffe;
 }

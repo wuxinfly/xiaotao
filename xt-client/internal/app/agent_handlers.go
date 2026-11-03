@@ -74,6 +74,25 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("PATCH /api/agent/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Title string `json:"title"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		item, err := svc.Rename(r.PathValue("id"), input.Title)
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, item)
+	})
 	mux.HandleFunc("POST /api/agent/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
@@ -81,6 +100,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		var input struct {
 			Content string `json:"content"`
+			Model   string `json:"model"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
 			apiError(w, 400, "消息格式无效")
@@ -99,7 +119,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, b)
 			flusher.Flush()
 		}
-		err := svc.Send(r.Context(), r.PathValue("id"), input.Content, write)
+		err := svc.SendWithModel(r.Context(), r.PathValue("id"), input.Content, input.Model, write)
 		if err != nil {
 			write(agent.Event{Type: "error", SessionID: r.PathValue("id"), Error: err.Error()})
 		}

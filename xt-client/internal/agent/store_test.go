@@ -4,9 +4,36 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestRenameSessionPersistsWithoutChangingHistory(t *testing.T) {
+	data := t.TempDir()
+	svc := NewService(data, "http://localhost", nil, nil, nil)
+	item := &Session{ID: "rename_test", Title: "old", UpdatedAt: time.Now(), Messages: []Message{{ID: "m", Role: "user", Content: "keep"}}}
+	if err := svc.saveSession(item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Rename(item.ID, "  新名称  "); err != nil {
+		t.Fatal(err)
+	}
+	restarted := NewService(data, "http://localhost", nil, nil, nil)
+	got, err := restarted.Get(item.ID)
+	if err != nil || got.Title != "新名称" || len(got.Messages) != 1 || got.Messages[0].Content != "keep" || !got.UpdatedAt.Equal(item.UpdatedAt) {
+		t.Fatalf("rename lost history: %+v %v", got, err)
+	}
+	for _, title := range []string{"   ", strings.Repeat("名", 101)} {
+		if _, err := svc.Rename(item.ID, title); err == nil {
+			t.Fatal("accepted invalid title")
+		}
+	}
+	svc.runs[item.ID] = &run{cancel: func() {}}
+	if _, err := svc.Rename(item.ID, "running"); err == nil {
+		t.Fatal("renamed running session")
+	}
+}
 
 func TestLegacyMigrationAndDefaultWorkspace(t *testing.T) {
 	data := t.TempDir()

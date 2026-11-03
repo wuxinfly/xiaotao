@@ -1,3 +1,6 @@
+import {AgentDroplet, activityState} from './AgentDroplet';
+import {Popover} from '../../components/popover/Popover';
+import {ModalPresence} from '../../components/modal/ModalFrame';
 import {useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {EditorContent, useEditor} from '@tiptap/react';
@@ -18,13 +21,17 @@ import {
   Folder,
   LoaderCircle,
   MessageSquarePlus,
+  Plus,
+  Pencil,
+  MoreVertical,
+  Search,
   Settings2,
   Trash2,
   Square,
   X,
 } from 'lucide-react';
 import {api, type AgentActivity, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentSession} from '../../lib/api';
-import {AgentSettingsModal, ProjectModal} from './AgentModals';
+import {AgentSettingsModal, ProjectModal, RenameSessionModal} from './AgentModals';
 import './agent.css';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 
@@ -59,7 +66,7 @@ async function readEventStream(response: Response, onEvent: (event: AgentEvent) 
 
 function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
   if ((event.type === 'message' || event.type === 'session') && event.message) {
-    return {...session, status: event.status || session.status, messages: [...session.messages, event.message]};
+    return {...session, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: [...session.messages, event.message]};
   }
   if (event.type === 'activity' && event.activity) {
     const activity = session.activity.filter(item => item.id !== event.activity!.id);
@@ -83,6 +90,20 @@ function formatElapsed(start: string, end: string | number) {
   if (ms < 1000) return ms === 0 ? '< 1 毫秒' : `${ms} 毫秒`;
   const seconds = Math.floor(ms / 1000);
   return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+
+function formatSessionDate(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  if (days < 365) return `${Math.floor(days / 30)} 个月前`;
+  return `${Math.floor(days / 365)} 年前`;
 }
 
 function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () => void; children: React.ReactNode}) {
@@ -124,15 +145,6 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
 }
 
-function AgentDroplet({running}: {running: boolean}) {
-  return <span className={'agent-droplet' + (running ? ' is-running' : '')} aria-hidden="true">
-    <span className="agent-droplet__wave"/>
-    <span className="agent-droplet__face"/>
-    <span className="agent-droplet__dot agent-droplet__dot--one"/>
-    <span className="agent-droplet__dot agent-droplet__dot--two"/>
-    <span className="agent-droplet__dot agent-droplet__dot--three"/>
-  </span>;
-}
 
 const suggestions = [
   {label: '看看这个项目里有什么', prompt: '先看看这个项目里有什么，再告诉我整体结构。'},
@@ -142,6 +154,15 @@ const suggestions = [
 
 const enabledModelsKey = 'xiaotao.agent.enabledModels';
 const modelLabelsKey = 'xiaotao.agent.modelLabels';
+const modelCatalogKey = 'xiaotao.agent.modelCatalog';
+
+function readModelCatalog(): AgentModelOption[] | null {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(modelCatalogKey) || 'null');
+    if (!Array.isArray(value) || !value.every(item => item && typeof item.model === 'string' && typeof item.label === 'string')) return null;
+    return value;
+  } catch { return null; }
+}
 
 function readModelLabels(): Record<string, string> {
   try {
@@ -270,42 +291,28 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [view, setView] = useState<'project' | 'session'>(() => localStorage.getItem('xiaotao.agent.historyView') === 'session' ? 'session' : 'project');
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
   const viewButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!viewMenuOpen) return;
-    const dismiss = (event: PointerEvent) => {
-      if (!viewMenuRef.current?.contains(event.target as Node)) setViewMenuOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setViewMenuOpen(false);
-        viewButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', dismiss);
-    document.addEventListener('keydown', onKeyDown);
-    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', onKeyDown); };
-  }, [viewMenuOpen]);
   const [deleting, setDeleting] = useState('');
+  const [sessionMenu, setSessionMenu] = useState<{item: AgentSession; x: number; y: number} | null>(null);
+  const [renaming, setRenaming] = useState<AgentSession | null>(null);
+  const sessionMenuTrigger = useRef<HTMLElement | null>(null);
+  function openSessionMenu(item: AgentSession, x: number, y: number, trigger: HTMLElement) {
+    if (busy || deleting) return;
+    sessionMenuTrigger.current = trigger;
+    setSessionMenu({item, x: Math.max(8, Math.min(x, window.innerWidth - 168)), y: Math.max(8, Math.min(y, window.innerHeight - 92))});
+  }
   const [enabledModels, setEnabledModels] = useState<string[]>(readEnabledModels);
-  const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return readEnabledModels().map(id => ({model: id, label: labels[id] || id})); });
+  const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return Array.from(new Map([...readEnabledModels().map(id => ({model: id, label: labels[id] || id})), ...(readModelCatalog() || [])].map(item => [item.model, item])).values()); });
   const [modelsLoading, setModelsLoading] = useState(false), [modelsError, setModelsError] = useState('');
+  const [modelsAttempt, setModelsAttempt] = useState(0);
+  const catalogCached = useRef(readModelCatalog() !== null);
+  const lastModelsAttempt = useRef(0);
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const modelPickerRef = useRef<HTMLDivElement>(null), modelButtonRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!modelMenuOpen) return;
-    const dismiss = (event: PointerEvent) => { if (!modelPickerRef.current?.contains(event.target as Node)) setModelMenuOpen(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { setModelMenuOpen(false); modelButtonRef.current?.focus(); } };
-    document.addEventListener('pointerdown', dismiss);
-    document.addEventListener('keydown', escape);
-    modelPickerRef.current?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
-    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
-  }, [modelMenuOpen]);
+  const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
-  useEffect(() => { if (busy || active) setModelMenuOpen(false); }, [busy, active]);
+  useEffect(() => {if (!visible || busy) setSessionMenu(null);}, [visible, busy]);
+  useEffect(() => { if (busy) setModelMenuOpen(false); }, [busy]);
   const [error, setError] = useState(''), [openActivities, setOpenActivities] = useState<Record<string, boolean>>({});
   const [clock, setClock] = useState(() => Date.now());
   const wasBusy = useRef(false);
@@ -319,7 +326,15 @@ export function AgentPage({visible}: {visible: boolean}) {
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [busy]);
+  useEffect(() => {
+    if (!visible || busy) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 60000);
+    return () => window.clearInterval(timer);
+  }, [visible, busy]);
   const [settingsOpen, setSettingsOpen] = useState(false), [projectOpen, setProjectOpen] = useState(false);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false), [projectQuery, setProjectQuery] = useState('');
+  const projectTriggerRef = useRef<HTMLButtonElement>(null), projectSearchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!visible || busy || active) setProjectMenuOpen(false); }, [visible, busy, active]);
   const feed = useRef<HTMLDivElement>(null), composer = useRef<HTMLDivElement>(null), sendRef = useRef<() => void>(() => {});
   const followFeed = useRef(true);
   useEffect(() => {
@@ -401,21 +416,29 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   useEffect(() => {
     if (!visible || !settingsOpen) return;
+    if (catalogCached.current && lastModelsAttempt.current === modelsAttempt) return;
+    lastModelsAttempt.current = modelsAttempt;
     let live = true;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 30000);
     setModelsLoading(true);
     setModelsError('');
-    api.agentModels()
+    api.agentModels(controller.signal)
       .then(available => {
         if (!live) return;
+        catalogCached.current = true;
+        try { localStorage.setItem(modelCatalogKey, JSON.stringify(available.models)); } catch { /* keep in-memory cache */ }
         setModels(current => {
           const selected = new Set(readEnabledModels());
           return Array.from(new Map([...current.filter(item => selected.has(item.model)), ...available.models].map(item => [item.model, item])).values());
         });
       })
-      .catch(reason => live && setModelsError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => live && setModelsLoading(false));
-    return () => {live = false;};
-  }, [visible, settingsOpen]);
+      .catch(reason => live && setModelsError(controller.signal.aborted
+        ? '获取模型列表超时，请检查账号状态后重试'
+        : reason instanceof TypeError ? '无法连接小涛服务，请检查服务是否正在运行' : reason instanceof Error ? reason.message : String(reason)))
+      .finally(() => { window.clearTimeout(timer); if (live) setModelsLoading(false); });
+    return () => {live = false; window.clearTimeout(timer); controller.abort();};
+  }, [visible, settingsOpen, modelsAttempt]);
 
   useEffect(() => {
     if (!visible) { setSettingsOpen(false); setProjectOpen(false); setModelMenuOpen(false); }
@@ -432,6 +455,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     const submittedContent = editorMarkdown(editor);
     setBusy(true);
     setError('');
+    setActive(current => current ? {...current, error: ''} : current);
     let session = active;
     let submitted = false;
     try {
@@ -444,7 +468,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({content}),
+        body: JSON.stringify({content, model: model || session.model}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -503,6 +527,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     try {
       const detail = await api.agentSession(session.id);
       setActive(detail);
+      setModel(detail.model);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       return;
@@ -529,7 +554,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     setEnabledModels(nextModels);
     localStorage.setItem(enabledModelsKey, JSON.stringify(nextModels));
     localStorage.setItem(modelLabelsKey, JSON.stringify(Object.fromEntries(models.filter(item => nextModels.includes(item.model)).map(item => [item.model, item.label]))));
-    if (!nextModels.includes(model)) setModel(nextModels[0] || '');
+    if (!active && !nextModels.includes(model)) setModel(nextModels[0] || '');
     setSettingsOpen(false);
   }
 
@@ -549,12 +574,14 @@ export function AgentPage({visible}: {visible: boolean}) {
       else entries.push({kind: 'activity', items: [entry.item]});
     }
   }
-  const activeActivity = [...activity].reverse().find(item => item.status === 'running') ?? activity.at(-1);
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
+  const activeProjectPath = active ? active.project.path : path;
   const availablePickerModels = models.filter(item => enabledModels.includes(item.model));
+  if (model && !availablePickerModels.some(item => item.model === model)) availablePickerModels.push({model, label: models.find(item => item.model === model)?.label || model});
   if (active?.model && !availablePickerModels.some(item => item.model === active.model)) availablePickerModels.push({model: active.model, label: active.model});
 
   const sortedSessions = [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const projects = Array.from(new Map([...sortedSessions.filter(item => item.project.path && !item.project.isDefault).map(item => item.project), ...(path ? [{path, name: activeProjectName, isDefault: false}] : [])].map(item => [item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), item])).values()).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(projectQuery.trim().toLowerCase()));
   const groups = new Map<string, {name: string; path: string; items: AgentSession[]}>();
   for (const item of sortedSessions) {
     const path = item.project.isDefault || !item.project.path ? '' : item.project.path;
@@ -563,17 +590,17 @@ export function AgentPage({visible}: {visible: boolean}) {
     group.items.push(item);
     groups.set(key, group);
   }
-  const renderSession = (item: AgentSession) => <div className="agent-session-row" key={item.id}>
+  const renderSession = (item: AgentSession) => <div className="agent-session-row" key={item.id} onContextMenu={event => {event.preventDefault(); openSessionMenu(item, event.clientX, event.clientY, event.currentTarget.querySelector('button')!);}}>
     <button type="button" disabled={busy} className={'agent-session-select ' + (item.id === active?.id ? 'is-active' : '')} onClick={() => selectSession(item)} title={item.title}>
       <span>{item.title}</span>
-      {view === 'session' && <small>{item.project.name || '默认工作目录'}</small>}
+      <small>{[view === 'session' ? item.project.name || '默认工作目录' : '', formatSessionDate(item.updatedAt)].filter(Boolean).join(' · ')}</small>
     </button>
-    <button type="button" className="agent-session-delete" disabled={busy || !!deleting} onClick={() => void deleteSession(item)} aria-label={'删除会话 ' + item.title} title="删除会话"><Trash2 aria-hidden="true"/></button>
+    <button type="button" className="agent-session-delete" disabled={busy || !!deleting} onClick={event => {const rect = event.currentTarget.getBoundingClientRect(); openSessionMenu(item, rect.right, rect.bottom + 4, event.currentTarget);}} aria-label={'会话操作 ' + item.title} aria-haspopup="menu" aria-expanded={sessionMenu?.item.id === item.id} title="会话操作"><MoreVertical aria-hidden="true"/></button>
   </div>;
   const renderGroup = (key: string, group: {name: string; path: string; items: AgentSession[]}) => {
     const open = !collapsedGroups.has(key);
     return <div className={'agent-session-group' + (open ? ' is-open' : '')} key={key}>
-      <button type="button" className="agent-group-label" title={group.path || group.name} aria-expanded={open} onClick={() => setCollapsedGroups(current => {
+      <button type="button" className={'agent-group-label' + (!key ? ' agent-group-label-recent' : '')} title={group.path || group.name} aria-expanded={open} onClick={() => setCollapsedGroups(current => {
         const next = new Set(current);
         if (next.has(key)) next.delete(key); else next.add(key);
         return next;
@@ -589,12 +616,12 @@ export function AgentPage({visible}: {visible: boolean}) {
       <button className="agent-new" type="button" onClick={newChat} disabled={busy}>
         <MessageSquarePlus aria-hidden="true"/><span>新会话</span>
       </button>
-      <div className="agent-history-heading" ref={viewMenuRef}>
+      <div className="agent-history-heading">
         <span>{view === 'project' ? '项目' : '会话'}</span>
         <button ref={viewButtonRef} type="button" className="agent-history-switch" aria-label="切换会话排列方式" aria-expanded={viewMenuOpen} aria-controls="agent-history-menu" title="切换排列方式" onClick={() => setViewMenuOpen(open => !open)}><ListFilter aria-hidden="true"/></button>
-        {viewMenuOpen && <div id="agent-history-menu" className="agent-history-menu" role="group" aria-label="会话排列方式">
+        <Popover open={viewMenuOpen} onClose={() => setViewMenuOpen(false)} anchorRef={viewButtonRef} align="end" id="agent-history-menu" className="agent-history-menu" role="group" aria-label="会话排列方式">
           {(['project', 'session'] as const).map(option => <button type="button" key={option} className={view === option ? 'is-active' : ''} aria-pressed={view === option} onClick={() => {setView(option); localStorage.setItem('xiaotao.agent.historyView', option); setViewMenuOpen(false); viewButtonRef.current?.focus();}}><span>{option === 'project' ? '按项目查看' : '按会话查看'}</span>{view === option && <Check aria-hidden="true"/>}</button>)}
-        </div>}
+        </Popover>
       </div>
       <nav className="agent-session-list" aria-label="会话历史">
         {loading && <p>正在读取…</p>}
@@ -644,11 +671,11 @@ export function AgentPage({visible}: {visible: boolean}) {
             const previous = entries[index - 1];
             const started = previous?.kind === 'message' && previous.item.role === 'user' ? previous.item.createdAt : entry.items[0].startedAt;
             const ended = next?.kind === 'message' && next.item.role === 'assistant' ? next.item.createdAt : latest?.endedAt;
-            const status = running ? '正在执行' : next?.kind === 'message' && next.item.role === 'assistant' ? '执行完成' : active?.status === 'canceled' ? '已停止' : active?.status === 'failed' ? '执行中断' : '步骤已结束';
-            return <div key={id} className="agent-process-row"><div className="agent-message-avatar"><AgentDroplet running={running}/></div><div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
+            const status = running ? latest?.status === 'running' ? '正在执行' : '继续思考' : next?.kind === 'message' && next.item.role === 'assistant' ? '执行完成' : active?.status === 'canceled' ? '已停止' : active?.status === 'failed' ? '执行中断' : '步骤已结束';
+            return <div key={id} className="agent-process-row"><div className="agent-message-avatar"><AgentDroplet state={running ? activityState(latest?.kind) : status === '执行中断' ? 'error' : status === '已停止' ? 'waiting' : 'completed'}/></div><div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
               <button type="button" className="agent-process-summary" onClick={() => setOpenActivities(current => ({...current, [id]: !open}))} aria-expanded={open}>
                 <span className="agent-process-icon">{running ? <LoaderCircle className="agent-spin" aria-hidden="true"/> : status === '执行中断' || status === '已停止' ? <X aria-hidden="true"/> : <Check aria-hidden="true"/>}</span>
-                <span><strong>{status}</strong><small>{[latest?.title, latest?.detail].filter(Boolean).join(' · ')}</small></span>
+                <span><strong>{status}</strong><small>{[running && latest?.status !== 'running' ? '最近操作' : '', latest?.title, latest?.detail].filter(Boolean).join(' · ')}</small></span>
                 <span className="agent-process-duration">{running ? formatElapsed(started, clock) : ended ? formatElapsed(started, ended) : '耗时未知'}</span>
                 <ChevronDown className="agent-process-chevron" aria-hidden="true"/>
               </button>
@@ -666,26 +693,35 @@ export function AgentPage({visible}: {visible: boolean}) {
         </article>;
         })}
 
-        {busy && entries.at(-1)?.kind !== 'activity' && <div className="agent-working" role="status">
-          <AgentDroplet running/>
-          <span><strong>{activeActivity?.title || '正在思考'}</strong><small>{activeActivity?.detail || '正在准备下一步…'}</small></span>
-        </div>}
-        {(error || active?.error) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
+        {busy && entries.at(-1)?.kind !== 'activity' && <div className="agent-working-row" role="status">
+          <div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working">
+          <span><strong>正在思考</strong><small>正在准备下一步…</small></span>
+        </div></div>}
+        {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
       </div>
 
       <div className="agent-composer-wrap" ref={composer}>
         <div className="agent-project-row">
           <div className={'agent-project-picker' + (path && !active ? ' has-project' : '')}>
+          <Popover open={projectMenuOpen} onClose={() => setProjectMenuOpen(false)} anchorRef={projectTriggerRef} initialFocusRef={projectSearchRef} side="top" className="agent-project-menu" role="dialog" aria-label="选择项目">
+            <label className="agent-project-search"><Search aria-hidden="true"/><input ref={projectSearchRef} value={projectQuery} onChange={event => setProjectQuery(event.target.value)} placeholder="搜索项目" aria-label="搜索项目"/></label>
+            <div className="agent-project-menu-list">
+              {projects.map(project => <button type="button" key={project.path} title={project.path} onClick={() => {void api.resolveAgentProject(project.path).then(resolved => {setPath(resolved.path); setProjectName(project.name); setError(''); setProjectMenuOpen(false); setProjectQuery(''); projectTriggerRef.current?.focus();}).catch(reason => {setError(reason instanceof Error ? reason.message : String(reason)); setProjectMenuOpen(false);});}}><Folder aria-hidden="true"/><span>{project.name}</span>{path.toLowerCase() === project.path.toLowerCase() && <Check aria-label="当前项目"/>}</button>)}
+              {!projects.length && <p>{projectQuery ? '没有匹配的项目' : '暂无项目，选择文件夹开始'}</p>}
+            </div>
+            <div className="agent-project-menu-actions"><button type="button" onClick={() => {setProjectMenuOpen(false); setProjectQuery(''); setProjectOpen(true);}}><Plus aria-hidden="true"/>选择新项目</button><button type="button" onClick={() => {setPath(''); setProjectName(''); setProjectMenuOpen(false); setProjectQuery(''); projectTriggerRef.current?.focus();}}><X aria-hidden="true"/>使用默认工作目录{!path && <Check aria-label="当前选择"/>}</button></div>
+          </Popover>
           <button
+            ref={projectTriggerRef}
             type="button"
             className="agent-project-trigger"
-            onClick={() => !active && setProjectOpen(true)}
+            onClick={() => setProjectMenuOpen(open => !open)}
+            aria-expanded={projectMenuOpen}
             disabled={busy || !!active}
             title={active?.project.path || path || '使用默认工作目录'}
           >
             <Folder aria-hidden="true"/>
             <span>{activeProjectName}</span>
-            {!active && <ChevronDown aria-hidden="true"/>}
           </button>
           {!active && path && <button type="button" className="agent-project-clear" disabled={busy} onClick={() => {setPath(''); setProjectName('');}} aria-label="清空工作区目录" title="清空工作区目录"><X aria-hidden="true"/></button>}
           </div>
@@ -695,20 +731,13 @@ export function AgentPage({visible}: {visible: boolean}) {
           <div className="agent-toolbar">
             <span className="agent-toolbar-note">{busy ? '正在运行，草稿会保留' : 'Enter 发送 · Shift + Enter 换行'}</span>
             <div className="agent-composer-actions">
-              <div className="agent-model-picker" ref={modelPickerRef}>
-                <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={!!active || busy || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
-                  <span>{availablePickerModels.find(item => item.model === (active?.model || model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>
+              <div className="agent-model-picker">
+                <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
+                  <span>{availablePickerModels.find(item => item.model === (model || active?.model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>
                 </button>
-                {modelMenuOpen && <div className="agent-model-menu" role="menu" aria-label="选择模型" onKeyDown={event => {
-                  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-                  event.preventDefault();
-                  const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
-                  const index = options.indexOf(document.activeElement as HTMLButtonElement);
-                  const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-                  options[next]?.focus();
-                }}>
+                <Popover open={modelMenuOpen} onClose={() => setModelMenuOpen(false)} anchorRef={modelButtonRef} side="top" align="end" className="agent-model-menu" aria-label="选择模型">
                   {availablePickerModels.map(item => <button type="button" role="menuitemradio" aria-checked={item.model === model} key={item.model} onClick={() => {setModel(item.model); setModelMenuOpen(false); modelButtonRef.current?.focus();}}><span>{item.label}</span>{item.model === model && <Check aria-hidden="true"/>}</button>)}
-                </div>}
+                </Popover>
               </div>
               {busy
                 ? <button type="button" className="agent-send is-stop" onClick={stop} aria-label="停止任务" title="停止任务"><Square aria-hidden="true"/></button>
@@ -717,21 +746,25 @@ export function AgentPage({visible}: {visible: boolean}) {
           </div>
         </div>
         <div className="agent-hint">
-          <span>{busy ? '任务执行中 · 输入内容会保留到下次发送' : 'Ctrl/⌘ + Enter 强制发送'}</span>
-          {!enabledModels.length && <button type="button" onClick={() => setSettingsOpen(true)}>选择模型</button>}
+          <span className="agent-project-context" title={activeProjectPath || '小涛数据目录中的默认工作区'}>{activeProjectPath ? `工作目录：${activeProjectPath}` : '工作目录：小涛数据目录中的默认工作区'}</span>
+          {!active && !model && <button type="button" onClick={() => setSettingsOpen(true)}>先选择模型，才能发送</button>}
         </div>
       </div>
     </div>
 
-    {settingsOpen && <AgentSettingsModal
+    <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
+    <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
+    <ModalPresence>{settingsOpen && <AgentSettingsModal
       models={models}
       selected={enabledModels}
       loading={modelsLoading}
       error={modelsError}
+      onRetry={() => setModelsAttempt(value => value + 1)}
+      onAccounts={() => { setSettingsOpen(false); window.dispatchEvent(new CustomEvent('xiaotao:navigate', {detail: 'accounts'})); }}
       onSave={saveAgentSettings}
       onClose={() => setSettingsOpen(false)}
-    />}
-    {projectOpen && <ProjectModal
+    />}</ModalPresence>
+    <ModalPresence>{projectOpen && <ProjectModal
       name={projectName}
       path={path}
       onApply={(nextPath, nextName) => {
@@ -741,7 +774,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         setProjectOpen(false);
       }}
       onClose={() => setProjectOpen(false)}
-    />}
+    />}</ModalPresence>
   </section>;
 }
 

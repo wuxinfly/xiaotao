@@ -165,6 +165,28 @@ func (s *Service) Delete(id string) error {
 	return nil
 }
 
+func (s *Service) Rename(id, title string) (*Session, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > 100 {
+		return nil, fmt.Errorf("会话名称需为 1–100 个字符")
+	}
+	if r := s.runs[id]; r != nil && r.cancel != nil {
+		return nil, fmt.Errorf("请先停止正在运行的会话")
+	}
+	item, err := s.loadSession(id)
+	if err != nil {
+		return nil, err
+	}
+	item.Title = title
+	if err := s.saveSession(item); err != nil {
+		return nil, err
+	}
+	s.markDefault(item)
+	return item, nil
+}
+
 func (s *Service) Project(path string) (Project, error) {
 	workspace, err := OpenWorkspace(path)
 	if err != nil {
@@ -229,6 +251,12 @@ func (s *Service) ListSummaries() ([]*Session, error) {
 }
 
 func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Event)) error {
+	return s.SendWithModel(ctx, sessionID, text, "", emit)
+}
+
+// SendWithModel selects the model for this message and subsequent messages.
+// An empty model preserves the session selection.
+func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model string, emit func(Event)) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("消息不能为空")
@@ -267,6 +295,9 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 		}
 	}
 
+	if selected := strings.TrimSpace(model); selected != "" {
+		history.Model = selected
+	}
 	history.Status = StatusRunning
 	history.Error = ""
 	now := time.Now()

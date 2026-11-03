@@ -1,6 +1,6 @@
-import {useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
-import {createPortal} from 'react-dom';
-import {Check, FolderOpen, Search, X} from 'lucide-react';
+import {useEffect, useMemo, useState} from 'react';
+import {ModalFrame} from '../../components/modal/ModalFrame';
+import {Check, ChevronDown, FolderOpen, Search, X} from 'lucide-react';
 import {api, type AgentModelOption} from '../../lib/api';
 
 declare global {
@@ -33,80 +33,10 @@ function projectNameFromPath(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() || '';
 }
 
-interface ModalFrameProps {
-  title: string;
-  description?: string;
-  className?: string;
-  onClose: () => void;
-  children: ReactNode;
-  footer: ReactNode;
-}
-
-function ModalFrame({title, description, className = '', onClose, children, footer}: ModalFrameProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    const focusables = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex="0"]',
-    ) ?? []);
-    focusables()[0]?.focus();
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeRef.current();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const nodes = focusables();
-      if (!nodes.length) return;
-      const first = nodes[0], last = nodes[nodes.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previous?.focus();
-    };
-  }, []);
-
-  return createPortal(
-    <div className="agent-modal-backdrop" onPointerDown={event => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <div
-        ref={dialogRef}
-        className={'agent-modal ' + className}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="agent-modal-title"
-      >
-        <header className="agent-modal-header">
-          <div>
-            <h2 id="agent-modal-title">{title}</h2>
-            {description && <p>{description}</p>}
-          </div>
-          <button type="button" className="agent-modal-close" onClick={onClose} aria-label="关闭弹窗" title="关闭">
-            <X aria-hidden="true"/>
-          </button>
-        </header>
-        <div className="agent-modal-body">{children}</div>
-        <footer className="agent-modal-footer">{footer}</footer>
-      </div>
-    </div>,
-    document.body,
-  );
+export function RenameSessionModal({title, origin, onSave, onClose}: {title: string; origin?: {x: number; y: number}; onSave: (value: string) => Promise<void>; onClose: () => void}) {
+ const [value, setValue] = useState(title), [saving, setSaving] = useState(false), [error, setError] = useState('');
+ const submit = async () => { if (saving || !value.trim()) return; setSaving(true); setError(''); try { await onSave(value.trim()); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally {setSaving(false);} };
+ return <ModalFrame origin={origin} title="重命名会话" className="agent-rename-modal" onClose={() => {if (!saving) onClose();}} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={saving} onClick={onClose}>取消</button><button type="button" className="app-modal-button primary" disabled={saving || !value.trim() || Array.from(value.trim()).length > 100} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</button></div>}><label className="agent-field"><span>会话名称</span><input value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => {if(event.key === 'Enter' && !event.nativeEvent.isComposing) void submit();}}/></label>{error && <p className="agent-modal-error" role="alert">{error}</p>}</ModalFrame>;
 }
 
 interface AgentSettingsModalProps {
@@ -114,13 +44,16 @@ interface AgentSettingsModalProps {
   selected: string[];
   loading: boolean;
   error: string;
+  onRetry: () => void;
+  onAccounts: () => void;
   onSave: (models: string[]) => void;
   onClose: () => void;
 }
 
-export function AgentSettingsModal({models, selected, loading, error, onSave, onClose}: AgentSettingsModalProps) {
+export function AgentSettingsModal({models, selected, loading, error, onRetry, onAccounts, onSave, onClose}: AgentSettingsModalProps) {
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState(() => new Set(selected));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const visibleModels = useMemo(() => {
     const term = query.trim().toLowerCase();
     if (!term) return models;
@@ -166,42 +99,45 @@ export function AgentSettingsModal({models, selected, loading, error, onSave, on
     className="agent-settings-modal"
     onClose={onClose}
     footer={<>
-      <span className="agent-modal-count">已选 {selectedCount} 个模型</span>
-      <div className="agent-modal-actions">
-        <button type="button" className="agent-modal-button secondary" onClick={onClose}>取消</button>
+      <span className="app-modal-count">已选 {selectedCount} 个模型</span>
+      <div className="app-modal-actions">
+        <button type="button" className="app-modal-button secondary" onClick={onClose}>取消</button>
         <button
           type="button"
-          className="agent-modal-button primary"
+          className="app-modal-button primary"
           disabled={!selectedCount}
           onClick={() => onSave(models.filter(item => chosen.has(item.model)).map(item => item.model))}
         >保存设置</button>
       </div>
     </>}
   >
+    <div className="agent-model-refresh"><span>模型列表已缓存，账号或模型变化后可手动刷新。</span><button type="button" className="app-modal-button secondary" disabled={loading} onClick={onRetry}>{loading ? '刷新中…' : '刷新模型列表'}</button></div>
     <label className="agent-model-search">
       <Search aria-hidden="true"/>
       <input
         value={query}
-        onChange={event => setQuery(event.target.value)}
+        onChange={event => { const value = event.target.value; setQuery(value); const term = value.trim().toLowerCase(); setExpanded(new Set(term ? models.filter(item => `${item.label} ${item.model}`.toLowerCase().includes(term)).map(item => splitModel(item.model).provider) : [])); }}
         placeholder="搜索模型或来源"
         aria-label="搜索模型"
         autoComplete="off"
       />
-      {query && <button type="button" onClick={() => setQuery('')} aria-label="清除搜索"><X aria-hidden="true"/></button>}
+      {query && <button type="button" onClick={() => {setQuery(''); setExpanded(new Set());}} aria-label="清除搜索"><X aria-hidden="true"/></button>}
     </label>
     <div className="agent-settings-groups">
-      {loading && <div className="agent-modal-empty" role="status">正在加载模型列表，已选模型仍可使用…</div>}
-      {error && <div className="agent-modal-empty" role="alert">模型列表加载失败：{error}。已选模型仍会保留。</div>}
-      {!loading && !error && !models.length && <div className="agent-modal-empty">还没有可用模型，先从“账号与配额”接入账号。</div>}
+      {loading && <div className="agent-modal-empty" role="status">正在从已启用的账号获取模型，可能需要一些时间…</div>}
+      {error && <div className="agent-modal-empty" role="alert"><p>模型列表加载失败：{error}。已选模型仍会保留。</p><button type="button" className="app-modal-button secondary" onClick={onRetry}>重试</button> <button type="button" className="app-modal-button secondary" onClick={onAccounts}>查看账号与配额</button></div>}
+      {!loading && !error && !models.length && <div className="agent-modal-empty"><p>没有获取到可用模型，请检查账号是否已接入并启用。</p><button type="button" className="app-modal-button secondary" onClick={onAccounts}>前往账号与配额</button> <button type="button" className="app-modal-button secondary" onClick={onRetry}>重新获取</button></div>}
       {models.length > 0 && !visibleModels.length && <div className="agent-modal-empty">没有匹配的模型。</div>}
       {groups.map(([provider, items]) => {
         const allSelected = items.every(item => chosen.has(item.model));
+        const open = expanded.has(provider);
+        const groupSelected = items.filter(item => chosen.has(item.model)).length;
         return <section className="agent-settings-group" key={provider}>
           <div className="agent-settings-group-head">
-            <span><strong>{providerLabel(provider)}</strong><small>{items.length} 个</small></span>
-            <button type="button" onClick={() => toggleGroup(items)}>{allSelected ? '取消全选' : '全选'}</button>
+            <button type="button" className="agent-settings-group-toggle" aria-expanded={open} onClick={() => setExpanded(current => { const next = new Set(current); if (open) next.delete(provider); else next.add(provider); return next; })}><ChevronDown className={open ? 'is-open' : ''} aria-hidden="true"/><strong>{providerLabel(provider)}</strong><small>{items.length} 个 · 已选 {groupSelected}</small></button>
+            {open && <button type="button" onClick={() => toggleGroup(items)}>{allSelected ? '取消全选' : '全选'}</button>}
           </div>
-          <div className="agent-model-options">
+          {open && <div className="agent-model-options">
             {items.map(item => {
               const {name} = splitModel(item.model);
               const active = chosen.has(item.model);
@@ -219,7 +155,7 @@ export function AgentSettingsModal({models, selected, loading, error, onSave, on
                 </span>
               </button>;
             })}
-          </div>
+          </div>}
         </section>;
       })}
     </div>
@@ -305,14 +241,14 @@ export function ProjectModal({name, path, onApply, onClose}: ProjectModalProps) 
     className="agent-project-modal"
     onClose={onClose}
     footer={<>
-      <button type="button" className="agent-modal-button quiet" onClick={() => {
+      <button type="button" className="app-modal-button quiet" onClick={() => {
         setDraftPath('');
         setDraftName('');
         setError('');
       }}>使用默认目录</button>
-      <div className="agent-modal-actions">
-        <button type="button" className="agent-modal-button secondary" onClick={onClose}>取消</button>
-        <button type="button" className="agent-modal-button primary" disabled={checking} onClick={() => void applyProject()}>
+      <div className="app-modal-actions">
+        <button type="button" className="app-modal-button secondary" onClick={onClose}>取消</button>
+        <button type="button" className="app-modal-button primary" disabled={checking} onClick={() => void applyProject()}>
           {checking ? '检查中…' : '使用这个项目'}
         </button>
       </div>

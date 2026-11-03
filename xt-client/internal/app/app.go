@@ -153,21 +153,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	proxySvc := proxy.New(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) }, proxyKey)
 	accountSvc := proxy.NewAccountService(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) })
 	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, proxySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
-		out := []agent.ModelOption{}
-		for _, acct := range store.Accounts() {
-			if !acct.Enabled {
-				continue
-			}
-			for _, model := range proxySvc.AccountModels(*acct) {
-				id := acct.Provider + "/" + model.ID
-				label := id
-				if model.DisplayName != "" {
-					label = model.DisplayName + " · " + acct.Provider
-				}
-				out = append(out, agent.ModelOption{Model: id, Label: label})
-			}
-		}
-		return out
+		return agentModelsForAccounts(store.Accounts(), proxySvc.AccountModels)
 	})
 	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
 	if err != nil {
