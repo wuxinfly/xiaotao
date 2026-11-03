@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "desktop-startup-render-verification",
+  "created_at": "2026-11-03T16:00:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "verification",
+  "rule_id": "verification.desktop-startup-render-verification",
+  "text": "调整桌面 WebView2 启动、可见性或窗口交接时，回归验证须加载真实构建前端，确认首屏 ready 与正常交接早于超时兜底，并检查桌面窗口实际内容；仅断言窗口显隐不构成渲染通过。",
+  "rationale": "首版隐藏启动测试只断言窗口不可见而通过，用户实际发现启动封面长时间停留、交接后空白。加载真实前端的测试复现旧实现未收到 ready；保留正常可见性并由 owned 封面遮挡后，真实前端交接测试和独立 EXE 桌面检查通过。",
+  "observations": 2,
+  "source_refs": [
+    "docs/plans/2026-11-03-client-startup-design.md",
+    "xt-client/internal/desktop/startup_windows_test.go",
+    "xt-client/internal/desktop/startup_windows.go"
+  ]
+}

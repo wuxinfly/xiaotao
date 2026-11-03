@@ -196,7 +196,7 @@ func Window(url, data, token, title string) error {
 		return fmt.Errorf("WebView2 unavailable: %w", err)
 	}
 
-	closeSplash, splashForeground := showNativeSplash(windowWidth, windowHeight)
+	closeSplash, splashForeground, attachSplash := showNativeSplash(windowWidth, windowHeight)
 	defer closeSplash()
 
 	// WebView2 reads this at environment creation; match the native/page background.
@@ -211,7 +211,7 @@ func Window(url, data, token, title string) error {
 			os.Unsetenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR")
 		}
 	}()
-	finishCreation, err := hideWebViewDuringCreation()
+	finishCreation, err := guardWebViewDuringCreation(attachSplash)
 	if err != nil {
 		return err
 	}

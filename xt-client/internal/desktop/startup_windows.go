@@ -8,9 +8,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The WebView library calls ShowWindow before Embed and has no hidden option.
-// Intercept only its window on this UI thread until the constructor returns.
-func hideWebViewDuringCreation() (func(), error) {
+// The WebView library shows its window before Embed. Keep it visible so that
+// Chromium can render, covered by an owned splash, and prevent activation.
+// The guard applies only to this UI thread until the constructor returns.
+func guardWebViewDuringCreation(attachSplash func(uintptr)) (func(), error) {
 	var hwnd, original uintptr
 	proc := syscall.NewCallback(func(h uintptr, msg uint32, wp uintptr, lp unsafe.Pointer) uintptr {
 		if msg == 0x0046 { // WM_WINDOWPOSCHANGING
@@ -19,7 +20,7 @@ func hideWebViewDuringCreation() (func(), error) {
 				X, Y, Width, Height int32
 				Flags               uint32
 			})(lp)
-			pos.Flags = (pos.Flags &^ 0x0040) | 0x0010 // remove SHOWWINDOW; NOACTIVATE
+			pos.Flags |= 0x0010 // NOACTIVATE; preserve SHOWWINDOW and native visibility messages.
 		}
 		return win("CallWindowProcW", original, h, uintptr(msg), wp, uintptr(lp))
 	})
@@ -40,6 +41,9 @@ func hideWebViewDuringCreation() (func(), error) {
 			if uintptr(unsafe.Pointer(class)) > 0xffff && windows.UTF16PtrToString(class) == "webview" {
 				hwnd = wp
 				original = win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), proc)
+				if attachSplash != nil {
+					attachSplash(hwnd)
+				}
 			}
 		}
 		if code == 5 && wp == hwnd && hwnd != 0 { // HCBT_ACTIVATE

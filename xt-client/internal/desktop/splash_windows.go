@@ -44,13 +44,13 @@ func decodeFrame(data []byte, target []byte) (int32, int32) {
 	return w, h
 }
 
-func showNativeSplash(width, height int32) (func(), func() bool) {
+func showNativeSplash(width, height int32) (func(), func() bool, func(uintptr)) {
 	runtime.LockOSThread()
 
 	r := bytes.NewReader(framesBIN)
 	var count int32
 	if err := binary.Read(r, binary.LittleEndian, &count); err != nil || count <= 0 {
-		return func() {}, func() bool { return false }
+		return func() {}, func() bool { return false }, func(uintptr) {}
 	}
 	rawBuffers := make([][]byte, count)
 	for i := int32(0); i < count; i++ {
@@ -65,7 +65,7 @@ func showNativeSplash(width, height int32) (func(), func() bool) {
 		rawBuffers[i] = buf
 	}
 	if len(rawBuffers) == 0 {
-		return func() {}, func() bool { return false }
+		return func() {}, func() bool { return false }, func(uintptr) {}
 	}
 
 	const frameW, frameH = int32(1920), int32(1080)
@@ -234,6 +234,12 @@ func showNativeSplash(width, height int32) (func(), func() bool) {
 
 	var closeOnce sync.Once
 	isForeground := func() bool { return parentHwnd != 0 && win("GetForegroundWindow") == parentHwnd }
+	attachOwner := func(owner uintptr) {
+		if parentHwnd != 0 {
+			// An owned window stays above its owner, without becoming globally topmost.
+			win("SetWindowLongPtrW", parentHwnd, uintptr(uint32(0xfffffff8)), owner)
+		}
+	}
 	return func() {
 		closeOnce.Do(func() {
 			close(stopChan)
@@ -248,5 +254,5 @@ func showNativeSplash(width, height int32) (func(), func() bool) {
 			curBuf = nil
 			runtime.GC()
 		})
-	}, isForeground
+	}, isForeground, attachOwner
 }
