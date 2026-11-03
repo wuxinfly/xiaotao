@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="zh-CN" style="background:#071723;color-scheme:dark">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('xiaotao.theme')==='light'?'light':'dark'}catch{}</script>
   <link rel="icon" href="/mascot.png">
   <title>小涛</title>
-  <style>html,body,#root{background:#071723;margin:0;height:100%;overflow:hidden;color:#e1f0f6}</style>
+  <style>html{background:#071723;color-scheme:dark;color:#e1f0f6}html[data-theme=light]{background:#f3f8fa;color-scheme:light;color:#203f4c}body,#root{background:inherit;color:inherit;margin:0;height:100%;overflow:hidden}</style>
 </head>
-<body style="margin:0;background:#071723;color:#e1f0f6"><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+<body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>

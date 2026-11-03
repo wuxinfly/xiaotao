@@ -43,6 +43,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
   } finally { Pop-Location }
   New-Item -ItemType Directory -Force dist | Out-Null
+  go run ./tools/icon
+  if ($LASTEXITCODE -ne 0) { throw 'Icon rendering failed' }
   go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 --out cmd/xiaotao/rsrc
   if ($LASTEXITCODE -ne 0) { throw 'Icon resource generation failed' }
   $ldflags = "-s -w -H=windowsgui -X xiaotao/xt-client/internal/runtimeenv.Active=$($environment.Name) -X xiaotao/xt-client/internal/app.Version=$version"

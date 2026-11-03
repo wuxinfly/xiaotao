@@ -4,6 +4,8 @@ import {RequestHud} from './features/dashboard/RequestHud';
 import {DashboardDataProvider} from './features/dashboard/DashboardData';
 import './features/dashboard/request-hud.css';
 import './hud-window.css';
+import './shallow-sea.css';
+import './lib/theme';
 
 declare global {
   interface Window {

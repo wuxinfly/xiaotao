@@ -585,3 +585,15 @@
 .agent-session-menu svg { width: 13px; height: 13px; }
 
 .agent-project-menu { width: min(280px, calc(100vw - 16px)); }
+
+/* Windowed sidebar rows use stable logical heights at every viewport width. */
+.agent-session-window { position: relative; overflow-anchor: none; }
+.agent-session-window-row { position: absolute; left: 0; right: 0; }
+.agent-session-window-row .agent-session-row { height: 56px; }
+.agent-session-window-row .agent-session-select { height: 54px; justify-content: center; }
+.agent-session-window-row .agent-group-label { height: 34px; }
+.agent-history-load { flex: none; text-align: center; margin-bottom: 16px; overflow-anchor: none; }
+.agent-history-load button { border: 1px solid var(--agent-line); border-radius: 7px; padding: 6px 12px; color: var(--agent-muted); background: var(--agent-panel); transition: color 160ms, background-color 160ms; }
+.agent-history-load button:hover { color: var(--agent-text); background: var(--agent-panel-raised); }
+.agent-history-load span { display: block; margin-top: 6px; color: var(--agent-muted); font-size: 12px; }
+.agent-feed { overflow-anchor: none; }

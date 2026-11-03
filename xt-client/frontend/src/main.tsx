@@ -10,6 +10,8 @@ import {AgentPage} from './features/agent/AgentPage';
 import {ConfirmProvider} from './components/confirm/ConfirmProvider';
 import './navigation.css';
 import './ocean-tech.css';
+import './shallow-sea.css';
+import {ThemeToggle} from './components/ThemeToggle';
 
 declare global {interface Window {xtWindow?: (action:string)=>Promise<void>}}
 type Page='agent'|'dashboard'|'accounts';
@@ -42,8 +44,14 @@ function App(){
  const desktop=typeof window.xtWindow==='function';
  useEffect(()=>{const dismiss=(e:PointerEvent)=>{if(!menu.current?.contains(e.target as Node))setOpen(false)};document.addEventListener('pointerdown',dismiss);return()=>document.removeEventListener('pointerdown',dismiss)},[]);
  useEffect(()=>{
-  const timer=setTimeout(()=>{window.xtWindow?.('ready')},150);
-  return()=>clearTimeout(timer);
+  let cancelled=false;
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const images=Array.from(document.images).map(image=>image.decode().catch(()=>{}));
+  void Promise.all([document.fonts.ready,...images]).then(()=>{
+   // A timer also runs while the native host is hidden (rAF may be suspended).
+   if(!cancelled)timer=setTimeout(()=>{if(!cancelled)void window.xtWindow?.('ready')},150);
+  });
+  return()=>{cancelled=true;clearTimeout(timer)};
  },[]);
  useEffect(()=>{
   const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='agent'||next==='dashboard'||next==='accounts'){setPage(next);setOpen(false)}};
@@ -63,7 +71,7 @@ function App(){
     </div>
    </nav>
    <div className="title-right">
-
+    <ThemeToggle/>
     {desktop&&<><WindowMenu/><div className="window-buttons">{[['minimize','−','最小化'],['maximize','□','最大化或还原'],['close','×','收起到托盘']].map(([action,label,title])=><button key={action} aria-label={title} title={title} onClick={()=>window.xtWindow?.(action)}>{label}</button>)}</div></>}
    </div>
   </header>

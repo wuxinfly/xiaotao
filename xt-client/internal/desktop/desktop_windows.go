@@ -196,10 +196,27 @@ func Window(url, data, token, title string) error {
 		return fmt.Errorf("WebView2 unavailable: %w", err)
 	}
 
-	closeSplash := showNativeSplash(windowWidth, windowHeight)
+	closeSplash, splashForeground := showNativeSplash(windowWidth, windowHeight)
 	defer closeSplash()
 
+	// WebView2 reads this at environment creation; match the native/page background.
+	previousBackground, hadBackground := os.LookupEnv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR")
+	if err := os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "FF071723"); err != nil {
+		return err
+	}
+	defer func() {
+		if hadBackground {
+			os.Setenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", previousBackground)
+		} else {
+			os.Unsetenv("WEBVIEW2_DEFAULT_BACKGROUND_COLOR")
+		}
+	}()
+	finishCreation, err := hideWebViewDuringCreation()
+	if err != nil {
+		return err
+	}
 	w := webview.NewWithOptions(webview.WebViewOptions{DataPath: filepath.Join(data, "webview"), AutoFocus: true, WindowOptions: webview.WindowOptions{Title: title, Width: windowWidth, Height: windowHeight, Center: true}})
+	finishCreation()
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
@@ -243,7 +260,7 @@ func Window(url, data, token, title string) error {
 	// invokes Go on the WebView2 message thread, which can lose the modal dialog
 	// owner and tear down the window when the picker closes.
 	w.Init(`window.xtPickFolderOnly = () => window.xtWindow?.("pick-folder");`)
-	cleanup := chrome(w, url, token, title, closeSplash)
+	cleanup := chrome(w, url, token, title, closeSplash, splashForeground)
 	defer cleanup()
 	w.Navigate(url)
 	done := make(chan struct{})

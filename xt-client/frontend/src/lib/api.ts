@@ -284,6 +284,7 @@ export const api = {
   renameAgentSession: (id: string, title: string) => request<AgentSession>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'PATCH', body: JSON.stringify({title})}),
   deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
   agentModels: (signal?: AbortSignal) => request<{ models: AgentModelOption[] }>('/api/agent/models', {signal}),
+  agentHistory: (id: string, before = '') => request<{session: AgentSession; before: string}>(`/api/agent/sessions/${encodeURIComponent(id)}/history?before=${encodeURIComponent(before)}`),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
   createAgentSession: (projectPath: string, model: string, projectName = '') =>
     request<AgentSession>('/api/agent/sessions', {

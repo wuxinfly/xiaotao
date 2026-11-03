@@ -44,13 +44,13 @@ func decodeFrame(data []byte, target []byte) (int32, int32) {
 	return w, h
 }
 
-func showNativeSplash(width, height int32) func() {
+func showNativeSplash(width, height int32) (func(), func() bool) {
 	runtime.LockOSThread()
 
 	r := bytes.NewReader(framesBIN)
 	var count int32
 	if err := binary.Read(r, binary.LittleEndian, &count); err != nil || count <= 0 {
-		return func() {}
+		return func() {}, func() bool { return false }
 	}
 	rawBuffers := make([][]byte, count)
 	for i := int32(0); i < count; i++ {
@@ -65,7 +65,7 @@ func showNativeSplash(width, height int32) func() {
 		rawBuffers[i] = buf
 	}
 	if len(rawBuffers) == 0 {
-		return func() {}
+		return func() {}, func() bool { return false }
 	}
 
 	const frameW, frameH = int32(1920), int32(1080)
@@ -217,7 +217,7 @@ func showNativeSplash(width, height int32) func() {
 	y := (int32(sh) - height) / 2
 
 	parentHwnd = win("CreateWindowExW",
-		0x00080088,
+		0x00080080, // WS_EX_LAYERED | WS_EX_TOOLWINDOW; never globally topmost.
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(className)),
 		0x80000000,
@@ -233,6 +233,7 @@ func showNativeSplash(width, height int32) func() {
 	user.NewProc("SetTimer").Call(parentHwnd, 1, 42, 0)
 
 	var closeOnce sync.Once
+	isForeground := func() bool { return parentHwnd != 0 && win("GetForegroundWindow") == parentHwnd }
 	return func() {
 		closeOnce.Do(func() {
 			close(stopChan)
@@ -247,5 +248,5 @@ func showNativeSplash(width, height int32) func() {
 			curBuf = nil
 			runtime.GC()
 		})
-	}
+	}, isForeground
 }

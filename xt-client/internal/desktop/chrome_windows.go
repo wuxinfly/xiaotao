@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+	"xiaotao/xt-client/internal/iconimage"
 )
 
 //go:embed assets/icon.png
@@ -41,17 +42,18 @@ type notifyIcon struct {
 	Balloon             uintptr
 }
 
-func appIcon() uintptr {
+func appIcon(n int) uintptr {
 	im, e := png.Decode(bytes.NewReader(iconPNG))
 	if e != nil {
 		return 0
 	}
-	const n = 64
+	im = iconimage.Render(im, n)
 	// ICO image payload: bottom-up BGRA bitmap and transparency mask.
-	b := make([]byte, 40+n*n*4+n*n/8)
+	maskStride := ((n + 31) / 32) * 4
+	b := make([]byte, 40+n*n*4+maskStride*n)
 	binary.LittleEndian.PutUint32(b, 40)
-	binary.LittleEndian.PutUint32(b[4:], n)
-	binary.LittleEndian.PutUint32(b[8:], n*2)
+	binary.LittleEndian.PutUint32(b[4:], uint32(n))
+	binary.LittleEndian.PutUint32(b[8:], uint32(n*2))
 	binary.LittleEndian.PutUint16(b[12:], 1)
 	binary.LittleEndian.PutUint16(b[14:], 32)
 	bounds := im.Bounds()
@@ -67,18 +69,31 @@ func appIcon() uintptr {
 			b[i+3] = byte(a >> 8)
 		}
 	}
-	return win("CreateIconFromResourceEx", uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x30000, n, n, 0)
+	return win("CreateIconFromResourceEx", uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), 1, 0x30000, uintptr(n), uintptr(n), 0)
 }
-func chrome(w webview.WebView, url, token, displayName string, onReady func()) func() {
+func chrome(w webview.WebView, url, token, displayName string, onReady func(), splashForeground func() bool) func() {
 	hwnd := uintptr(w.Window())
 	const bgRGB = 0x00231707
 	brush, _, _ := gdi.NewProc("CreateSolidBrush").Call(bgRGB)
 	if brush != 0 {
 		user.NewProc("SetClassLongPtrW").Call(hwnd, uintptr(uint32(0xfffffff6)), brush)
 	}
-	icon := appIcon()
+	dpi := win("GetDpiForWindow", hwnd)
+	if dpi == 0 {
+		dpi = 96
+	}
+	smallSize := win("GetSystemMetricsForDpi", 49, dpi) // SM_CXSMICON
+	largeSize := win("GetSystemMetricsForDpi", 11, dpi) // SM_CXICON
+	if smallSize == 0 {
+		smallSize = 16 * dpi / 96
+	}
+	if largeSize == 0 {
+		largeSize = 32 * dpi / 96
+	}
+	icon := appIcon(int(smallSize))
+	largeIcon := appIcon(int(largeSize))
 	win("SendMessageW", hwnd, 0x80, 0, icon)
-	win("SendMessageW", hwnd, 0x80, 1, icon)
+	win("SendMessageW", hwnd, 0x80, 1, largeIcon)
 	style := win("GetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)))
 	// Keep WS_CAPTION and WS_THICKFRAME: DWM uses these for native transitions.
 	// WM_NCCALCSIZE below removes their visible non-client area instead.
@@ -88,34 +103,49 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 	copy(n.Tip[:], syscall.StringToUTF16(displayName+" · 双击打开，右键菜单"))
 	tray, _, _ := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
 	var readyOnce sync.Once
+	var startupDone bool
+	var revealTimer *time.Timer
+	finishStartup := func() {
+		startupDone = true
+		foreground := splashForeground != nil && splashForeground()
+		if foreground {
+			win("ShowWindow", hwnd, 5)
+			win("SetForegroundWindow", hwnd)
+		} else {
+			// Keep the new window below the current application without activation.
+			win("SetWindowPos", hwnd, 1, 0, 0, 0, 0, 0x0053) // HWND_BOTTOM; SHOWWINDOW | NOACTIVATE | NOMOVE | NOSIZE
+		}
+		win("UpdateWindow", hwnd)
+		if onReady != nil {
+			onReady()
+		}
+	}
 	startTime := time.Now()
 	reveal := func() {
 		readyOnce.Do(func() {
 			elapsed := time.Since(startTime)
 			const minDuration = 3900 * time.Millisecond
 			if elapsed < minDuration {
-				time.AfterFunc(minDuration-elapsed, func() {
+				revealTimer = time.AfterFunc(minDuration-elapsed, func() {
 					w.Dispatch(func() {
-						if onReady != nil {
-							onReady()
-						}
-						win("ShowWindow", hwnd, 9)
-						win("SetForegroundWindow", hwnd)
+						finishStartup()
 					})
 				})
 				return
 			}
-			if onReady != nil {
-				onReady()
-			}
-			win("ShowWindow", hwnd, 9)
-			win("SetForegroundWindow", hwnd)
+			finishStartup()
 		})
 	}
-	time.AfterFunc(5500*time.Millisecond, func() {
+	fallback := time.AfterFunc(15*time.Second, func() {
 		w.Dispatch(reveal)
 	})
-	show := func() { reveal(); win("ShowWindow", hwnd, 9); win("SetForegroundWindow", hwnd) }
+	show := func() {
+		// Explicit tray/second-launch requests may activate, but never reveal an unready page.
+		if startupDone {
+			win("ShowWindow", hwnd, 9)
+			win("SetForegroundWindow", hwnd)
+		}
+	}
 	exit := func() {
 		go func() {
 			req, _ := http.NewRequest("POST", url+"/api/shutdown", nil)
@@ -301,6 +331,10 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 		})
 	})
 	return func() {
+		fallback.Stop()
+		if revealTimer != nil {
+			revealTimer.Stop()
+		}
 		shell.NewProc("Shell_NotifyIconW").Call(2, uintptr(unsafe.Pointer(&n)))
 		win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), old)
 		if brush != 0 {
@@ -308,6 +342,9 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func()) f
 		}
 		if icon != 0 {
 			win("DestroyIcon", icon)
+		}
+		if largeIcon != 0 {
+			win("DestroyIcon", largeIcon)
 		}
 	}
 }

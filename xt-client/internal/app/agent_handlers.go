@@ -51,6 +51,18 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, session)
 	})
+	mux.HandleFunc("GET /api/agent/sessions/{id}/history", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		page, err := svc.History(r.PathValue("id"), r.URL.Query().Get("before"))
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, page)
+	})
 	mux.HandleFunc("GET /api/agent/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
