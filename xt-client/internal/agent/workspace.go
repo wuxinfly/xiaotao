@@ -36,31 +36,8 @@ func OpenWorkspace(raw string) (*Workspace, error) {
 	return &Workspace{Root: filepath.Clean(absolute)}, nil
 }
 
-func (w *Workspace) Resolve(relative string) (string, error) {
-	relative = strings.TrimSpace(relative)
-	if filepath.IsAbs(relative) {
-		return "", fmt.Errorf("只能访问当前项目内的路径")
-	}
-	cleaned := filepath.Clean(filepath.FromSlash(relative))
-	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("路径超出了当前项目")
-	}
-	target, err := filepath.Abs(filepath.Join(w.Root, cleaned))
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(w.Root, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("路径超出了当前项目")
-	}
-	if existing, err := filepath.EvalSymlinks(target); err == nil {
-		rel, err = filepath.Rel(w.Root, existing)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("路径超出了当前项目")
-		}
-		target = existing
-	}
-	return target, nil
+func (w *Workspace) Resolve(path string) (string, error) {
+	return cleanAccessPath(w.Root, path)
 }
 
 func (w *Workspace) Read(relative string, offset, limit int) (string, error) {

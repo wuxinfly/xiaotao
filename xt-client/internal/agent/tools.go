@@ -21,11 +21,11 @@ var toolDefinitions = []map[string]any{
 		"type": "function",
 		"function": map[string]any{
 			"name":        "list_files",
-			"description": "List files and directories under the current project. Paths must be relative to the project root.",
+			"description": "List files and directories. Use absolute paths or paths relative to the working directory.",
 			"parameters": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"path":      map[string]any{"type": "string", "description": "Relative directory path, default '.'"},
+					"path":      map[string]any{"type": "string", "description": "Absolute or working-directory-relative path, default '.'"},
 					"recursive": map[string]any{"type": "boolean", "description": "Whether to recurse into subdirectories"},
 				},
 			},
@@ -35,13 +35,13 @@ var toolDefinitions = []map[string]any{
 		"type": "function",
 		"function": map[string]any{
 			"name":        "search_files",
-			"description": "Search text inside current project files. Prefer this over reading many files.",
+			"description": "Search text inside files. Prefer this over reading many files.",
 			"parameters": map[string]any{
 				"type":     "object",
 				"required": []string{"query"},
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string", "description": "Literal text to find"},
-					"path":  map[string]any{"type": "string", "description": "Relative directory path, default '.'"},
+					"path":  map[string]any{"type": "string", "description": "Absolute or working-directory-relative path, default '.'"},
 				},
 			},
 		},
@@ -50,7 +50,7 @@ var toolDefinitions = []map[string]any{
 		"type": "function",
 		"function": map[string]any{
 			"name":        "read_file",
-			"description": "Read a project file. Returns numbered lines. Use offset and limit for large files.",
+			"description": "Read a file by absolute path or relative to the working directory. Returns numbered lines. Use offset and limit for large files.",
 			"parameters": map[string]any{
 				"type":     "object",
 				"required": []string{"path"},
@@ -66,7 +66,7 @@ var toolDefinitions = []map[string]any{
 		"type": "function",
 		"function": map[string]any{
 			"name":        "write_file",
-			"description": "Create or replace a UTF-8 text file within the project. Use append=true to add content.",
+			"description": "Create or replace a UTF-8 text file by absolute path or relative to the working directory. Use append=true to add content.",
 			"parameters": map[string]any{
 				"type":     "object",
 				"required": []string{"path", "content"},
@@ -82,7 +82,7 @@ var toolDefinitions = []map[string]any{
 		"type": "function",
 		"function": map[string]any{
 			"name":        "run_command",
-			"description": "Run a non-interactive command in the project root to build, test, inspect, or edit files. Destructive system commands are rejected.",
+			"description": "Run a non-interactive command in the project root to build, test, inspect, or edit files. High-risk commands may require user confirmation.",
 			"parameters": map[string]any{
 				"type":     "object",
 				"required": []string{"command"},
@@ -236,17 +236,6 @@ func (w *Workspace) runCommand(parent context.Context, command string, timeoutSe
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "", fmt.Errorf("命令不能为空")
-	}
-	lower := strings.ToLower(command)
-	for _, blocked := range []string{
-		"rm -rf /", "rm -rf c:", "format ", "shutdown", "reboot",
-		"reg add", "reg delete", "takeown", "icacls ", "diskpart",
-		"remove-item -recurse", "rd /s", "del /s", "git reset --hard",
-		"git clean -fdx", "git checkout --",
-	} {
-		if strings.Contains(lower, blocked) {
-			return "", fmt.Errorf("该命令包含高风险操作，已拒绝执行")
-		}
 	}
 	if timeoutSec <= 0 {
 		timeoutSec = 120

@@ -9,6 +9,50 @@ import (
 )
 
 func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+	mux.HandleFunc("GET /api/agent/access-mode", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		send(w, map[string]string{"mode": svc.AccessMode()})
+	})
+	mux.HandleFunc("PUT /api/agent/access-mode", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Mode string `json:"mode"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input) != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		if err := svc.SetAccessMode(input.Mode); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]string{"mode": input.Mode})
+	})
+	mux.HandleFunc("POST /api/agent/sessions/{id}/approval", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			ID       string `json:"id"`
+			Approved bool   `json:"approved"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input) != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		if err := svc.ResolveApproval(r.PathValue("id"), input.ID, input.Approved); err != nil {
+			apiError(w, 409, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("GET /api/agent/models", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

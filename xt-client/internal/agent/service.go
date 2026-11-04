@@ -18,13 +18,14 @@ import (
 const maxTurns = 40
 
 type Service struct {
-	dataDir  string
-	endpoint string
-	key      func() string
-	client   *http.Client
-	mu       sync.Mutex
-	runs     map[string]*run
-	models   func() []ModelOption
+	dataDir   string
+	endpoint  string
+	key       func() string
+	client    *http.Client
+	mu        sync.Mutex
+	runs      map[string]*run
+	models    func() []ModelOption
+	approvals map[string]*pendingApproval
 }
 
 type run struct {
@@ -74,12 +75,13 @@ type backendResponse struct {
 
 func NewService(dataDir, endpoint string, key func() string, client *http.Client, models func() []ModelOption) *Service {
 	return &Service{
-		dataDir:  dataDir,
-		endpoint: strings.TrimRight(endpoint, "/") + "/v1/chat/completions",
-		key:      key,
-		client:   client,
-		runs:     map[string]*run{},
-		models:   models,
+		dataDir:   dataDir,
+		endpoint:  strings.TrimRight(endpoint, "/") + "/v1/chat/completions",
+		key:       key,
+		client:    client,
+		runs:      map[string]*run{},
+		approvals: map[string]*pendingApproval{},
+		models:    models,
 	}
 }
 
@@ -395,7 +397,15 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 			output := "请先关联项目才能使用文件和命令工具"
 			var toolErr error
 			if workspace != nil {
-				output, toolErr = workspace.Execute(ctx, call.Name, call.Arguments)
+				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)
+				if toolErr == nil {
+					toolErr = ctx.Err()
+				}
+				if toolErr == nil {
+					output, toolErr = workspace.Execute(ctx, call.Name, call.Arguments)
+				} else {
+					output = toolErr.Error()
+				}
 			} else {
 				toolErr = fmt.Errorf("%s", output)
 			}
@@ -497,7 +507,7 @@ func systemPrompt(root string) string {
 		"\n当前项目根目录：" + root +
 		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。操作子目录前检查并遵守该目录及其上级目录中的 AGENTS.override.md 或 AGENTS.md；同目录优先前者。" +
 		"\n修改后必须运行相关验证。不要声称执行过没有实际执行的命令。" +
-		"\n不要访问项目目录以外的路径。不要泄露凭据、token 或隐私信息。" +
+		"\n工作目录是默认位置；可以按用户要求访问其他路径。不要泄露凭据、token 或隐私信息。" +
 		"\n只有在工作完成、遇到阻碍或需要用户决定时才给最终答复。"
 }
 

@@ -157,3 +157,35 @@ func TestDeleteSession(t *testing.T) {
 		t.Fatal("missing session deletion succeeded")
 	}
 }
+
+func TestLoopDenialReturnsToolResult(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	root := t.TempDir()
+	session, err := svc.Create(Options{ProjectPath: root, Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, _ := OpenWorkspace(root)
+	fake := &fakeModel{replies: []*completion{
+		{ToolCalls: []toolCall{{ID: "call_danger", Name: "run_command", Arguments: json.RawMessage(`{"command":"git reset --hard"}`)}}},
+		{Content: "操作已取消"},
+	}}
+	err = svc.loop(context.Background(), workspace, fake, session, nil, func(event Event) {
+		if event.Approval != nil {
+			if err := svc.ResolveApproval(session.ID, event.Approval.ID, false); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.messages) != 2 {
+		t.Fatalf("expected next model turn: %d", len(fake.messages))
+	}
+	messages := fake.messages[1]
+	result := messages[len(messages)-1]
+	if result["tool_call_id"] != "call_danger" || !strings.Contains(result["content"].(string), "拒绝") {
+		t.Fatalf("denial result missing: %+v", result)
+	}
+}

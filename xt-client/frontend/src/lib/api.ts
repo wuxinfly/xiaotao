@@ -202,7 +202,8 @@ export interface AgentSession {
 }
 
 export interface AgentEvent {
-  type: 'session' | 'message' | 'activity' | 'status' | 'error';
+  type: 'session' | 'message' | 'activity' | 'status' | 'error' | 'approval';
+  approval?: {id: string; tool: string; detail: string};
   sessionId: string;
   message?: AgentMessage;
   activity?: AgentActivity;

@@ -76,8 +76,8 @@ func TestLegacyMigrationAndDefaultWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = workspace.Resolve("../agent.db"); err == nil {
-		t.Fatal("workspace must not expose database")
+	if resolved, err := workspace.Resolve("../agent.db"); err != nil || resolved != filepath.Join(data, "agent.db") {
+		t.Fatalf("unexpected relative path: %s %v", resolved, err)
 	}
 }
 func TestInvalidLegacyDoesNotPartiallyMigrate(t *testing.T) {

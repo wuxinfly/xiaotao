@@ -287,6 +287,27 @@ function exitEmptyListItem(editor: Editor): boolean {
 
 export function AgentPage({visible}: {visible: boolean}) {
   const confirm = useConfirm();
+  const [accessMode, setAccessMode] = useState<'safe' | 'full'>('safe');
+  const [accessReady, setAccessReady] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const modeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const refresh = () => { void fetch('/api/agent/access-mode').then(response => {if (!response.ok) throw new Error('读取访问模式失败'); return response.json();}).then(value => {setAccessMode(value.mode === 'full' ? 'full' : 'safe'); setAccessReady(true);}).catch(() => setAccessReady(false)); };
+    refresh(); window.addEventListener('focus', refresh); window.addEventListener('storage', refresh);
+    return () => {window.removeEventListener('focus', refresh); window.removeEventListener('storage', refresh);};
+  }, []);
+  async function changeAccessMode(mode: 'safe' | 'full') {
+    setModeMenuOpen(false);
+    if (mode === accessMode) return;
+    if (mode === 'full' && !await confirm({title: '切换到完全访问？', description: '小涛将以当前 Windows 用户权限访问和修改文件，并自主执行命令。该模式对所有会话生效。', confirmLabel: '切换'})) return;
+    try {
+      const response = await fetch('/api/agent/access-mode', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode})});
+      if (!response.ok) throw new Error('切换访问模式失败');
+      setAccessMode(mode);
+      try { localStorage.setItem('xiaotao.agent.accessModeChanged', String(Date.now())); } catch { /* Other windows refresh on focus. */ }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+  }
+
   const [sessions, setSessions] = useState<AgentSession[]>([]), [active, setActive] = useState<AgentSession | null>(null);
   const [view, setView] = useState<'project' | 'session'>(() => localStorage.getItem('xiaotao.agent.historyView') === 'session' ? 'session' : 'project');
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
@@ -536,6 +557,13 @@ export function AgentPage({visible}: {visible: boolean}) {
         throw new Error(body?.error?.message || '发送失败（' + response.status + '）');
       }
       await readEventStream(response, event => {
+        if (event.type === 'approval' && event.approval) {
+          const approval = event.approval;
+          void confirm({title:'确认高危操作？', description: `小涛准备${approval.tool === 'run_command' ? '执行以下命令' : '进行以下操作'}：\n\n${approval.detail}`, confirmLabel:'允许执行'}).then(async approved => {
+            const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/approval', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:approval.id, approved})});
+            if (!response.ok) throw new Error('确认请求已失效');
+          }).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
+        }
         if (event.type === 'session' && event.message && !submitted) {
           if (editorMarkdown(editor) === submittedContent) editor.commands.clearContent();
           submitted = true;
@@ -761,7 +789,13 @@ export function AgentPage({visible}: {visible: boolean}) {
         <div className="agent-composer">
           <EditorContent editor={editor} className="agent-editor"/>
           <div className="agent-toolbar">
-            <span className="agent-toolbar-note">{busy ? '正在运行，草稿会保留' : 'Enter 发送 · Shift + Enter 换行'}</span>
+            <div className="agent-mode-picker">
+              <button ref={modeButtonRef} type="button" className="agent-option" aria-label="访问模式" aria-expanded={modeMenuOpen} disabled={!accessReady} onClick={() => setModeMenuOpen(open => !open)}>{accessMode === 'safe' ? '安全模式' : '完全访问'}<ChevronDown aria-hidden="true"/></button>
+              <Popover open={modeMenuOpen} onClose={() => setModeMenuOpen(false)} anchorRef={modeButtonRef} side="top" className="agent-model-menu" aria-label="访问模式">
+                <button type="button" role="menuitemradio" aria-checked={accessMode === 'safe'} onClick={() => void changeAccessMode('safe')}><span>安全模式 · 高危操作需确认</span>{accessMode === 'safe' && <Check aria-hidden="true"/>}</button>
+                <button type="button" role="menuitemradio" aria-checked={accessMode === 'full'} onClick={() => void changeAccessMode('full')}><span>完全访问 · 自主执行</span>{accessMode === 'full' && <Check aria-hidden="true"/>}</button>
+              </Popover>
+            </div>
             <div className="agent-composer-actions">
               <div className="agent-model-picker">
                 <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>

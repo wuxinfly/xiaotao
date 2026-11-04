@@ -5,21 +5,24 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-func TestWorkspaceRejectsEscapesAndRewritesInsideProject(t *testing.T) {
+func TestWorkspaceAccessesPathsOutsideProject(t *testing.T) {
 	root := t.TempDir()
 	workspace, err := OpenWorkspace(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workspace.Resolve("../outside.txt"); err == nil {
-		t.Fatal("expected parent escape rejection")
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := workspace.Write(outside, "external", false); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := workspace.Resolve(filepath.Join(root, "absolute.txt")); err == nil {
-		t.Fatal("expected absolute path rejection")
+	textOutside, err := workspace.Read(outside, 1, 10)
+	if err != nil || !strings.Contains(textOutside, "external") {
+		t.Fatalf("outside read: %q %v", textOutside, err)
 	}
 	if err := workspace.Write("src/main.go", "package main\n", false); err != nil {
 		t.Fatal(err)
@@ -33,13 +36,17 @@ func TestWorkspaceRejectsEscapesAndRewritesInsideProject(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCommandRunsInProjectAndRejectsDestructive(t *testing.T) {
+func TestWorkspaceCommandRunsInProject(t *testing.T) {
 	root := t.TempDir()
 	workspace, err := OpenWorkspace(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	command, _ := json.Marshal(map[string]any{"command": "Get-Location | Select-Object -ExpandProperty Path"})
+	location := "pwd"
+	if runtime.GOOS == "windows" {
+		location = "Get-Location | Select-Object -ExpandProperty Path"
+	}
+	command, _ := json.Marshal(map[string]any{"command": location})
 	output, err := workspace.Execute(context.Background(), "run_command", command)
 	if err != nil {
 		t.Fatal(err)
@@ -47,10 +54,7 @@ func TestWorkspaceCommandRunsInProjectAndRejectsDestructive(t *testing.T) {
 	if !strings.Contains(strings.ToLower(output), strings.ToLower(root)) {
 		t.Fatalf("command ran outside project: %q", output)
 	}
-	destructive, _ := json.Marshal(map[string]any{"command": "git reset --hard"})
-	if _, err := workspace.Execute(context.Background(), "run_command", destructive); err == nil {
-		t.Fatal("expected destructive command rejection")
-	}
+
 }
 
 func TestSessionPersistsAndRejectsUnsafeID(t *testing.T) {

@@ -60,6 +60,7 @@ type ModelOption struct {
 }
 
 type Event struct {
+	Approval  *Approval `json:"approval,omitempty"`
 	Type      string    `json:"type"`
 	SessionID string    `json:"sessionId,omitempty"`
 	Message   *Message  `json:"message,omitempty"`
