@@ -4,10 +4,12 @@ import {ModalPresence} from '../../components/modal/ModalFrame';
 import {memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {SessionList} from './SessionList';
 import {createPortal} from 'react-dom';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {EditorContent, useEditor} from '@tiptap/react';
 import type {Editor, JSONContent} from '@tiptap/core';
 import {TextSelection} from '@tiptap/pm/state';
 import type {EditorState} from '@tiptap/pm/state';
+import {DOMParser as ProseMirrorDOMParser} from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Markdown from 'react-markdown';
@@ -390,6 +392,23 @@ export function AgentPage({visible}: {visible: boolean}) {
     ],
     editorProps: {
       attributes: {'aria-label': '给小涛发消息', role: 'textbox', 'aria-multiline': 'true'},
+      handlePaste: (view, event) => {
+        if (hasActiveNode(view.state, ['codeBlock'])) return false;
+        const text = event.clipboardData?.getData('text/plain').replace(/\r\n?/g, '\n');
+        const match = text?.match(/^\s*(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*\s*$/i);
+        const html = event.clipboardData?.getData('text/html') ?? '';
+        const source = new DOMParser().parseFromString(html, 'text/html');
+        const codeContainer = source.body.querySelector('pre, [style*="white-space: pre"], [style*="white-space:pre"]');
+        const copiedAsCode = !!text && !!codeContainer && source.body.textContent?.trim() === text.trim()
+          && !/^\s*(`{3,}|~{3,})/.test(text);
+        if (!match && !copiedAsCode) return false;
+        const container = document.createElement('div');
+        container.innerHTML = renderToStaticMarkup(<Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{match ? match[2] : text}</Markdown>);
+        const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(container);
+        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+        event.preventDefault();
+        return true;
+      },
       handleTextInput: (view, from, to, text) => {
         if (text !== ' ' || from !== to || hasActiveNode(view.state, ['codeBlock'])) return false;
         const { $from } = view.state.selection;
