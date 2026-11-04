@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"xiaotao/xt-client/internal/agent"
 )
@@ -155,8 +156,9 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			return
 		}
 		var input struct {
-			Content string `json:"content"`
-			Model   string `json:"model"`
+			Content    string   `json:"content"`
+			Model      string   `json:"model"`
+			References []string `json:"references"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
 			apiError(w, 400, "消息格式无效")
@@ -175,10 +177,53 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, b)
 			flusher.Flush()
 		}
-		err := svc.SendWithModel(r.Context(), r.PathValue("id"), input.Content, input.Model, write)
+		err := svc.SendWithReferences(r.Context(), r.PathValue("id"), input.Content, input.Model, input.References, write)
 		if err != nil {
 			write(agent.Event{Type: "error", SessionID: r.PathValue("id"), Error: err.Error()})
 		}
+	})
+	mux.HandleFunc("GET /api/agent/references/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		scope := r.URL.Query().Get("scope")
+		if scope == "" {
+			scope = "project"
+		}
+		if scope != "project" && scope != "all" {
+			apiError(w, 400, "引用搜索范围无效")
+			return
+		}
+		exclude := []string{}
+		for _, id := range r.URL.Query()["exclude"] {
+			if id = strings.TrimSpace(id); id != "" {
+				exclude = append(exclude, id)
+			}
+		}
+		results, err := svc.SearchConversationReferences(agent.ReferenceSearch{
+			ProjectPath: r.URL.Query().Get("projectPath"),
+			Query:       r.URL.Query().Get("query"),
+			Exclude:     exclude,
+			AllProjects: scope == "all",
+		})
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]any{"sessions": results})
+	})
+	mux.HandleFunc("GET /api/agent/references/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		detail, err := svc.ConversationReference(r.PathValue("id"))
+		if err != nil {
+			apiError(w, 404, err.Error())
+			return
+		}
+		send(w, detail)
 	})
 	mux.HandleFunc("POST /api/agent/sessions/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {

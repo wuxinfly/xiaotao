@@ -17,12 +17,13 @@ type Project struct {
 }
 
 type Message struct {
-	ID         string    `json:"id"`
-	Role       string    `json:"role"`
-	Content    string    `json:"content"`
-	ToolCallID string    `json:"toolCallId,omitempty"`
-	ToolName   string    `json:"toolName,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID         string                  `json:"id"`
+	Role       string                  `json:"role"`
+	Content    string                  `json:"content"`
+	ToolCallID string                  `json:"toolCallId,omitempty"`
+	ToolName   string                  `json:"toolName,omitempty"`
+	References []ConversationReference `json:"references,omitempty"`
+	CreatedAt  time.Time               `json:"createdAt"`
 }
 
 type Activity struct {
@@ -57,6 +58,27 @@ type Options struct {
 type ModelOption struct {
 	Model string `json:"model"`
 	Label string `json:"label"`
+}
+
+type ConversationReference struct {
+	ID              string    `json:"id"`
+	SourceSessionID string    `json:"sourceSessionId"`
+	Title           string    `json:"title"`
+	ProjectName     string    `json:"projectName,omitempty"`
+	Summary         string    `json:"summary,omitempty"`
+	LastPosition    int64     `json:"lastPosition"`
+	Truncated       bool      `json:"truncated,omitempty"`
+	SourceAvailable bool      `json:"sourceAvailable,omitempty"`
+	HasNewContent   bool      `json:"hasNewContent,omitempty"`
+	SourceUpdatedAt time.Time `json:"sourceUpdatedAt"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+type ConversationReferenceCandidate struct {
+	SessionID string    `json:"sessionId"`
+	Title     string    `json:"title"`
+	Project   Project   `json:"project"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type Event struct {

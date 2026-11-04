@@ -259,6 +259,12 @@ func (s *Service) Send(ctx context.Context, sessionID, text string, emit func(Ev
 // SendWithModel selects the model for this message and subsequent messages.
 // An empty model preserves the session selection.
 func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model string, emit func(Event)) error {
+	return s.SendWithReferences(ctx, sessionID, text, model, nil, emit)
+}
+
+// SendWithReferences freezes directly referenced conversations before appending
+// the user message. Existing callers without references keep the old behavior.
+func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model string, sourceIDs []string, emit func(Event)) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("消息不能为空")
@@ -307,23 +313,28 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 	history.Status = StatusRunning
 	history.Error = ""
 	now := time.Now()
-	userMessage := Message{ID: "msg_" + randomID(6), Role: "user", Content: text, CreatedAt: now}
+	references, referenceSources, err := s.prepareConversationReferencesForSend(sourceIDs, now)
+	if err != nil {
+		return err
+	}
+	if err = s.saveConversationReferences(references, referenceSources); err != nil {
+		return err
+	}
+	userMessage := Message{ID: "msg_" + randomID(6), Role: "user", Content: text, References: references, CreatedAt: now}
 	history.Messages = append(history.Messages, userMessage)
 	history.UpdatedAt = now
 	if history.Title == "新任务" {
 		history.Title = titleFromPrompt(text)
 	}
-	if err := s.saveSession(history); err != nil {
+	if err := s.saveSessionWithReferences(history, nil, nil); err != nil {
 		return err
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
 	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + "\n" + instructions}}
-	for _, message := range history.Messages {
-		messages = append(messages, messageToModel(message))
-	}
+	messages = append(messages, modelHistory(history.Messages, userMessage.ID)...)
 	client := &httpModelClient{endpoint: s.endpoint, key: s.key, client: s.client}
-	err = s.loop(runCtx, workspace, client, history, messages, emit)
+	err = s.loopWithReferences(runCtx, workspace, client, history, messages, references, emit)
 	history.UpdatedAt = time.Now()
 	if err != nil {
 		if runCtx.Err() != nil {
@@ -346,6 +357,10 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 }
 
 func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, emit func(Event)) error {
+	return s.loopWithReferences(ctx, workspace, client, history, messages, nil, emit)
+}
+
+func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, emit func(Event)) error {
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -353,6 +368,9 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 		var tools []map[string]any
 		if workspace != nil {
 			tools = toolDefinitions
+		}
+		if len(references) > 0 {
+			tools = append(append([]map[string]any{}, tools...), referenceToolDefinition)
 		}
 		var streamed *Message
 		result, err := client.Complete(ctx, history.Model, messages, tools, func(delta string) {
@@ -420,7 +438,9 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
 			output := "请先关联项目才能使用文件和命令工具"
 			var toolErr error
-			if workspace != nil {
+			if call.Name == "read_conversation_reference" {
+				output, toolErr = s.readConversationReference(call.Arguments, references)
+			} else if workspace != nil {
 				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)
 				if toolErr == nil {
 					toolErr = ctx.Err()

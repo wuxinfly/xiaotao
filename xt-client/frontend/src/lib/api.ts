@@ -175,7 +175,35 @@ export interface AgentMessage {
   content: string;
   toolCallId?: string;
   toolName?: string;
+  references?: AgentConversationReference[];
   createdAt: string;
+}
+
+export interface AgentConversationReference {
+  id: string;
+  sourceSessionId: string;
+  title: string;
+  projectName?: string;
+  summary?: string;
+  lastPosition: number;
+  truncated?: boolean;
+  sourceAvailable?: boolean;
+  hasNewContent?: boolean;
+  sourceUpdatedAt: string;
+  createdAt: string;
+}
+
+export interface AgentReferenceCandidate {
+  sessionId: string;
+  title: string;
+  project: AgentProject;
+  updatedAt: string;
+}
+
+export interface AgentConversationReferenceDetail {
+  reference: AgentConversationReference;
+  summary: string;
+  sourceAvailable: boolean;
 }
 
 export interface AgentActivity {
@@ -288,6 +316,12 @@ export const api = {
   deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
   agentModels: (signal?: AbortSignal) => request<{ models: AgentModelOption[] }>('/api/agent/models', {signal}),
   agentHistory: (id: string, before = '') => request<{session: AgentSession; before: string}>(`/api/agent/sessions/${encodeURIComponent(id)}/history?before=${encodeURIComponent(before)}`),
+  agentReferenceSessions: (query: string, scope: 'project' | 'all', projectPath: string, exclude: string[] = []) => {
+    const params = new URLSearchParams({query, scope, projectPath});
+    for (const id of exclude) params.append('exclude', id);
+    return request<{sessions: AgentReferenceCandidate[]}>(`/api/agent/references/sessions?${params}`);
+  },
+  agentReference: (id: string) => request<AgentConversationReferenceDetail>(`/api/agent/references/${encodeURIComponent(id)}`),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
   createAgentSession: (projectPath: string, model: string, projectName = '') =>
     request<AgentSession>('/api/agent/sessions', {

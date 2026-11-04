@@ -187,6 +187,13 @@
 .agent-working-row > .agent-message-avatar { position: absolute; left: -40px; top: 0; }
 .agent-message-body { display: flex; flex-direction: column; gap: 5px; max-width: 100%; min-width: 0; }
 .agent-message.role-user .agent-message-body { align-items: flex-end; max-width: 78%; }
+.agent-message-references { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; max-width: 100%; }
+.agent-message-reference { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; padding: 3px 7px; border: 1px solid rgba(96, 199, 205, .22); border-radius: 6px; background: rgba(18, 71, 86, .42); color: #a6d9dd; font-size: 10.5px; line-height: 1.5; }
+.agent-message-reference svg { flex: none; width: 11px; height: 11px; }
+.agent-message-reference span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-message-reference small { flex: none; color: #7fc4c8; font-size: 9.5px; }
+.agent-message-reference.is-unavailable { border-style: dashed; color: #c9a996; }
+.agent-message-reference:hover { border-color: rgba(112, 224, 220, .5); background: rgba(25, 91, 105, .56); }
 .agent-message-avatar {
   display: grid; place-items: center; flex: none; width: 29px; height: 29px;
   margin-top: 1px; border: 1px solid rgba(83, 191, 213, .18);
@@ -379,6 +386,8 @@
 }
 .agent-editor .tiptap pre code { padding: 0; background: transparent; color: inherit; }
 .agent-editor .tiptap a { color: #72e8df; text-decoration: underline; text-underline-offset: 2px; }
+.agent-editor .tiptap .agent-conversation-reference { display: inline-flex; align-items: center; max-width: 100%; margin: 0 2px; padding: 1px 6px 2px; border: 1px solid rgba(106, 223, 219, .3); border-radius: 5px; background: rgba(34, 104, 116, .34); color: #b4f1ed; font-size: .92em; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: baseline; }
+.agent-editor .tiptap .agent-conversation-reference.ProseMirror-selectednode { border-color: #7be9e3; background: rgba(57, 151, 155, .42); }
 .agent-editor .tiptap strong { color: #f4fbfc; }
 .agent-editor .tiptap hr {
   margin: 10px 0; border: 0; border-top: 1px solid rgba(113, 181, 199, .3);
@@ -425,6 +434,30 @@
 .agent-send.is-stop { background: #f0a497; color: #3b1117; }
 .agent-send.is-stop:hover { background: #ffc1b5; }
 .agent-send.is-stop svg { width: 12px; height: 12px; fill: currentColor; }
+
+.agent-reference-picker { position: fixed; z-index: 120; overflow: hidden; border: 1px solid rgba(104, 180, 196, .3); border-radius: 8px; background: #092535; box-shadow: 0 16px 38px rgba(0, 0, 0, .4); color: #c6e1e5; }
+.agent-reference-picker-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 7px; color: #8db8c0; font-size: 11px; }
+.agent-reference-picker-head svg { width: 13px; height: 13px; flex: none; }
+.agent-reference-picker-head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-reference-picker-head > button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #789da7; }
+.agent-reference-picker-head > button:hover { background: rgba(81, 168, 176, .16); color: #c8e8e8; }
+.agent-reference-scope { display: flex; gap: 4px; padding: 0 10px 8px; }
+.agent-reference-scope button { padding: 3px 8px; border: 1px solid rgba(100, 174, 185, .18); border-radius: 5px; background: transparent; color: #82aeba; font-size: 10.5px; }
+.agent-reference-scope button[aria-pressed="true"] { border-color: rgba(100, 219, 215, .4); background: rgba(50, 143, 147, .24); color: #c2f1ed; }
+.agent-reference-results { max-height: min(300px, 42vh); overflow-y: auto; border-top: 1px solid rgba(98, 169, 183, .16); padding: 5px; }
+.agent-reference-results > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-radius: 5px; background: transparent; color: inherit; text-align: left; }
+.agent-reference-results > button:hover, .agent-reference-results > button[aria-selected="true"] { background: rgba(55, 142, 153, .23); }
+.agent-reference-results > button > span { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.agent-reference-results strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d9edef; font-size: 12px; font-weight: 500; }
+.agent-reference-results small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7196a3; font-size: 10px; }
+.agent-reference-results time { flex: none; color: #648693; font-size: 9.5px; }
+.agent-reference-results p { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 18px 8px; color: #789da7; font-size: 11px; }
+.agent-reference-results p.is-error { color: #efa59a; }
+.agent-reference-results p svg { width: 12px; height: 12px; }
+.agent-reference-status { margin-bottom: 10px; padding: 8px 10px; border: 1px solid rgba(86, 191, 191, .22); border-radius: 6px; background: rgba(27, 88, 101, .25); color: #9ccbd0; font-size: 11px; line-height: 1.6; }
+.agent-reference-status.is-warning { border-color: rgba(195, 146, 104, .35); background: rgba(91, 57, 39, .22); color: #e3bd9d; }
+.agent-reference-summary { max-height: 48vh; overflow: auto; margin: 0; padding: 11px 12px; border: 1px solid rgba(92, 167, 179, .18); border-radius: 6px; background: rgba(3, 27, 40, .5); color: #c4dde2; font: 12px/1.7 Consolas, 'Microsoft YaHei', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .agent-message-reference, .agent-reference-results > button { transition: none; } }
 .agent-hint { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 20px; color: #597d8c; font-size: 10.5px; }
 .agent-hint .agent-project-context { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #88a9b5; }
 .agent-hint button { padding: 2px 4px; border: 0; background: transparent; color: #68c9c3; font-size: 10.5px; }

@@ -20,7 +20,7 @@ func (s *Service) openStore() (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 	fail := func(e error) (*sql.DB, error) { db.Close(); return nil, e }
-	_, err = db.Exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, metadata TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS activities (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS migration (name TEXT PRIMARY KEY)")
+	_, err = db.Exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, metadata TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS activities (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS conversation_references (id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL, source_text TEXT NOT NULL); CREATE INDEX IF NOT EXISTS conversation_references_source ON conversation_references(source_session_id,created_at); CREATE TABLE IF NOT EXISTS migration (name TEXT PRIMARY KEY)")
 	if err != nil {
 		return fail(err)
 	}
@@ -123,6 +123,25 @@ func (s *Service) saveSession(item *Session) error {
 	}
 	return tx.Commit()
 }
+func (s *Service) saveSessionWithReferences(item *Session, refs []ConversationReference, sources map[string]referenceSource) error {
+	db, e := s.openStore()
+	if e != nil {
+		return e
+	}
+	defer db.Close()
+	tx, e := db.Begin()
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if e = saveConversationReferences(tx, refs, sources); e != nil {
+		return e
+	}
+	if e = writeSession(tx, item); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
 func readSession(db *sql.DB, id string) (*Session, error) {
 	var raw string
 	if e := db.QueryRow("SELECT metadata FROM sessions WHERE id=?", id).Scan(&raw); e != nil {
@@ -167,6 +186,9 @@ func readSession(db *sql.DB, id string) (*Session, error) {
 		if e != nil {
 			return nil, e
 		}
+	}
+	if e := hydrateMessageReferences(db, item.Messages); e != nil {
+		return nil, e
 	}
 	return &item, nil
 }

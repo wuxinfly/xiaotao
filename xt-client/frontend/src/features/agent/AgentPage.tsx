@@ -7,7 +7,7 @@ import {createPortal} from 'react-dom';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {EditorContent, useEditor} from '@tiptap/react';
 import type {Editor, JSONContent} from '@tiptap/core';
-import {TextSelection} from '@tiptap/pm/state';
+import {NodeSelection, TextSelection} from '@tiptap/pm/state';
 import type {EditorState} from '@tiptap/pm/state';
 import {DOMParser as ProseMirrorDOMParser, Fragment, Slice} from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
@@ -34,8 +34,9 @@ import {
   Square,
   X,
 } from 'lucide-react';
-import {api, type AgentActivity, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentSession} from '../../lib/api';
-import {AgentSettingsModal, ProjectModal, RenameSessionModal} from './AgentModals';
+import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentReferenceCandidate, type AgentSession} from '../../lib/api';
+import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
+import {ConversationReference, conversationReferenceType} from './ConversationReference';
 import './agent.css';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 
@@ -106,9 +107,18 @@ function formatElapsed(start: string, end: string | number) {
 const MessageRow = memo(function MessageRow({item, followsProcess}: {item: AgentMessage; followsProcess: boolean}) {
   return <article className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
     {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet running={false}/></div>}
-    <div className="agent-message-body"><div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div></div>
+    <div className="agent-message-body">
+      {item.role === 'user' && !!item.references?.length && <div className="agent-message-references" aria-label="已引用对话">
+        {item.references.map(reference => <button type="button" key={reference.id} className={'agent-message-reference' + (reference.sourceAvailable === false ? ' is-unavailable' : '')} onClick={() => window.dispatchEvent(new CustomEvent('xiaotao:agent-reference', {detail: reference}))} title={reference.sourceAvailable === false ? '来源对话已删除，摘要仍保留' : `引用对话：${reference.title}`}>
+          <MessageSquarePlus aria-hidden="true"/><span>{reference.title}</span>
+          {reference.hasNewContent && <small>有新内容</small>}
+          {reference.sourceAvailable === false && <small>来源不可用</small>}
+        </button>)}
+      </div>}
+      <div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div>
+    </div>
   </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content);
+}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references));
 
 function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () => void; children: React.ReactNode}) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -149,6 +159,72 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
 }
 
+function ReferencePicker({anchor, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
+  anchor: React.RefObject<HTMLDivElement | null>;
+  query: string;
+  scope: 'project' | 'all';
+  results: AgentReferenceCandidate[];
+  index: number;
+  loading: boolean;
+  error: string;
+  onScope: (scope: 'project' | 'all') => void;
+  onChoose: (item: AgentReferenceCandidate) => void;
+  onClose: () => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({left: 0, top: 0, width: 360});
+  useLayoutEffect(() => {
+    const place = () => {
+      const rect = anchor.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(420, Math.max(260, rect.width - 24));
+      const height = panel.current?.offsetHeight ?? 280;
+      const above = rect.top - 10;
+      const below = window.innerHeight - rect.bottom - 10;
+      const top = above >= Math.min(height, 320) || above >= below ? Math.max(8, rect.top - Math.min(height, 320) - 8) : rect.bottom + 8;
+      setPosition({left: Math.max(8, Math.min(rect.left + 12, window.innerWidth - width - 8)), top, width});
+    };
+    place();
+    window.addEventListener('resize', place);
+    document.addEventListener('scroll', place, true);
+    return () => {window.removeEventListener('resize', place); document.removeEventListener('scroll', place, true);};
+  }, [anchor, results.length, loading, error]);
+  return createPortal(<div ref={panel} className="agent-reference-picker" style={position} role="dialog" aria-label="引用其他对话">
+    <div className="agent-reference-picker-head"><Search aria-hidden="true"/><span>{query ? `搜索“${query}”` : '引用对话'}</span><button type="button" aria-label="关闭引用选择" title="关闭" onClick={event => {event.preventDefault(); onClose();}}><X aria-hidden="true"/></button></div>
+    <div className="agent-reference-scope" role="group" aria-label="引用搜索范围">
+      <button type="button" aria-pressed={scope === 'project'} onClick={() => onScope('project')}>当前项目</button>
+      <button type="button" aria-pressed={scope === 'all'} onClick={() => onScope('all')}>所有项目</button>
+    </div>
+    <div className="agent-reference-results" role="listbox" aria-label="可引用对话">
+      {results.map((item, itemIndex) => <button type="button" role="option" aria-selected={itemIndex === index} key={item.sessionId} onMouseDown={event => event.preventDefault()} onClick={() => onChoose(item)}>
+        <span><strong>{item.title}</strong><small>{item.project.name}</small></span>
+        <time>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</time>
+      </button>)}
+      {loading && <p><LoaderCircle className="agent-spin" aria-hidden="true"/>正在搜索…</p>}
+      {!loading && error && <p className="is-error" role="alert">{error}</p>}
+      {!loading && !error && !results.length && <p>没有匹配的对话</p>}
+    </div>
+  </div>, document.body);
+}
+
+function ReferenceModal({reference, onOpenSource, onClose}: {reference: AgentConversationReference; onOpenSource: (id: string) => void; onClose: () => void}) {
+  const [summary, setSummary] = useState(reference.summary || '');
+  const [sourceAvailable, setSourceAvailable] = useState(reference.sourceAvailable !== false);
+  const [newContent, setNewContent] = useState(!!reference.hasNewContent);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    void api.agentReference(reference.id).then(detail => {
+      if (!live) return;
+      setSummary(detail.summary);
+      setSourceAvailable(!!detail.sourceAvailable);
+      setNewContent(!!detail.reference.hasNewContent);
+    }).catch(reason => { if (live) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => {live = false;};
+  }, [reference.id]);
+  return <>{error && <div className="agent-modal-error" role="alert">{error}</div>}<ReferenceDetailModal reference={reference} summary={summary} sourceAvailable={sourceAvailable} newContent={newContent} onOpenSource={() => onOpenSource(reference.sourceSessionId)} onClose={onClose}/></>;
+}
+
 
 const enabledModelsKey = 'xiaotao.agent.enabledModels';
 const modelLabelsKey = 'xiaotao.agent.modelLabels';
@@ -179,6 +255,7 @@ function readEnabledModels() {
 }
 
 function inlineMarkdown(node: JSONContent): string {
+  if (node.type === conversationReferenceType) return '@' + String(node.attrs?.title || '');
   if (node.type === 'text') {
     let text = node.text ?? '';
     for (const mark of node.marks ?? []) {
@@ -234,6 +311,25 @@ function blockMarkdown(node: JSONContent, indent: number): string {
 
 function editorMarkdown(editor: Editor): string {
   return blocksMarkdown(editor.getJSON().content ?? []).trim();
+}
+
+function editorReferenceIds(editor: Editor): string[] {
+  const ids: string[] = [];
+  const visit = (node: JSONContent) => {
+    if (node.type === conversationReferenceType && typeof node.attrs?.sessionId === 'string') ids.push(node.attrs.sessionId);
+    for (const child of node.content ?? []) visit(child);
+  };
+  visit(editor.getJSON());
+  return Array.from(new Set(ids.filter(Boolean)));
+}
+
+function referenceQueryAtCursor(state: EditorState): {from: number; query: string} | null {
+  if (hasActiveNode(state, ['codeBlock'])) return null;
+  const {from} = state.selection;
+  const textBefore = state.doc.textBetween(Math.max(0, from - 80), from, '\n', '\ufffc');
+  const match = /(?:^|\s)@([^\s@]*)$/.exec(textBefore);
+  if (!match) return null;
+  return {from: from - match[1].length - 1, query: match[1]};
 }
 
 function hasActiveNode(state: EditorState, names: string[]): boolean {
@@ -416,10 +512,22 @@ export function AgentPage({visible}: {visible: boolean}) {
     return () => observer.disconnect();
   }, []);
   const promptRef = useRef(''), canSendRef = useRef(false);
+  const referenceQueryRef = useRef<{from: number; query: string} | null>(null);
+  const referenceOpenRef = useRef(false);
+  const closeReferencePickerRef = useRef<() => void>(() => {});
+  const [referencePicker, setReferencePicker] = useState<{open: boolean; query: string; scope: 'project' | 'all'}>({open: false, query: '', scope: 'project'});
+  const [referenceResults, setReferenceResults] = useState<AgentReferenceCandidate[]>([]);
+  const [referenceIndex, setReferenceIndex] = useState(0);
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const [referenceError, setReferenceError] = useState('');
+  const referenceRequest = useRef(0);
+  const referenceComposerRef = useRef<HTMLDivElement>(null);
+  const [referenceDetail, setReferenceDetail] = useState<AgentConversationReference | null>(null);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({trailingNode: false}),
       Placeholder.configure({placeholder: '描述你想完成的事…'}),
+      ConversationReference,
     ],
     editorProps: {
       attributes: {'aria-label': '给小涛发消息', role: 'textbox', 'aria-multiline': 'true'},
@@ -463,6 +571,27 @@ export function AgentPage({visible}: {visible: boolean}) {
         return true;
       },
       handleKeyDown: (view, event) => {
+        if (referenceOpenRef.current && !event.isComposing) {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setReferenceIndex(index => referenceResults.length ? (index + (event.key === 'ArrowDown' ? 1 : -1) + referenceResults.length) % referenceResults.length : 0);
+            return true;
+          }
+          if (event.key === 'Enter' && referenceResults.length) {
+            event.preventDefault();
+            chooseReference(referenceResults[referenceIndex]);
+            return true;
+          }
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            return true;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeReferencePicker();
+            return true;
+          }
+        }
         if (event.key !== 'Enter' || event.isComposing) return false;
         if (event.ctrlKey || event.metaKey) {
           if (!canSendRef.current) return false;
@@ -493,8 +622,70 @@ export function AgentPage({visible}: {visible: boolean}) {
       const next = editorMarkdown(editor);
       promptRef.current = next;
       setPrompt(next);
+      if (editor.state.selection instanceof NodeSelection && editor.state.selection.node.type.name === conversationReferenceType) {
+        closeReferencePickerRef.current();
+        return;
+      }
+      const query = referenceQueryAtCursor(editor.state);
+      if (!query) {
+        closeReferencePickerRef.current();
+        return;
+      }
+      referenceOpenRef.current = true;
+      setReferencePicker(current => ({...current, open: true, query: query.query}));
+      referenceQueryRef.current = query;
+      setReferenceIndex(0);
     },
   });
+
+  useEffect(() => {
+    if (!referencePicker.open) return;
+    const request = ++referenceRequest.current;
+    setReferenceLoading(true);
+    setReferenceError('');
+    api.agentReferenceSessions(referencePicker.query, referencePicker.scope, active?.project.path || path, Array.from(new Set([active?.id, ...editorReferenceIds(editor!)].filter((id): id is string => !!id))))
+      .then(result => {
+        if (request !== referenceRequest.current) return;
+        setReferenceResults(result.sessions);
+        setReferenceIndex(0);
+      })
+      .catch(reason => {
+        if (request === referenceRequest.current) setReferenceError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {if (request === referenceRequest.current) setReferenceLoading(false);});
+    return () => {};
+  }, [referencePicker.open, referencePicker.query, referencePicker.scope, active?.id, active?.project.path, path, prompt]);
+
+  useEffect(() => {
+    const show = (event: Event) => setReferenceDetail((event as CustomEvent<AgentConversationReference>).detail);
+    window.addEventListener('xiaotao:agent-reference', show);
+    return () => window.removeEventListener('xiaotao:agent-reference', show);
+  }, []);
+
+  function closeReferencePicker() {
+    referenceQueryRef.current = null;
+    referenceOpenRef.current = false;
+    setReferencePicker(current => current.open ? {...current, open: false} : current);
+    setReferenceResults([]);
+    setReferenceError('');
+  }
+  closeReferencePickerRef.current = closeReferencePicker;
+
+  function chooseReference(candidate: AgentReferenceCandidate) {
+    const current = referenceQueryRef.current ?? (editor ? referenceQueryAtCursor(editor.state) : null);
+    if (!editor || !current) return;
+    const node = editor.schema.nodes[conversationReferenceType].create({
+      sessionId: candidate.sessionId,
+      title: candidate.title,
+      projectName: candidate.project.name,
+      updatedAt: candidate.updatedAt,
+    });
+    const tr = editor.state.tr.replaceWith(current.from, editor.state.selection.from, node);
+    tr.insertText(' ', current.from + node.nodeSize);
+    editor.view.dispatch(tr.scrollIntoView());
+    editor.commands.focus();
+    closeReferencePicker();
+  }
 
   useEffect(() => {
     let live = true;
@@ -546,6 +737,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
+    const references = editorReferenceIds(editor);
     setBusy(true);
     setError('');
     setActive(current => current ? {...current, error: ''} : current);
@@ -561,7 +753,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({content, model: model || session.model}),
+        body: JSON.stringify({content, model: model || session.model, references}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -576,7 +768,10 @@ export function AgentPage({visible}: {visible: boolean}) {
           }).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
         }
         if (event.type === 'session' && event.message && !submitted) {
-          if (editorMarkdown(editor) === submittedContent) editor.commands.clearContent();
+          if (editorMarkdown(editor) === submittedContent) {
+            editor.commands.clearContent();
+            closeReferencePicker();
+          }
           submitted = true;
         }
         setActive(current => current?.id === id ? applyEvent(current, event) : current);
@@ -601,6 +796,23 @@ export function AgentPage({visible}: {visible: boolean}) {
     }
   }
   sendRef.current = () => {void send();};
+
+  async function openReferencedSession(id: string) {
+    if (busy) return;
+    setReferenceDetail(null);
+    setBusy(true);
+    setError('');
+    try {
+      resetHistory(); setOpenActivities({});
+      const page = await api.agentHistory(id);
+      setActive(page.session);
+      setHistoryBefore(page.before);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const [sidebarProjectMenu, setSidebarProjectMenu] = useState<{path: string; name: string; key: string} | null>(null);
   const [renamingProject, setRenamingProject] = useState<{path: string; name: string} | null>(null);
@@ -681,7 +893,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     setSettingsOpen(false);
   }
 
-  canSendRef.current = !busy && !!prompt.trim() && (!!active || !!model);
+  const hasReference = !!editor && editorReferenceIds(editor).length > 0;
+  canSendRef.current = !busy && (!!prompt.trim() || hasReference) && (!!active || !!model);
 
   const activity = active?.activity ?? [];
   const entries = useMemo(() => {
@@ -852,8 +1065,9 @@ export function AgentPage({visible}: {visible: boolean}) {
           {!active && path && <button type="button" className="agent-project-clear" disabled={busy} onClick={() => {setPath(''); setProjectName('');}} aria-label="清空工作区目录" title="清空工作区目录"><X aria-hidden="true"/></button>}
           </div>
         </div>
-        <div className="agent-composer">
+        <div className="agent-composer" ref={referenceComposerRef}>
           <EditorContent editor={editor} className="agent-editor"/>
+          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
             <div className="agent-mode-picker">
               <button ref={modeButtonRef} type="button" className="agent-option" aria-label="访问模式" aria-expanded={modeMenuOpen} disabled={!accessReady} onClick={() => setModeMenuOpen(open => !open)}>{accessMode === 'safe' ? '安全模式' : '完全访问'}<ChevronDown aria-hidden="true"/></button>
@@ -873,7 +1087,7 @@ export function AgentPage({visible}: {visible: boolean}) {
               </div>
               {busy
                 ? <button type="button" className="agent-send is-stop" onClick={stop} aria-label="停止任务" title="停止任务"><Square aria-hidden="true"/></button>
-                : <button type="button" className="agent-send" disabled={!prompt.trim() || (!active && !model)} onClick={() => void send()} aria-label="发送消息" title="发送消息"><ArrowUp aria-hidden="true"/></button>}
+                : <button type="button" className="agent-send" disabled={!canSendRef.current} onClick={() => void send()} aria-label="发送消息" title="发送消息"><ArrowUp aria-hidden="true"/></button>}
             </div>
           </div>
         </div>
@@ -887,6 +1101,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
+    <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>
     <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
     <ModalPresence>{settingsOpen && <AgentSettingsModal
       models={models}

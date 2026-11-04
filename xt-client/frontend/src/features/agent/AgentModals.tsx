@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
 import {Check, ChevronDown, FolderOpen, Search, X} from 'lucide-react';
-import {api, type AgentModelOption} from '../../lib/api';
+import {api, type AgentConversationReference, type AgentModelOption} from '../../lib/api';
 
 declare global {
   interface Window {
@@ -282,5 +282,29 @@ export function ProjectModal({name, path, onApply, onClose}: ProjectModalProps) 
       {draftPath ? '小涛只会访问这个目录里的文件。' : '不选文件夹时，任务会使用小涛数据目录里的默认工作区。'}
     </div>
     {error && <div className="agent-modal-error" role="alert">{error}</div>}
+  </ModalFrame>;
+}
+
+export function ReferenceDetailModal({reference, summary, sourceAvailable, newContent, onOpenSource, onClose}: {
+  reference: AgentConversationReference;
+  summary: string;
+  sourceAvailable: boolean;
+  newContent: boolean;
+  onOpenSource: () => void;
+  onClose: () => void;
+}) {
+  return <ModalFrame
+    title={reference.title}
+    description={`引用固定于 ${new Date(reference.createdAt).toLocaleString('zh-CN')}`}
+    className="agent-reference-modal"
+    onClose={onClose}
+    footer={<>
+      <button type="button" className="app-modal-button quiet" disabled={!sourceAvailable} onClick={onOpenSource}>打开原对话</button>
+      <button type="button" className="app-modal-button primary" onClick={onClose}>关闭</button>
+    </>}
+  >
+    {!sourceAvailable && <div className="agent-reference-status is-warning" role="status">来源对话已删除，已保存的摘要仍可查看。</div>}
+    {sourceAvailable && newContent && <div className="agent-reference-status" role="status">来源对话后来有新内容；旧消息仍使用引用时的快照。</div>}
+    <pre className="agent-reference-summary">{sourceAvailable ? summary : reference.summary || '摘要不可用'}</pre>
   </ModalFrame>;
 }
