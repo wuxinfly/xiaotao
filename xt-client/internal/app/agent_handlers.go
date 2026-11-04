@@ -206,6 +206,48 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, project)
 	})
+	mux.HandleFunc("PATCH /api/agent/project/name", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		if err := svc.RenameProject(input.Path, input.Name); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/agent/project/open", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		project, err := svc.Project(input.Path)
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		if err = openProjectFolder(project.Path); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("POST /api/agent/project/pick", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

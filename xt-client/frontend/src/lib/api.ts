@@ -282,6 +282,8 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }),
   agentSessions: () => request<{ sessions: AgentSession[] }>('/api/agent/sessions?summary=1'),
+  renameAgentProject: (path: string, name: string) => request('/api/agent/project/name', {method: 'PATCH', body: JSON.stringify({path, name})}),
+  openAgentProject: (path: string) => request('/api/agent/project/open', {method: 'POST', body: JSON.stringify({path})}),
   renameAgentSession: (id: string, title: string) => request<AgentSession>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'PATCH', body: JSON.stringify({title})}),
   deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
   agentModels: (signal?: AbortSignal) => request<{ models: AgentModelOption[] }>('/api/agent/models', {signal}),

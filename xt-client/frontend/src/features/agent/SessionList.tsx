@@ -1,10 +1,12 @@
 import {memo, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
-import {ChevronDown, Folder, MoreVertical} from 'lucide-react';
+import {ChevronDown, Folder, MoreVertical, MoreHorizontal, SquarePen} from 'lucide-react';
 import type {AgentSession} from '../../lib/api';
 
 type Props = {
   sessions: AgentSession[]; activeId?: string; view: 'project' | 'session';
   loading: boolean; busy: boolean; deleting: string; menuId?: string;
+  onNewProjectChat: (path: string, name: string) => void;
+  onProjectMenu: (path: string, name: string, trigger: HTMLElement, key: string) => void;
   onSelect: (session: AgentSession) => void;
   onMenu: (session: AgentSession, x: number, y: number, trigger: HTMLElement) => void;
 };
@@ -98,8 +100,9 @@ export const SessionList = memo(function SessionList(props: Props) {
     <div className="agent-session-window" style={{height}}>{visible.map(row => <div key={row.key} data-row-index={rowIndices.get(row.key)} className="agent-session-window-row" style={{top:row.top, height:row.height}} onFocus={() => setFocusedKey(row.key)}>
       {row.kind === 'group' ? <div className={'agent-session-group' + (!collapsed.has(row.key.slice(6)) ? ' is-open' : '')}>
         <button type="button" className={'agent-group-label' + (!row.path ? ' agent-group-label-recent' : '')} title={row.path || row.name} aria-expanded={!collapsed.has(row.key.slice(6))} onClick={() => setCollapsed(current => {const next = new Set(current); const key = row.key.slice(6); if (next.has(key)) next.delete(key); else next.add(key); return next;})}>
-          {row.path && <Folder aria-hidden="true"/>}<span>{row.name}</span><ChevronDown className="agent-group-chevron" aria-hidden="true"/>
+          {row.path && <Folder aria-hidden="true"/>}<span>{row.name}</span>{!row.path && <ChevronDown className="agent-group-chevron" aria-hidden="true"/>}
         </button>
+        {row.path && <div className="agent-group-actions"><button type="button" aria-label={'项目操作 '+row.name} aria-haspopup="menu" aria-expanded={menuId === row.key} disabled={busy} onClick={event => props.onProjectMenu(row.path, row.name, event.currentTarget, row.key)}><MoreHorizontal aria-hidden="true"/></button><button type="button" aria-label={'在 '+row.name+' 中新建会话'} title="新建会话" disabled={busy} onClick={() => props.onNewProjectChat(row.path, row.name)}><SquarePen aria-hidden="true"/></button></div>}
       </div> : <div className="agent-session-row" onContextMenu={event => {event.preventDefault(); onMenu(row.item, event.clientX, event.clientY, event.currentTarget.querySelector('button')!);}}>
         <button type="button" disabled={busy} className={'agent-session-select ' + (row.item.id === activeId ? 'is-active' : '')} title={row.item.title} aria-current={row.item.id === activeId ? 'true' : undefined} onClick={() => onSelect(row.item)}>
           <span>{row.item.title}</span><small>{[view === 'session' ? row.item.project.name || '默认工作目录' : '', dateLabel(row.item.updatedAt)].filter(Boolean).join(' · ')}</small>

@@ -33,10 +33,10 @@ function projectNameFromPath(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() || '';
 }
 
-export function RenameSessionModal({title, origin, onSave, onClose}: {title: string; origin?: {x: number; y: number}; onSave: (value: string) => Promise<void>; onClose: () => void}) {
+export function RenameSessionModal({title, origin, onSave, onClose, project = false}: {project?: boolean; title: string; origin?: {x: number; y: number}; onSave: (value: string) => Promise<void>; onClose: () => void}) {
  const [value, setValue] = useState(title), [saving, setSaving] = useState(false), [error, setError] = useState('');
  const submit = async () => { if (saving || !value.trim()) return; setSaving(true); setError(''); try { await onSave(value.trim()); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally {setSaving(false);} };
- return <ModalFrame origin={origin} title="重命名会话" className="agent-rename-modal" onClose={() => {if (!saving) onClose();}} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={saving} onClick={onClose}>取消</button><button type="button" className="app-modal-button primary" disabled={saving || !value.trim() || Array.from(value.trim()).length > 100} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</button></div>}><label className="agent-field"><span>会话名称</span><input value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => {if(event.key === 'Enter' && !event.nativeEvent.isComposing) void submit();}}/></label>{error && <p className="agent-modal-error" role="alert">{error}</p>}</ModalFrame>;
+ return <ModalFrame origin={origin} title={project ? "重命名项目" : "重命名会话"} className="agent-rename-modal" onClose={() => {if (!saving) onClose();}} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={saving} onClick={onClose}>取消</button><button type="button" className="app-modal-button primary" disabled={saving || !value.trim() || Array.from(value.trim()).length > 100} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</button></div>}><label className="agent-field"><span>{project ? "项目名称" : "会话名称"}</span><input value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => {if(event.key === 'Enter' && !event.nativeEvent.isComposing) void submit();}}/></label>{error && <p className="agent-modal-error" role="alert">{error}</p>}</ModalFrame>;
 }
 
 interface AgentSettingsModalProps {

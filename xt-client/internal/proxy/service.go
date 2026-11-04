@@ -1,4 +1,4 @@
-﻿package proxy
+package proxy
 
 import (
 	"context"
@@ -96,9 +96,16 @@ func (s *Service) Models() ([]map[string]any, error) {
 				continue
 			}
 			seen[id] = true
-			out = append(out, map[string]any{
+			// Keep metadata from the first catalog in account routing order.
+			// A union could advertise capabilities the selected account cannot serve.
+			entry := map[string]any{
 				"id": id, "object": "model", "created": 0, "owned_by": "xiaotao",
-			})
+				"supports_images": m.Multimodal, "supports_reasoning": m.Reasoning,
+			}
+			if m.MaxInputTokens > 0 {
+				entry["max_input_tokens"] = m.MaxInputTokens
+			}
+			out = append(out, entry)
 		}
 	}
 	return out, nil

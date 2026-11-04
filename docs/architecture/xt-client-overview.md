@@ -174,3 +174,15 @@
 2026-11-02 浮窗入口调整：浮窗使用 WS_EX_TOOLWINDOW 并移除 WS_EX_APPWINDOW，不单独出现在任务栏和 Alt+Tab；开关迁移至托盘右键菜单，按实际窗口状态显示打开或关闭，主窗口顶部入口和轮询移除。前端构建、Go 测试及 vet 通过，任务栏和托盘菜单实际交互待新 EXE 验收。
 
 2026-11-02 紧凑三条请求布局：进行中请求优先，同组按发起时间倒序，合并最近记录并按 ID 去重后最多显示三条；每条两行，今日用量单行，逻辑窗口缩为 340×240。真实 API 浏览器预览确认三条请求无需滚动；新尺寸桌面壳仍待新包验收。
+
+### 后续协议入口待办（2026-11-04）
+
+目前对外提供 `/v1/chat/completions`，接收 `reasoning_effort`。Codex provider 内部调用 Responses 不等于对外实现 `/v1/responses`；Anthropic `/v1/messages` 与 Responses 入口仍待接入。
+
+接入时必须覆盖推理参数转换：
+- Anthropic `thinking.type=enabled` 的 `budget_tokens` 映射至上游支持的推理档位，`disabled` 映射为关闭；具体阈值按渠道能力确定，不直接照搬参考项目。
+- Responses `reasoning.effort` 转为内部 `reasoning_effort`；null 表示使用默认，不下发空值。
+- 如兼容显式 `reasoning_effort` 扩展字段，明确其优先级；未知值和不支持的档位应有确定行为。
+- 验证缺省、关闭、预算边界、字段冲突、非法值及流式/非流式一致性，避免参数被静默丢弃。
+
+这属于后续协议接入任务，不影响当前 Chat Completions 的使用。

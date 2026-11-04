@@ -65,3 +65,57 @@ func TestAccountModelsCatalogAndFallback(t *testing.T) {
 	}
 	t.Fatal("missing WorkBuddy MiMo")
 }
+
+// metadataProvider supplies deterministic account-specific catalogs without network calls.
+type metadataProvider struct{}
+
+func (metadataProvider) Info() providers.Info { return providers.Info{ID: "metadata-test"} }
+func (metadataProvider) ListModels(region string) []providers.ModelInfo {
+	if region == "first" {
+		return []providers.ModelInfo{{ID: "shared", Multimodal: true, MaxInputTokens: 180000}, {ID: "unknown"}}
+	}
+	return []providers.ModelInfo{{ID: "shared", Reasoning: true, MaxInputTokens: 600000}, {ID: "other", Reasoning: true}}
+}
+
+func TestModelsCapabilityMetadata(t *testing.T) {
+	providers.Register(metadataProvider{})
+	store, err := storage.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, acct := range []*storage.Account{
+		{ID: "first", Provider: "metadata-test", Region: "first", Enabled: true},
+		{ID: "second", Provider: "metadata-test", Region: "second", Enabled: true},
+		{ID: "disabled", Provider: "workbuddy", Enabled: false},
+	} {
+		if err := store.UpsertAccount(acct); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := New(store, nil, "")
+	models, err := svc.Models()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 3 {
+		t.Fatalf("expected 3 unique enabled models: %+v", models)
+	}
+	byID := map[string]map[string]any{}
+	for _, model := range models {
+		byID[model["id"].(string)] = model
+	}
+	shared := byID["metadata-test/shared"]
+	if shared["supports_images"] != true || shared["supports_reasoning"] != false || shared["max_input_tokens"] != 180000 {
+		t.Fatalf("metadata must follow first account, not union: %+v", shared)
+	}
+	unknown := byID["metadata-test/unknown"]
+	if _, ok := unknown["max_input_tokens"]; ok {
+		t.Fatalf("unknown window must be omitted: %+v", unknown)
+	}
+	if unknown["supports_images"] != false || unknown["supports_reasoning"] != false {
+		t.Fatalf("unexpected unknown capabilities: %+v", unknown)
+	}
+	if byID["metadata-test/other"]["supports_reasoning"] != true {
+		t.Fatal("lost reasoning metadata")
+	}
+}

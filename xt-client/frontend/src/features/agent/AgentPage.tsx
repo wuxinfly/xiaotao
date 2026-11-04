@@ -1,7 +1,7 @@
 import {AgentDroplet, activityState} from './AgentDroplet';
 import {Popover} from '../../components/popover/Popover';
 import {ModalPresence} from '../../components/modal/ModalFrame';
-import {memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {Fragment as ReactFragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {SessionList} from './SessionList';
 import {createPortal} from 'react-dom';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -17,6 +17,7 @@ import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import {
   ArrowUp,
+  ArrowDown,
   ListFilter,
   Check,
   ChevronDown,
@@ -355,6 +356,16 @@ export function AgentPage({visible}: {visible: boolean}) {
   useEffect(() => { if (!visible || busy || active) setProjectMenuOpen(false); }, [visible, busy, active]);
   const feed = useRef<HTMLDivElement>(null), composer = useRef<HTMLDivElement>(null), sendRef = useRef<() => void>(() => {});
   const followFeed = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const updateScrollToBottom = useCallback(() => {
+    const el = feed.current;
+    setShowScrollToBottom(!!el && el.scrollHeight - el.scrollTop - el.clientHeight >= 80);
+  }, []);
+  function scrollToBottom() {
+    const el = feed.current;
+    if (!el) return;
+    el.scrollTo({top: el.scrollHeight, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+  }
   const [historyBefore, setHistoryBefore] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
@@ -392,10 +403,10 @@ export function AgentPage({visible}: {visible: boolean}) {
       if (version === historyRequest.current) { historyInFlight.current = false; setHistoryLoading(false); }
     }
   }
-  function resetHistory() {
+  const resetHistory = useCallback(() => {
     historyRequest.current++; historyInFlight.current = false;
     setHistoryBefore(''); setHistoryLoading(false); setHistoryError(''); prependAnchor.current = null;
-  }
+  }, []);
 
   useEffect(() => {
     const element = composer.current;
@@ -404,8 +415,10 @@ export function AgentPage({visible}: {visible: boolean}) {
     const observer = new ResizeObserver(() => {
       scrollArea.style.setProperty('--composer-height', `${element.offsetHeight}px`);
       if (followFeed.current) scrollArea.scrollTop = scrollArea.scrollHeight;
+      updateScrollToBottom();
     });
     observer.observe(element);
+    observer.observe(scrollArea);
     return () => observer.disconnect();
   }, []);
   const promptRef = useRef(''), canSendRef = useRef(false);
@@ -530,6 +543,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   useEffect(() => {
     if (feed.current && followFeed.current) feed.current.scrollTop = feed.current.scrollHeight;
+    updateScrollToBottom();
   }, [active?.messages, active?.activity.length, busy, visible]);
 
   async function send(contentOverride?: string) {
@@ -593,6 +607,26 @@ export function AgentPage({visible}: {visible: boolean}) {
     }
   }
   sendRef.current = () => {void send();};
+
+  const [sidebarProjectMenu, setSidebarProjectMenu] = useState<{path: string; name: string; key: string} | null>(null);
+  const [renamingProject, setRenamingProject] = useState<{path: string; name: string} | null>(null);
+  const sidebarProjectTrigger = useRef<HTMLElement | null>(null);
+  useEffect(() => { if (!visible || busy) setSidebarProjectMenu(null); }, [visible, busy]);
+  const newProjectChat = useCallback(async (projectPath: string, name: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const resolved = await api.resolveAgentProject(projectPath);
+      resetHistory(); setActive(null); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
+      editor?.commands.clearContent(); editor?.commands.focus();
+    } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
+    finally {setBusy(false);}
+  }, [busy, editor, resetHistory]);
+  const openSidebarProjectMenu = useCallback((path: string, name: string, trigger: HTMLElement, key: string) => {
+    sidebarProjectTrigger.current = trigger;
+    setSessionMenu(null);
+    setSidebarProjectMenu({path, name, key});
+  }, []);
 
   function newChat() {
     if (busy) return;
@@ -713,6 +747,15 @@ export function AgentPage({visible}: {visible: boolean}) {
     const workingAvatar = finishTurn(busy);
     return {avatarOwners: owners, workingAvatar};
   }, [entries, busy]);
+  // Keep the current turn's status above its prose, sharing an existing tool panel.
+  const currentTurnStart = entries.reduce((start, entry, index) => entry.kind === 'message' && entry.item.role === 'user' ? index + 1 : start, 0);
+  const currentTurn = entries.slice(currentTurnStart);
+  const workingIndex = busy && !currentTurn.some(entry => entry.kind === 'activity') ? currentTurnStart : -1;
+  const workingIndicator = <div className="agent-working-row" role="status">
+    {workingAvatar && <div className="agent-message-avatar"><AgentDroplet running/></div>}<div className="agent-working">
+      <span><strong>{currentTurn.some(entry => entry.kind === 'message' && entry.item.role === 'assistant') ? '正在回复' : '正在思考'}</strong><small>{currentTurn.some(entry => entry.kind === 'message' && entry.item.role === 'assistant') ? '正在生成回复…' : '正在准备下一步…'}</small></span>
+    </div>
+  </div>;
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const activeProjectPath = active ? active.project.path : path;
   const availablePickerModels = models.filter(item => enabledModels.includes(item.model));
@@ -733,7 +776,7 @@ export function AgentPage({visible}: {visible: boolean}) {
           {(['project', 'session'] as const).map(option => <button type="button" key={option} className={view === option ? 'is-active' : ''} aria-pressed={view === option} onClick={() => {setView(option); localStorage.setItem('xiaotao.agent.historyView', option); setViewMenuOpen(false); viewButtonRef.current?.focus();}}><span>{option === 'project' ? '按项目查看' : '按会话查看'}</span>{view === option && <Check aria-hidden="true"/>}</button>)}
         </Popover>
       </div>
-      <SessionList sessions={sessions} activeId={active?.id} view={view} loading={loading} busy={busy} deleting={deleting} menuId={sessionMenu?.item.id} onSelect={selectSession} onMenu={openSessionMenu}/>
+      <SessionList sessions={sessions} activeId={active?.id} view={view} loading={loading} busy={busy} deleting={deleting} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onSelect={selectSession} onMenu={openSessionMenu}/>
       <div className="agent-sidebar-foot">
         <span className="agent-status-dot"/>
         <span>本地工作区</span>
@@ -751,7 +794,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         </button>
       </header>
 
-      <div className="agent-feed" ref={feed} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
+      <div className="agent-feed" ref={feed} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; updateScrollToBottom(); if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
         {active && historyBefore && <div className="agent-history-load"><button type="button" disabled={historyLoading || busy} onClick={() => void loadOlder()}>{historyLoading ? '正在加载历史…' : historyError ? '加载失败，点击重试' : '加载更早的消息'}</button>{historyError && <span role="status">{historyError}</span>}</div>}
         {!active && <div className="agent-empty">
           <div className="agent-empty-mark"><img src="/mascot.png" alt=""/></div>
@@ -793,17 +836,15 @@ export function AgentPage({visible}: {visible: boolean}) {
             </div></div>;
           }
           const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
-          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess}/>;
+          return <ReactFragment key={entry.item.id}>{index === workingIndex && workingIndicator}<MessageRow item={entry.item} followsProcess={followsProcess}/></ReactFragment>;
         })}
 
-        {busy && entries.at(-1)?.kind !== 'activity' && <div className="agent-working-row" role="status">
-          {workingAvatar && <div className="agent-message-avatar"><AgentDroplet running/></div>}<div className="agent-working">
-          <span><strong>正在思考</strong><small>正在准备下一步…</small></span>
-        </div></div>}
+        {workingIndex === entries.length && workingIndicator}
         {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
       </div>
 
       <div className="agent-composer-wrap" ref={composer}>
+        <button type="button" className={'agent-scroll-bottom' + (showScrollToBottom ? ' is-visible' : '')} onClick={scrollToBottom} aria-label="回到底部" title="回到底部" aria-hidden={!showScrollToBottom} tabIndex={showScrollToBottom ? 0 : -1} inert={!showScrollToBottom}><ArrowDown aria-hidden="true"/></button>
         <div className="agent-project-row">
           <div className={'agent-project-picker' + (path && !active ? ' has-project' : '')}>
           <Popover open={projectMenuOpen} onClose={() => setProjectMenuOpen(false)} anchorRef={projectTriggerRef} initialFocusRef={projectSearchRef} side="top" className="agent-project-menu" role="dialog" aria-label="选择项目">
@@ -861,6 +902,8 @@ export function AgentPage({visible}: {visible: boolean}) {
       </div>
     </div>
 
+    <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
+    <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
     <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
     <ModalPresence>{settingsOpen && <AgentSettingsModal

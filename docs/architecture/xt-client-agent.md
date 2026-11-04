@@ -158,3 +158,6 @@ Agent 消息区与输入框共用 --agent-content-width / --agent-content-edge �
 自动化新增：Go 覆盖空历史、单流、相同时间、完整遍历、追加记录游标稳定性、超长记录不截断、非法游标和 API 同源检查；`frontend/tests/history.browser.test.mjs` 使用 Edge 无头浏览器和全部 API 拦截的合成数据，验证 1 万条会话下节点小于 35 个、折叠卸载、Home / End / 方向键、菜单 Escape、80→100 条历史追加、失败重试位置保持、输入保留历史 DOM、发送保留历史及迟到响应隔离。
 
 待验收：真实数据的大体量打开耗时与滚动帧率、WebView2 桌面壳、缩放和窄窗口、执行活动跨页的复杂组合。正文仍未实现动态高度虚拟滚动，持续加载会累积节点；摘要仍全量读取。根据真实长会话测量再决定第三阶段。
+
+
+项目侧边栏（2026-11-04）：项目仍按目录分组，项目行提供预填项目的新会话入口与 Portal 操作菜单。`PATCH /api/agent/project/name` 事务更新同目录会话的项目显示元数据，保留历史及更新时间，运行中项目拒绝修改；`POST /api/agent/project/open` 检查目录后通过 Windows ShellExecute 打开资源管理器，两者均校验同源。
