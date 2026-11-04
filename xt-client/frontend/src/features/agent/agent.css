@@ -172,6 +172,11 @@
 .agent-process-popover li time { flex: none; color: #668b99; font-size: 10px; font-variant-numeric: tabular-nums; }
 .agent-process-popover li strong { flex: none; color: #aecbd5; font-size: 11px; font-weight: 500; }
 .agent-process-popover li small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6c8e9b; font-size: 10.5px; line-height: 1.5; }
+.agent-process-popover li.agent-process-note { padding-left: 25px; color: var(--ocean-text-soft, #aecbd5); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.agent-process-popover li.agent-process-note::before { top: 0; }
+.agent-process-popover li.agent-process-note:first-child::before { display: none; }
+.agent-process-popover li.agent-process-note > div { display: block; overflow-x: auto; }
+.agent-process-note p { margin: 4px 0; }
 .agent-spin { animation: agent-spin 1.1s linear infinite; }
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 

@@ -666,17 +666,53 @@ export function AgentPage({visible}: {visible: boolean}) {
       ...(active?.messages.filter(item => item.role !== 'tool').map(item => ({kind: 'message' as const, time: item.createdAt, item})) ?? []),
       ...activity.map(item => ({kind: 'activity' as const, time: item.startedAt, item})),
     ].sort((a, b) => a.time.localeCompare(b.time));
-    const entries: Array<{kind: 'message'; item: AgentMessage} | {kind: 'activity'; items: AgentActivity[]}> = [];
-    for (const entry of timeline) {
-      if (entry.kind === 'message') entries.push({kind: 'message', item: entry.item});
-      else {
-        const last = entries.at(-1);
-        if (last?.kind === 'activity') last.items.push(entry.item);
-        else entries.push({kind: 'activity', items: [entry.item]});
+    const entries: Array<{kind: 'message'; item: AgentMessage} | {kind: 'activity'; items: AgentActivity[]; details: typeof timeline}> = [];
+    let turn: typeof timeline = [];
+    const finishTurn = () => {
+      let lastActivity = -1;
+      turn.forEach((entry, index) => { if (entry.kind === 'activity') lastActivity = index; });
+      if (lastActivity >= 0) {
+        // Tool-round prose arrives with the final history refresh. Keep it inside
+        // the same process instead of splitting the already visible card.
+        const details = turn.slice(0, lastActivity + 1);
+        entries.push({kind: 'activity', items: details.flatMap(entry => entry.kind === 'activity' ? [entry.item] : []), details});
       }
+      for (const entry of turn.slice(lastActivity + 1)) {
+        if (entry.kind === 'message') entries.push({kind: 'message', item: entry.item});
+      }
+      turn = [];
+    };
+    for (const entry of timeline) {
+      if (entry.kind === 'message' && entry.item.role === 'user') {
+        finishTurn();
+        entries.push({kind: 'message', item: entry.item});
+      } else turn.push(entry);
     }
+    finishTurn();
     return entries;
   }, [active?.messages, active?.activity]);
+  const {avatarOwners, workingAvatar} = useMemo(() => {
+    const owners = new Set<number>();
+    let response: number | undefined, process: number | undefined;
+    const finishTurn = (pending: boolean) => {
+      const owner = process ?? (pending ? undefined : response);
+      if (owner !== undefined) owners.add(owner);
+      return owner === undefined;
+    };
+    entries.forEach((entry, index) => {
+      if (entry.kind === 'message' && entry.item.role === 'user') {
+        finishTurn(false);
+        response = process = undefined;
+      } else if (entry.kind === 'activity') {
+        process = index;
+      } else if (entry.item.role === 'assistant') {
+        response ??= index;
+      }
+    });
+    // Prose can precede tools: choose one avatar for the whole user turn.
+    const workingAvatar = finishTurn(busy);
+    return {avatarOwners: owners, workingAvatar};
+  }, [entries, busy]);
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const activeProjectPath = active ? active.project.path : path;
   const availablePickerModels = models.filter(item => enabledModels.includes(item.model));
@@ -740,7 +776,7 @@ export function AgentPage({visible}: {visible: boolean}) {
             const started = previous?.kind === 'message' && previous.item.role === 'user' ? previous.item.createdAt : entry.items[0].startedAt;
             const ended = next?.kind === 'message' && next.item.role === 'assistant' ? next.item.createdAt : latest?.endedAt;
             const status = running ? latest?.status === 'running' ? '正在执行' : '继续思考' : next?.kind === 'message' && next.item.role === 'assistant' ? '执行完成' : active?.status === 'canceled' ? '已停止' : active?.status === 'failed' ? '执行中断' : '步骤已结束';
-            return <div key={id} className="agent-process-row"><div className="agent-message-avatar"><AgentDroplet state={running ? activityState(latest?.kind) : status === '执行中断' ? 'error' : status === '已停止' ? 'waiting' : 'completed'}/></div><div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
+            return <div key={id} className="agent-process-row">{avatarOwners.has(index) && <div className="agent-message-avatar"><AgentDroplet state={running ? activityState(latest?.kind) : status === '执行中断' ? 'error' : status === '已停止' ? 'waiting' : 'completed'}/></div>}<div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
               <button type="button" className="agent-process-summary" onClick={() => setOpenActivities(current => ({...current, [id]: !open}))} aria-expanded={open}>
                 <span className="agent-process-icon">{running ? <LoaderCircle className="agent-spin" aria-hidden="true"/> : status === '执行中断' || status === '已停止' ? <X aria-hidden="true"/> : <Check aria-hidden="true"/>}</span>
                 <span><strong>{status}</strong><small>{[running && latest?.status !== 'running' ? '最近操作' : '', latest?.title, latest?.detail].filter(Boolean).join(' · ')}</small></span>
@@ -748,16 +784,20 @@ export function AgentPage({visible}: {visible: boolean}) {
                 <ChevronDown className="agent-process-chevron" aria-hidden="true"/>
               </button>
               <ProcessDetails open={open} onClose={() => setOpenActivities(current => ({...current, [id]: false}))}>
-                {entry.items.map(item => <li key={item.id} data-status={item.status}><span>{activityIcon(item)}</span><div><strong>{item.title}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</div><time>{item.endedAt ? formatElapsed(item.startedAt, item.endedAt) : item.status === 'running' && running ? formatElapsed(item.startedAt, clock) : ''}</time></li>)}
+                {entry.details.map(detail => {
+                  if (detail.kind === 'message') return <li key={detail.item.id} className="agent-process-note"><div><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{detail.item.content}</Markdown></div></li>;
+                  const item = detail.item;
+                  return <li key={item.id} data-status={item.status}><span>{activityIcon(item)}</span><div><strong>{item.title}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</div><time>{item.endedAt ? formatElapsed(item.startedAt, item.endedAt) : item.status === 'running' && running ? formatElapsed(item.startedAt, clock) : ''}</time></li>;
+                })}
               </ProcessDetails>
             </div></div>;
           }
-          const followsProcess = entry.item.role === 'assistant' && entries[index - 1]?.kind === 'activity';
+          const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
           return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess}/>;
         })}
 
         {busy && entries.at(-1)?.kind !== 'activity' && <div className="agent-working-row" role="status">
-          <div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working">
+          {workingAvatar && <div className="agent-message-avatar"><AgentDroplet running/></div>}<div className="agent-working">
           <span><strong>正在思考</strong><small>正在准备下一步…</small></span>
         </div></div>}
         {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
