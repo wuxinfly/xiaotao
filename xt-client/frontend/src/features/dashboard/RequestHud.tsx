@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Minus } from 'lucide-react';
+import { Activity, Settings, X } from 'lucide-react';
 import type { Account, RequestSummary } from '../../lib/api';
 import { useDashboardData } from './DashboardData';
 import './request-hud.css';
@@ -52,7 +52,6 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
     const active = (request: RequestSummary) => request.status === 'pending' || request.status === 'streaming' ? 1 : 0;
     return active(b) - active(a) || b.startedAt - a.startedAt;
   }).slice(0, 3) : [];
-  const displayStatus = '最近请求';
   const todayTokens = snap ? snap.today.promptTokens + snap.today.completionTokens : 0;
   useEffect(() => {
     if (!enabled) return;
@@ -98,59 +97,51 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
         inert={!enabled}
       >
         <header className="request-hud-header">
-          <span className={`request-hud-pulse${connected ? ' is-live' : ''}`} aria-hidden="true" />
-          <strong title={displayStatus}>{displayStatus}</strong>
-          <span className={`request-hud-connection${connected ? ' is-live' : ''}`}>
-            {connectionText}
-          </span>
-          <button
-            type="button"
-            className="request-hud-minimize"
-            onClick={onClose}
-            aria-label="收起请求浮窗"
-            title="收起请求浮窗"
-          >
-            <Minus aria-hidden="true" />
+          <Activity className="request-hud-icon" aria-hidden="true" />
+          <strong>小涛</strong>
+          <span className="request-hud-connection" title={connectionText}>{connectionText}</span>
+          <button type="button" className="request-hud-button" aria-label="设置（暂不可用）" title="设置（暂不可用）" disabled>
+            <Settings aria-hidden="true" />
+          </button>
+          <button type="button" className="request-hud-button request-hud-close" onClick={onClose} aria-label="关闭请求浮窗" title="关闭请求浮窗">
+            <X aria-hidden="true" />
           </button>
         </header>
 
+        <div className="request-hud-stats">
+          <div className="request-hud-total">
+            <span>今日用量 · {snap ? `${formatCompactNumber(snap.today.totalRequests)} 次请求` : '等待数据'}</span>
+            <strong>{snap ? formatCompactNumber(todayTokens) : '—'}</strong>
+          </div>
+          <div className="request-hud-direction">
+            <span>输入 / 输出 Token</span>
+            <div><span className="is-up">↑ {snap ? formatCompactNumber(snap.today.promptTokens) : '—'}</span><span className="is-down">↓ {snap ? formatCompactNumber(snap.today.completionTokens) : '—'}</span></div>
+          </div>
+        </div>
+        <div className="request-hud-list-heading"><span>最近请求</span><span>{requests.length} 条</span></div>
         <div className="request-hud-body">
           {!snap ? (
-            <div className="request-hud-state">
-              <Activity aria-hidden="true" />
-              <span>{error || '正在读取请求状态…'}</span>
-            </div>
+            <div className="request-hud-state">{error || '正在读取请求状态…'}</div>
           ) : requests.length > 0 ? (
             <div className="hud-request-list" role="list" aria-label="最近三条请求">
-              {requests.map(request => {
-                const elapsed = Math.max(0, ((request.endedAt || nowMs) - request.startedAt) / 1000);
+              {requests.map((request, index) => {
                 const account = accountName(request.accountId, accounts);
-                return <div className={`hud-request-item is-${request.status}`} role="listitem" key={request.id}>
-                  <div className="hud-request-line">
-                    <i className={`request-hud-status-dot ${request.status}`} aria-hidden="true" />
-                    <strong title={request.model}>{request.model}</strong>
-                    <span className="hud-request-speed">{speedText(request)}</span>
-                  </div>
-                  <div className="hud-request-meta">
-                    <span title={account}>{account}</span>
-                    <span title={requestStatus(request, nowMs)}>{request.status === 'pending' ? '等待响应' : request.status === 'streaming' ? '正在输出' : request.statusText} · {elapsed.toFixed(1)}s</span>
-                  </div>
+                const speed = request.speedTokPerSec;
+                const tier = speed == null || speed <= 0 ? 'idle' : speed < 10 ? 'slow' : speed < 50 ? 'normal' : 'fast';
+                const elapsed = Math.max(0, ((request.endedAt || nowMs) - request.startedAt) / 1000);
+                const details = `${account} · ${request.model} · ${requestStatus(request, nowMs)} · ${elapsed.toFixed(1)}s`;
+                return <div className="hud-request-item" role="listitem" key={request.id} title={details}>
+                  <span className="hud-request-index">{index + 1}</span>
+                  <span className="hud-request-name"><span className="hud-request-account">{account} · </span>{request.model}</span>
+                  <span className={`hud-request-speed is-${tier}`} title="输出速率">{speedText(request)}</span>
+                  <span className="hud-request-tokens" title="Token 总数">{request.tokens.total == null ? '—' : formatCompactNumber(request.tokens.total)}</span>
                 </div>;
               })}
-            </div>          ) : (
-            <div className="request-hud-idle">
-              <Activity aria-hidden="true" />
-              <strong>暂无请求</strong>
-              <span>下一条请求会自动显示在这里</span>
             </div>
+          ) : (
+            <div className="request-hud-idle">暂无进行中的请求</div>
           )}
         </div>
-
-        <footer className="request-hud-today">
-          <span>今日用量</span>
-          <strong>{snap ? `${formatCompactNumber(todayTokens)} Token` : '—'}</strong>
-          <small>{snap ? `${formatCompactNumber(snap.today.totalRequests)} 次请求` : '等待数据'}</small>
-        </footer>
       </aside>
     </>,
     document.body,

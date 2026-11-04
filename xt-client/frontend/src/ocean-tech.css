@@ -597,15 +597,6 @@
   background: rgba(12, 59, 74, 0.62);
 }
 
-/* Floating status surfaces use the same deep-water glass. */
-.request-hud {
-  border-color: rgba(89, 192, 212, 0.32);
-  background: linear-gradient(145deg, rgba(8, 44, 60, 0.98), rgba(3, 23, 37, 0.98));
-  box-shadow:
-    0 20px 46px rgba(0, 7, 16, 0.5),
-    inset 0 1px 0 rgba(190, 248, 245, 0.055);
-}
-
 .request-hud-toggle {
   border-color: rgba(88, 184, 204, 0.28);
   background: rgba(5, 38, 53, 0.86);
@@ -616,10 +607,6 @@
   border-color: rgba(88, 227, 213, 0.38);
   background: rgba(17, 75, 89, 0.8);
   color: #efffff;
-}
-
-.request-hud-pulse.is-live {
-  background: var(--ocean-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
