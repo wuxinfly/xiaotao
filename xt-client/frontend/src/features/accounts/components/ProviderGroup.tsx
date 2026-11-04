@@ -74,7 +74,7 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
       <div className="provider-group-header" onClick={event => { if (event.target === event.currentTarget) toggleCollapsed(); }}>
         <button
             type="button"
-            className="group-left group-collapse-btn"
+            className="group-collapse-btn"
             onClick={toggleCollapsed}
             aria-expanded={!collapsed}
             aria-controls={`accounts-${providerId}`}
@@ -83,10 +83,12 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="m3 9 5-5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          <ProviderIcon provider={providerId} size={24} />
-          <span className="group-title">{displayName}</span>
-          <span className="group-count-badge">{count} 个账号</span>
-        </button>
+          </button>
+          <div className="group-left">
+            <ProviderIcon provider={providerId} size={24} />
+            <span className="group-title">{displayName}</span>
+            <span className="group-count-badge">{count} 个账号</span>
+          </div>
 
         <div className="group-right">
           {supportsCheckin && count > 0 && onCheckinAll && (

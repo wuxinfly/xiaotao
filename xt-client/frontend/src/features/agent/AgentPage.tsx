@@ -150,12 +150,6 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
 }
 
 
-const suggestions = [
-  {label: '看看这个项目里有什么', prompt: '先看看这个项目里有什么，再告诉我整体结构。'},
-  {label: '帮我找一个问题并修复', prompt: '检查项目里一个明显的问题，说明原因后直接修复，并运行相关验证。'},
-  {label: '跑一遍测试看看哪里坏了', prompt: '运行项目现有测试，找出失败原因并修复。'},
-];
-
 const enabledModelsKey = 'xiaotao.agent.enabledModels';
 const modelLabelsKey = 'xiaotao.agent.modelLabels';
 const modelCatalogKey = 'xiaotao.agent.modelCatalog';
@@ -644,11 +638,6 @@ export function AgentPage({visible}: {visible: boolean}) {
     if (active) void api.cancelAgentSession(active.id).catch(reason => setError(String(reason)));
   }
 
-  function chooseSuggestion(value: string) {
-    editor?.commands.setContent(value, {emitUpdate: true});
-    editor?.commands.focus('end');
-  }
-
   const selectSession = useCallback(async (session: AgentSession) => {
     if (busy || session.id === active?.id) return;
     setError('');
@@ -797,15 +786,8 @@ export function AgentPage({visible}: {visible: boolean}) {
       <div className="agent-feed" ref={feed} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; updateScrollToBottom(); if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
         {active && historyBefore && <div className="agent-history-load"><button type="button" disabled={historyLoading || busy} onClick={() => void loadOlder()}>{historyLoading ? '正在加载历史…' : historyError ? '加载失败，点击重试' : '加载更早的消息'}</button>{historyError && <span role="status">{historyError}</span>}</div>}
         {!active && <div className="agent-empty">
-          <div className="agent-empty-mark"><img src="/mascot.png" alt=""/></div>
-          <p className="agent-kicker">小涛 Agent</p>
+          <div className="agent-empty-mark"><img src="/agent/mascot-hero.png" alt=""/></div>
           <h1>今天想做什么？</h1>
-          <p className="agent-empty-copy">选一个项目，描述目标，剩下的交给我。</p>
-          <div className="agent-suggestions">
-            {suggestions.map(suggestion => <button type="button" key={suggestion.label} onClick={() => chooseSuggestion(suggestion.prompt)}>
-              {suggestion.label}<ArrowUp aria-hidden="true"/>
-            </button>)}
-          </div>
         </div>}
 
         {entries.map((entry, index) => {

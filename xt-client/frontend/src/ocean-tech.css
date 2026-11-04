@@ -253,19 +253,6 @@
 
 .agent-project-trigger:hover:not(:disabled) { color: #efffff; }
 
-.agent-suggestions button {
-  border-color: rgba(103, 181, 201, 0.22);
-  background: rgba(11, 52, 71, 0.58);
-  color: #b5d4dd;
-}
-
-.agent-suggestions button:hover:not(:disabled) {
-  border-color: rgba(102, 237, 224, 0.42);
-  background: rgba(19, 79, 94, 0.78);
-  color: #f1fffd;
-  box-shadow: 0 5px 18px rgba(0, 36, 54, 0.2);
-}
-
 .agent-composer {
   border-color: rgba(94, 200, 216, 0.3);
   background: linear-gradient(135deg, #0d3444, #051b2a);
