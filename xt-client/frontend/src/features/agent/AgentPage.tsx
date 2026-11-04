@@ -159,8 +159,10 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
 }
 
-function ReferencePicker({anchor, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
+function ReferencePicker({anchor, editor, anchorAt, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
   anchor: React.RefObject<HTMLDivElement | null>;
+  editor: Editor | null;
+  anchorAt: number;
   query: string;
   scope: 'project' | 'all';
   results: AgentReferenceCandidate[];
@@ -173,23 +175,42 @@ function ReferencePicker({anchor, query, scope, results, index, loading, error, 
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({left: 0, top: 0, width: 360});
+  const [anchorBottom, setAnchorBottom] = useState(0);
+  const [maxHeight, setMaxHeight] = useState(320);
+  const [shown, setShown] = useState(false);
+  const [origin, setOrigin] = useState('0px 100%');
   useLayoutEffect(() => {
     const place = () => {
       const rect = anchor.current?.getBoundingClientRect();
       if (!rect) return;
+      const caret = editor?.view.coordsAtPos(Math.min(anchorAt, editor.state.doc.content.size));
       const width = Math.min(420, Math.max(260, rect.width - 24));
       const height = panel.current?.offsetHeight ?? 280;
-      const above = rect.top - 10;
-      const below = window.innerHeight - rect.bottom - 10;
-      const top = above >= Math.min(height, 320) || above >= below ? Math.max(8, rect.top - Math.min(height, 320) - 8) : rect.bottom + 8;
-      setPosition({left: Math.max(8, Math.min(rect.left + 12, window.innerWidth - width - 8)), top, width});
+      const caretTop = caret?.top ?? rect.top;
+      const caretBottom = caret?.bottom ?? rect.top;
+      const caretLeft = caret?.left ?? rect.left + 12;
+      const above = caretTop - 8;
+      const below = window.innerHeight - caretBottom - 8;
+      const availableHeight = Math.min(height, 320);
+      const upward = above >= availableHeight || above >= below;
+      const top = upward ? Math.max(8, caretTop - Math.min(height, availableHeight) - 3)
+        : caretBottom + 3;
+      const left = Math.max(8, Math.min(rect.left + 8, window.innerWidth - width - 8));
+      setOrigin(`${Math.max(0, Math.min(width, caretLeft - left))}px ${upward ? '100%' : '0%'}`);
+      setAnchorBottom(upward ? caretTop - 3 : 0);
+      setMaxHeight(Math.max(120, Math.min(320, upward ? above : below)));
+      setPosition({left, top, width});
     };
     place();
     window.addEventListener('resize', place);
     document.addEventListener('scroll', place, true);
     return () => {window.removeEventListener('resize', place); document.removeEventListener('scroll', place, true);};
-  }, [anchor, results.length, loading, error]);
-  return createPortal(<div ref={panel} className="agent-reference-picker" style={position} role="dialog" aria-label="引用其他对话">
+  }, [anchor, editor, anchorAt, results.length, loading, error]);
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return createPortal(<div ref={panel} className={'agent-reference-picker' + (shown ? ' is-visible' : '')} style={{...position, bottom: anchorBottom ? window.innerHeight - anchorBottom : 'auto', maxHeight, transformOrigin: origin}} role="dialog" aria-label="引用其他对话">
     <div className="agent-reference-picker-head"><Search aria-hidden="true"/><span>{query ? `搜索“${query}”` : '引用对话'}</span><button type="button" aria-label="关闭引用选择" title="关闭" onClick={event => {event.preventDefault(); onClose();}}><X aria-hidden="true"/></button></div>
     <div className="agent-reference-scope" role="group" aria-label="引用搜索范围">
       <button type="button" aria-pressed={scope === 'project'} onClick={() => onScope('project')}>当前项目</button>
@@ -326,7 +347,9 @@ function editorReferenceIds(editor: Editor): string[] {
 function referenceQueryAtCursor(state: EditorState): {from: number; query: string} | null {
   if (hasActiveNode(state, ['codeBlock'])) return null;
   const {from} = state.selection;
-  const textBefore = state.doc.textBetween(Math.max(0, from - 80), from, '\n', '\ufffc');
+  const { $from } = state.selection;
+  const paragraphStart = $from.start();
+  const textBefore = state.doc.textBetween(paragraphStart, from, '\n', '\ufffc');
   const match = /(?:^|\s)@([^\s@]*)$/.exec(textBefore);
   if (!match) return null;
   return {from: from - match[1].length - 1, query: match[1]};
@@ -1067,7 +1090,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         </div>
         <div className="agent-composer" ref={referenceComposerRef}>
           <EditorContent editor={editor} className="agent-editor"/>
-          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
+          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
             <div className="agent-mode-picker">
               <button ref={modeButtonRef} type="button" className="agent-option" aria-label="访问模式" aria-expanded={modeMenuOpen} disabled={!accessReady} onClick={() => setModeMenuOpen(open => !open)}>{accessMode === 'safe' ? '安全模式' : '完全访问'}<ChevronDown aria-hidden="true"/></button>

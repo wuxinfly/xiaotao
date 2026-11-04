@@ -54,7 +54,15 @@ test('agent references search, insert and send structured ids', {timeout:60000},
     await referenceResponse;
     await page.waitForFunction(()=>!!document.querySelector('.agent-reference-picker'));
     await page.locator('.agent-reference-picker').waitFor({state:'visible'});
+    await page.waitForFunction(()=>document.querySelector('.agent-reference-picker')?.classList.contains('is-visible'));
+    assert.match(await page.locator('.agent-reference-picker').evaluate(el=>getComputedStyle(el).transition),/opacity|transform/);
     assert.equal(referenceQuery,'登录');
+    const pickerGap=await page.evaluate(()=>{
+      const picker=document.querySelector('.agent-reference-picker').getBoundingClientRect();
+      const composer=document.querySelector('.agent-editor').getBoundingClientRect();
+      return picker.bottom<=composer.top ? composer.top-picker.bottom : Math.max(0,picker.top-composer.top);
+    });
+    assert.ok(pickerGap<=12,`reference picker is ${pickerGap}px from the composer`);
     await page.getByRole('option',{name:/登录讨论/}).click();
     await page.waitForFunction(()=>document.querySelector('.agent-editor .agent-conversation-reference'));
     await page.waitForFunction(()=>!document.querySelector('.agent-send').disabled);
