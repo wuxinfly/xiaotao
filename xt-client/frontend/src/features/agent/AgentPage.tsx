@@ -72,8 +72,11 @@ function mergeHistory<T extends {id: string}>(older: T[], newer: T[]): T[] {
 }
 
 function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
-  if ((event.type === 'message' || event.type === 'session') && event.message) {
-    return {...session, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: [...session.messages, event.message]};
+  if ((event.type === 'message' || event.type === 'message_delta' || event.type === 'session') && event.message) {
+    const message = event.message;
+    const existing = session.messages.find(item => item.id === message.id);
+    const next = event.type === 'message_delta' && existing ? {...existing, content: existing.content + message.content} : message;
+    return {...session, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? next : item) : [...session.messages, next]};
   }
   if (event.type === 'activity' && event.activity) {
     const activity = session.activity.filter(item => item.id !== event.activity!.id);
@@ -527,7 +530,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   useEffect(() => {
     if (feed.current && followFeed.current) feed.current.scrollTop = feed.current.scrollHeight;
-  }, [active?.messages.length, active?.activity.length, busy, visible]);
+  }, [active?.messages, active?.activity.length, busy, visible]);
 
   async function send(contentOverride?: string) {
     const content = (contentOverride ?? promptRef.current).trim();

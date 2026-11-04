@@ -16,7 +16,7 @@ type fakeModel struct {
 	messages [][]map[string]any
 }
 
-func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any) (*completion, error) {
+func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ func(string)) (*completion, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.messages = append(f.messages, messages)

@@ -33,7 +33,7 @@ type run struct {
 }
 
 type modelClient interface {
-	Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any) (*completion, error)
+	Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, onDelta func(string)) (*completion, error)
 }
 
 type httpModelClient struct {
@@ -350,7 +350,21 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 		if workspace != nil {
 			tools = toolDefinitions
 		}
-		result, err := client.Complete(ctx, history.Model, messages, tools)
+		var streamed *Message
+		result, err := client.Complete(ctx, history.Model, messages, tools, func(delta string) {
+			if delta == "" {
+				return
+			}
+			if streamed == nil {
+				message := Message{ID: "msg_" + randomID(6), Role: "assistant", CreatedAt: time.Now()}
+				history.Messages = append(history.Messages, message)
+				streamed = &history.Messages[len(history.Messages)-1]
+			}
+			streamed.Content += delta
+			piece := *streamed
+			piece.Content = delta
+			emit(Event{Type: "message_delta", SessionID: history.ID, Message: &piece})
+		})
 		if err != nil {
 			return fmt.Errorf("模型调用失败: %w", err)
 		}
@@ -359,8 +373,14 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 			if content == "" {
 				content = "任务处理完成。"
 			}
-			message := Message{ID: "msg_" + randomID(6), Role: "assistant", Content: content, CreatedAt: time.Now()}
-			history.Messages = append(history.Messages, message)
+			var message Message
+			if streamed != nil {
+				streamed.Content = content
+				message = *streamed
+			} else {
+				message = Message{ID: "msg_" + randomID(6), Role: "assistant", Content: content, CreatedAt: time.Now()}
+				history.Messages = append(history.Messages, message)
+			}
 			emit(Event{Type: "message", SessionID: history.ID, Message: &message})
 			return nil
 		}
@@ -374,7 +394,7 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 		}
 		assistant["tool_calls"] = rawCalls
 		messages = append(messages, assistant)
-		if strings.TrimSpace(result.Content) != "" {
+		if streamed == nil && strings.TrimSpace(result.Content) != "" {
 			history.Messages = append(history.Messages, Message{
 				ID: "msg_" + randomID(6), Role: "assistant", Content: result.Content, CreatedAt: time.Now(),
 			})
@@ -447,8 +467,8 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any) (*completion, error) {
-	payload := map[string]any{"model": model, "messages": messages, "stream": false}
+func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, onDelta func(string)) (*completion, error) {
+	payload := map[string]any{"model": model, "messages": messages, "stream": true}
 	if len(tools) > 0 {
 		payload["tools"] = tools
 		payload["tool_choice"] = "auto"
@@ -470,6 +490,9 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 400 && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return readModelStream(resp.Body, onDelta)
+	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
 		return nil, err
