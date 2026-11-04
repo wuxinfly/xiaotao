@@ -190,7 +190,7 @@ Agent 工作台使用水滴状态精灵和 Lucide 线性图标，布局和响应
 
 ## 小涛 Agent
 
-Agent 输入框粘贴时，如果整段内容被 ` ```markdown ` 或 ` ```md ` 围栏包裹，会去掉最外层围栏并按 Markdown 格式插入；其中的代码块仍会保留。带代码样式 HTML 的纯文本粘贴也会按 Markdown 处理；其他语言的代码围栏，以及在代码块内的粘贴沿用原有行为。可在 `frontend` 运行 `node --test tests/markdown-paste.browser.test.mjs` 验证，默认使用 `/usr/bin/chromium`，也可通过 `XIAOTAO_TEST_BROWSER_PATH` 指定浏览器。
+Agent 输入框粘贴时，如果整段内容被 ` ```markdown ` 或 ` ```md ` 围栏包裹，会去掉最外层围栏并按 Markdown 格式插入；其中的代码块仍会保留。带代码样式 HTML 的粘贴按纯文本插入，使用硬换行保留行结构；在代码块内的粘贴沿用原有行为。可在 `frontend` 运行 `node --test tests/markdown-paste.browser.test.mjs` 验证，默认使用 `/usr/bin/chromium`，也可通过 `XIAOTAO_TEST_BROWSER_PATH` 指定浏览器。
 
 聊天消息按 Markdown 展示，支持段落、列表、链接、表格和代码块；长代码可横向滚动。
 执行过程按时间显示在所属对话中，每段过程可以单独展开或收起。

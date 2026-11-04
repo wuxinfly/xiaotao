@@ -9,7 +9,7 @@ import {EditorContent, useEditor} from '@tiptap/react';
 import type {Editor, JSONContent} from '@tiptap/core';
 import {TextSelection} from '@tiptap/pm/state';
 import type {EditorState} from '@tiptap/pm/state';
-import {DOMParser as ProseMirrorDOMParser} from '@tiptap/pm/model';
+import {DOMParser as ProseMirrorDOMParser, Fragment, Slice} from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Markdown from 'react-markdown';
@@ -398,12 +398,19 @@ export function AgentPage({visible}: {visible: boolean}) {
         const match = text?.match(/^\s*(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*\s*$/i);
         const html = event.clipboardData?.getData('text/html') ?? '';
         const source = new DOMParser().parseFromString(html, 'text/html');
-        const codeContainer = source.body.querySelector('pre, [style*="white-space: pre"], [style*="white-space:pre"]');
-        const copiedAsCode = !!text && !!codeContainer && source.body.textContent?.trim() === text.trim()
-          && !/^\s*(`{3,}|~{3,})/.test(text);
-        if (!match && !copiedAsCode) return false;
+        const codeContainer = source.body.querySelector('pre') || Array.from(source.body.querySelectorAll<HTMLElement>('[style]')).find(element => element.style.whiteSpace === 'pre');
+        if (!match && text && codeContainer) {
+          const nodes = text.split('\n').flatMap((line, index) => [
+            ...(index ? [view.state.schema.nodes.hardBreak.create()] : []),
+            ...(line ? [view.state.schema.text(line)] : []),
+          ]);
+          view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
+          event.preventDefault();
+          return true;
+        }
+        if (!match) return false;
         const container = document.createElement('div');
-        container.innerHTML = renderToStaticMarkup(<Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{match ? match[2] : text}</Markdown>);
+        container.innerHTML = renderToStaticMarkup(<Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{match[2]}</Markdown>);
         const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(container);
         view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
         event.preventDefault();

@@ -29,19 +29,23 @@ test('Markdown wrapper pastes formatted content while ordinary code stays code',
       data.setData('text/html', '<pre><code><span># VS Code 标题</span>\n\n<span>普通文字</span></code></pre>');
       element.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true}));
     });
-    assert.equal(await editor.locator('h1').innerText(), 'VS Code 标题');
+    assert.equal(await editor.locator('h1').count(), 0);
+    assert.equal(await editor.locator('p').count(), 1);
+    assert.equal(await editor.locator('p').innerText(), '# VS Code 标题\n\n普通文字');
     assert.equal(await editor.locator('pre').count(), 0);
     assert.match(await editor.innerText(), /普通文字/);
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Backspace');
     await editor.evaluate(element => {
       const data = new DataTransfer();
-      data.setData('text/plain', '普通文字');
-      data.setData('text/html', '<div style="white-space: pre;"><span>普通文字</span></div>');
+      data.setData('text/plain', '第一行\n\n第三行');
+      data.setData('text/html', '<div style="white-space: pre;"><div><span>第一行</span></div><div><br></div><div><span>第三行</span></div></div>');
       element.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true}));
     });
     assert.equal(await editor.locator('pre').count(), 0);
-    assert.equal(await editor.innerText(), '普通文字');
+    assert.equal(await editor.locator('p').count(), 1);
+    assert.equal(await editor.locator('p').innerText(), '第一行\n\n第三行');
+    assert.equal(await editor.locator('p br').count(), 2);
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Backspace');
     await paste('```js\nconst y = 2;\n```');
