@@ -46,6 +46,12 @@ func TestSendLoadsCurrentProjectInstructions(t *testing.T) {
 	if len(prompts) != 2 || !strings.Contains(prompts[0], "first rule") || !strings.Contains(prompts[1], "updated rule") {
 		t.Fatalf("unexpected prompts: %v", prompts)
 	}
+	if !strings.Contains(prompts[0], "以下是完整 XiaoTao SKILL.md") || !strings.Contains(prompts[0], "## 核心约束") {
+		t.Fatal("first model request did not receive the full Core")
+	}
+	if strings.Contains(prompts[1], "以下是完整 XiaoTao SKILL.md") || !strings.Contains(prompts[1], "持续守卫") {
+		t.Fatal("subsequent model request did not switch to on-demand Core")
+	}
 }
 
 func TestProjectInstructionsPriorityAndLimit(t *testing.T) {

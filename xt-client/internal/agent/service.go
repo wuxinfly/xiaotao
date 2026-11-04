@@ -297,6 +297,10 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 		}
 	}
 
+	coreInstructions, err := prepareCore(s.dataDir, len(history.Messages) == 0)
+	if err != nil {
+		return fmt.Errorf("准备小涛 Core: %w", err)
+	}
 	if selected := strings.TrimSpace(model); selected != "" {
 		history.Model = selected
 	}
@@ -314,7 +318,7 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + "\n" + instructions}}
+	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + "\n" + instructions}}
 	for _, message := range history.Messages {
 		messages = append(messages, messageToModel(message))
 	}

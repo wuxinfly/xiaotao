@@ -6,12 +6,21 @@ import (
 	"runtime"
 	"testing"
 	"time"
+	"unsafe"
 
 	webview "github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows"
 )
 
 func TestStartupWebViewLoadsFrontendBehindSplash(t *testing.T) {
+	testStartupWebView(t, false)
+}
+
+func TestStartupHandoffKeepsMinimizedWindow(t *testing.T) {
+	testStartupWebView(t, true)
+}
+
+func testStartupWebView(t *testing.T, minimize bool) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ole := windows.NewLazySystemDLL("ole32.dll")
@@ -32,6 +41,14 @@ func TestStartupWebViewLoadsFrontendBehindSplash(t *testing.T) {
 		t.Fatal("WebView creation failed")
 	}
 	hwnd := uintptr(w.Window())
+	if win("GetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffff0)))&0x00c00000 != 0 {
+		t.Error("startup window must be borderless before chrome initialization")
+	}
+	attachSplash(hwnd)
+	cover := win("FindWindowExW", hwnd, 0, uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("XiaoTaoNativeSplash"))), 0)
+	if cover == 0 || win("GetParent", cover) != hwnd {
+		t.Fatal("startup cover must belong to the main window surface")
+	}
 	defer win("DestroyWindow", hwnd)
 	if win("IsWindowVisible", hwnd) == 0 {
 		t.Error("startup WebView must stay visible to render behind splash")
@@ -49,11 +66,17 @@ func TestStartupWebViewLoadsFrontendBehindSplash(t *testing.T) {
 	}, func() bool { return false })
 	defer cleanup()
 	w.Navigate(server.URL)
+	if minimize {
+		win("ShowWindow", hwnd, 6)
+	}
 	timeout := time.AfterFunc(7*time.Second, func() { w.Dispatch(w.Terminate) })
 	w.Run()
 	timeout.Stop()
 	if !ready {
 		t.Error("real frontend did not complete startup handoff before fallback")
+	}
+	if minimize && win("IsIconic", hwnd) == 0 {
+		t.Error("startup handoff restored a window minimized by the user")
 	}
 	// Closing the owned cover must leave the rendered main window visible.
 	closeSplash()

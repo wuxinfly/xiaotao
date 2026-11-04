@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "candidate_id": "startup-cover-child-surface",
+  "created_at": "2026-11-04T13:00:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.startup-cover-child-surface",
+  "text": "启动动画封面使用主窗口内的原生子窗口覆盖层，去边框及尺寸变化后铺满客户区，圆角统一由主窗口裁剪；独立 owned popup 在最小化时可能先隐藏而透出 WebView 内容。",
+  "rationale": "用户确认禁用系统缩放过渡仍会露主界面；改为子窗口后不再透出，补齐客户区尺寸同步和统一圆角裁剪后确认不漏边且正常。",
+  "observations": 1,
+  "source_refs": ["xt-client/internal/desktop/splash_windows.go", "xt-client/internal/desktop/startup_windows_test.go", "docs/plans/2026-11-04-hud-visibility.md"]
+}

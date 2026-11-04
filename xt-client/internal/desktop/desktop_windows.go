@@ -35,10 +35,34 @@ func Lock(name string) (func(), error) {
 func Start(exe string, args ...string) error {
 	c := exec.Command(exe, args...)
 	hidden := true
+	show := uint16(windows.SW_SHOWNORMAL)
 	for _, arg := range args {
 		if arg == "--window" || arg == "--hud-window" {
 			hidden = false
 		}
+		if arg == "--hud-window" {
+			show = windows.SW_SHOWNOACTIVATE
+		}
+	}
+	if !hidden {
+		// Explicit visibility prevents GUI children from inheriting a hidden
+		// service launch's startup state (including WebView2 subprocesses).
+		application, err := windows.UTF16PtrFromString(exe)
+		if err != nil {
+			return err
+		}
+		command, err := windows.UTF16PtrFromString(windows.ComposeCommandLine(append([]string{exe}, args...)))
+		if err != nil {
+			return err
+		}
+		startup := windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfo{})), Flags: windows.STARTF_USESHOWWINDOW, ShowWindow: show}
+		var process windows.ProcessInformation
+		if err := windows.CreateProcess(application, command, nil, nil, false, windows.DETACHED_PROCESS, nil, nil, &startup, &process); err != nil {
+			return err
+		}
+		windows.CloseHandle(process.Thread)
+		windows.CloseHandle(process.Process)
+		return nil
 	}
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: hidden, CreationFlags: 0x00000008}
 	return c.Start()
@@ -50,12 +74,14 @@ func HUDWindowTitle(displayName string) string {
 
 func WindowExists(title string) bool {
 	p, _ := windows.UTF16PtrFromString(title)
-	return win("FindWindowW", 0, uintptr(unsafe.Pointer(p))) != 0
+	class := windows.StringToUTF16Ptr("webview")
+	return win("FindWindowW", uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(p))) != 0
 }
 
 func CloseWindow(title string) bool {
 	p, _ := windows.UTF16PtrFromString(title)
-	hwnd := win("FindWindowW", 0, uintptr(unsafe.Pointer(p)))
+	class := windows.StringToUTF16Ptr("webview")
+	hwnd := win("FindWindowW", uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(p)))
 	if hwnd == 0 {
 		return false
 	}
@@ -220,6 +246,7 @@ func Window(url, data, token, title string) error {
 	if w == nil {
 		return fmt.Errorf("cannot create WebView2 window")
 	}
+	attachSplash(uintptr(w.Window()))
 	roundNativeWindow(uintptr(w.Window()))
 	defer w.Destroy()
 	if err := w.Bind("xtOpenDirectory", func(kind string) error {
@@ -262,6 +289,7 @@ func Window(url, data, token, title string) error {
 	w.Init(`window.xtPickFolderOnly = () => window.xtWindow?.("pick-folder");`)
 	cleanup := chrome(w, url, token, title, closeSplash, splashForeground)
 	defer cleanup()
+	resizeStartupCover(uintptr(w.Window()))
 	w.Navigate(url)
 	done := make(chan struct{})
 	defer close(done)

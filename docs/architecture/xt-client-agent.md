@@ -13,9 +13,19 @@
 - 伙伴页面、跨任务调度或并行 Worker。
 - 工作流编排、跨会话自动恢复和长期记忆提炼。
 - 操作系统级沙箱、工具级细粒度授权或网络隔离。
-- Skill 市场与自动安装。现有小涛人设进入系统提示词；完整 Skill 发现和按需加载尚未接入。
+- 通用 Skill 市场、自动安装与第三方 Skill 发现。内置 XiaoTao Core 已接入，具体加载方式见下文。
 
 ## 运行结构
+
+### 内置 XiaoTao Core
+
+客户端将 `xt-skills/xiaotao/` 的完整文本资源（SKILL、references、schemas、workers 与 Python 脚本，排除 Python 缓存）打包进 EXE。`node tools/bundle-core.mjs` 或 `go generate ./internal/agent` 更新 `internal/agent/core.json.gz`；`build.ps1` 构建前自动刷新。资源源文件仍唯一维护在 xt-skills，不手改压缩包。
+
+每次发送前，在当前环境的 Agent 数据目录 `core/<资源摘要>/` 校验并释放资源，失败则返回错误，不回退成精简人设。新会话首次请求的 system 消息包含完整 SKILL.md；后续请求改用精简守卫和 Core 绝对路径，模型通过 read_file 按当前步骤加载完整核心与 Reference，不将全套参考资料永久塞入上下文。项目 AGENTS 指令继续每次读取并追加。
+
+完整规范可用不代表宿主新增执行能力：仍无独立 Worker、Hook、自动压缩及后台恢复，需如实使用 in-session-fallback；记忆脚本使用通用入口，需要本机 Python，缺少时必须报告限制。客户端不执行 Codex 专用 Hook 回执，也不自动创建项目记忆或全量扫描 Catalog。已有会话下次发送即获得守卫和完整资源入口；新会话首次完整注入。正式版和 UAT 各自释放资源，不共享运行状态。
+
+验证：自动测试覆盖核心原文一致、关键脚本/参考资料完整、后续请求精简、安装副本修复及环境路径隔离；真实模型按需读取、Python 保存与桌面新包仍需实测。
 
 ```text
 React 工作台

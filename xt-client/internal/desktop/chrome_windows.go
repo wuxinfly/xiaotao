@@ -104,16 +104,28 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 	tray, _, _ := shell.NewProc("Shell_NotifyIconW").Call(0, uintptr(unsafe.Pointer(&n)))
 	var readyOnce sync.Once
 	var startupDone bool
+	// DWM otherwise animates the owner's WebView surface when minimizing,
+	// after its owned splash has already disappeared.
+	setStartupTransitions(hwnd, true)
+	defer setStartupTransitions(hwnd, false)
 	var revealTimer *time.Timer
 	finishStartup := func() {
 		startupDone = true
+		setStartupTransitions(hwnd, false)
+		if win("IsIconic", hwnd) != 0 {
+			if onReady != nil {
+				onReady()
+			}
+			return
+		}
 		foreground := splashForeground != nil && splashForeground()
+		// The startup cover can be visible while its owner is behind other apps.
+		// Never send that owner to HWND_BOTTOM at handoff: reveal the ready
+		// window at the top of the normal band without making it topmost.
+		win("SetWindowPos", hwnd, 0, 0, 0, 0, 0, 0x0053) // HWND_TOP; SHOWWINDOW | NOACTIVATE | NOMOVE | NOSIZE
 		if foreground {
 			win("ShowWindow", hwnd, 5)
 			win("SetForegroundWindow", hwnd)
-		} else {
-			// Keep the new window below the current application without activation.
-			win("SetWindowPos", hwnd, 1, 0, 0, 0, 0, 0x0053) // HWND_BOTTOM; SHOWWINDOW | NOACTIVATE | NOMOVE | NOSIZE
 		}
 		win("UpdateWindow", hwnd)
 		if onReady != nil {
@@ -124,7 +136,7 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 	reveal := func() {
 		readyOnce.Do(func() {
 			elapsed := time.Since(startTime)
-			const minDuration = 3900 * time.Millisecond
+			const minDuration = startupAnimationDuration
 			if elapsed < minDuration {
 				revealTimer = time.AfterFunc(minDuration-elapsed, func() {
 					w.Dispatch(func() {
@@ -177,6 +189,9 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 			}
 		case 0x5: // Keep the WebView inside the work area while maximized.
 			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
+			if wp != 1 {
+				resizeStartupCover(hwnd)
+			}
 			if win("IsZoomed", hwnd) != 0 {
 				if info, ok := monitorInfoFor(hwnd); ok {
 					resizeMaximizedChild(hwnd, info)

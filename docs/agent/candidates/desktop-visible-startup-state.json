@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "desktop-visible-startup-state",
+  "created_at": "2026-11-04T12:10:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.desktop-visible-startup-state",
+  "text": "后台服务启动 WebView2 桌面窗口时显式设置 STARTF_USESHOWWINDOW；主窗口使用 SW_SHOWNORMAL，浮窗使用 SW_SHOWNOACTIVATE。不要将浮窗的不激活策略套到主窗口，否则可能影响首个启动动画窗口的前台显示。",
+  "rationale": "隐藏启动反复显示空框，正常启动显示完整内容；仅显示 WebView 子窗口无效。改为显式传递可见启动参数后，用户确认从隐藏验证服务通过实际浮窗开关启动正常。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/desktop/desktop_windows.go",
+    "xt-client/internal/desktop/launch_windows_test.go",
+    "docs/plans/2026-11-04-hud-visibility.md"
+  ]
+}

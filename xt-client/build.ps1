@@ -42,6 +42,8 @@ try {
     npm run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
   } finally { Pop-Location }
+  node tools/bundle-core.mjs
+  if ($LASTEXITCODE -ne 0) { throw 'Core bundling failed' }
   New-Item -ItemType Directory -Force dist | Out-Null
   go run ./tools/icon
   if ($LASTEXITCODE -ne 0) { throw 'Icon rendering failed' }

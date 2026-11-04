@@ -8,6 +8,15 @@ import (
 
 var dwm = windows.NewLazySystemDLL("dwmapi.dll")
 
+func setStartupTransitions(hwnd uintptr, disabled bool) {
+	value := int32(0)
+	if disabled {
+		value = 1
+	}
+	// DWMWA_TRANSITIONS_FORCEDISABLED applies only during startup handoff.
+	dwm.NewProc("DwmSetWindowAttribute").Call(hwnd, 3, uintptr(unsafe.Pointer(&value)), 4)
+}
+
 func roundNativeWindow(hwnd uintptr) {
 	preference := int32(3) // DWMWCP_ROUNDSMALL
 	dwm.NewProc("DwmSetWindowAttribute").Call(hwnd, 33, uintptr(unsafe.Pointer(&preference)), 4)

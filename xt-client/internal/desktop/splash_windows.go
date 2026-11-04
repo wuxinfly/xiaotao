@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -17,6 +18,19 @@ import (
 
 //go:embed assets/frames.bin
 var framesBIN []byte
+
+const startupAnimationDuration = 2500 * time.Millisecond
+
+func resizeStartupCover(owner uintptr) {
+	class := windows.StringToUTF16Ptr("XiaoTaoNativeSplash")
+	cover := win("FindWindowExW", owner, 0, uintptr(unsafe.Pointer(class)), 0)
+	if cover == 0 {
+		return
+	}
+	var bounds rect
+	win("GetClientRect", owner, uintptr(unsafe.Pointer(&bounds)))
+	win("SetWindowPos", cover, 0, 0, 0, uintptr(bounds.Right), uintptr(bounds.Bottom), 0x0010)
+}
 
 func decodeFrame(data []byte, target []byte) (int32, int32) {
 	img, err := jpeg.Decode(bytes.NewReader(data))
@@ -46,6 +60,7 @@ func decodeFrame(data []byte, target []byte) (int32, int32) {
 
 func showNativeSplash(width, height int32) (func(), func() bool, func(uintptr)) {
 	runtime.LockOSThread()
+	launchForeground := win("GetForegroundWindow")
 
 	r := bytes.NewReader(framesBIN)
 	var count int32
@@ -107,28 +122,54 @@ func showNativeSplash(width, height int32) (func(), func() bool, func(uintptr)) 
 	brush, _, _ := gdi.NewProc("CreateSolidBrush").Call(bgRGB)
 
 	var parentHwnd uintptr
+	var playbackStart time.Time
+	var frameIndex int64
+	var fadeStart time.Time
+	var destroyCover func()
 
 	wndProc := syscall.NewCallback(func(h uintptr, msg uint32, wp, lp uintptr) uintptr {
 		switch msg {
 		case 0x0014:
 			return 1
 		case 0x0005:
-			roundWindowRegion(h, int32(lp&0xffff), int32((lp>>16)&0xffff))
+			if win("GetParent", h) != 0 {
+				win("SetWindowRgn", h, 0, 1)
+			} else {
+				roundWindowRegion(h, int32(lp&0xffff), int32((lp>>16)&0xffff))
+			}
 			break
 		case 0x0113:
-			select {
-			case nextBuf, ok := <-frameChan:
-				if ok {
-					if curBuf != nil {
-						select {
-						case freeChan <- curBuf:
-						default:
-						}
-					}
-					curBuf = nextBuf
-					user.NewProc("InvalidateRect").Call(h, 0, 0)
+			if wp == 2 {
+				progress := min(1.0, float64(time.Since(fadeStart))/float64(180*time.Millisecond))
+				// Ease out while the already-rendered main surface stays underneath.
+				alpha := uintptr(255 * (1 - progress) * (1 - progress))
+				user.NewProc("SetLayeredWindowAttributes").Call(h, 0, alpha, 2)
+				if progress >= 1 {
+					destroyCover()
 				}
-			default:
+				return 0
+			}
+			targetFrame := min(int64(count-1), time.Since(playbackStart).Nanoseconds()*int64(count-1)/startupAnimationDuration.Nanoseconds())
+		advanceFrames:
+			for frameIndex < targetFrame {
+				select {
+				case nextBuf, ok := <-frameChan:
+					if ok {
+						if curBuf != nil {
+							select {
+							case freeChan <- curBuf:
+							default:
+							}
+						}
+						curBuf = nextBuf
+						frameIndex++
+						user.NewProc("InvalidateRect").Call(h, 0, 0)
+					} else {
+						break advanceFrames
+					}
+				default:
+					break advanceFrames
+				}
 			}
 			return 0
 		case 0x000F:
@@ -225,26 +266,51 @@ func showNativeSplash(width, height int32) (func(), func() bool, func(uintptr)) 
 		0, 0, hinstance, 0,
 	)
 
-	user.NewProc("SetLayeredWindowAttributes").Call(parentHwnd, 0, 255, 2)
+	// Keep the first compositor surface transparent until its first frame is painted.
+	user.NewProc("SetLayeredWindowAttributes").Call(parentHwnd, 0, 0, 2)
 	roundNativeWindow(parentHwnd)
 	roundWindowRegion(parentHwnd, width, height)
-	user.NewProc("ShowWindow").Call(parentHwnd, 5)
-	user.NewProc("UpdateWindow").Call(parentHwnd)
-	user.NewProc("SetTimer").Call(parentHwnd, 1, 42, 0)
+	// First display happens only once attached to the fully sized main client.
+	// Play every source frame within the target duration (94 frames: ~27ms).
+	interval := startupAnimationDuration.Milliseconds() / int64(max(count-1, 1))
+	playbackStart = time.Now()
+	user.NewProc("SetTimer").Call(parentHwnd, 1, uintptr(max(interval, 1)), 0)
 
 	var closeOnce sync.Once
-	isForeground := func() bool { return parentHwnd != 0 && win("GetForegroundWindow") == parentHwnd }
+	var ownerHwnd uintptr
+	isForeground := func() bool {
+		foreground := win("GetForegroundWindow")
+		// Creation deliberately avoids activation. If the launching application
+		// is still foreground, the user has not switched away during startup.
+		return parentHwnd != 0 && (foreground == parentHwnd || foreground == ownerHwnd || (launchForeground != 0 && foreground == launchForeground))
+	}
 	attachOwner := func(owner uintptr) {
 		if parentHwnd != 0 {
-			// An owned window stays above its owner, without becoming globally topmost.
-			win("SetWindowLongPtrW", parentHwnd, uintptr(uint32(0xfffffff8)), owner)
+			// Include the cover in the owner's DWM surface. An owned popup is
+			// hidden before minimize snapshots and exposes the WebView underneath.
+			ownerHwnd = owner
+			style := win("GetWindowLongPtrW", parentHwnd, uintptr(uint32(0xfffffff0)))
+			win("SetWindowLongPtrW", parentHwnd, uintptr(uint32(0xfffffff0)), (style&^uintptr(0x80000000))|0x40000000)
+			win("SetParent", parentHwnd, owner)
+			win("SetWindowRgn", parentHwnd, 0, 1)
+			var bounds rect
+			win("GetClientRect", owner, uintptr(unsafe.Pointer(&bounds)))
+			if bounds.Right <= 0 || bounds.Bottom <= 0 {
+				bounds.Right, bounds.Bottom = width, height
+			}
+			win("SetWindowPos", parentHwnd, 0, 0, 0, uintptr(bounds.Right), uintptr(bounds.Bottom), 0x0070)
+			user.NewProc("UpdateWindow").Call(parentHwnd)
+			if fadeStart.IsZero() {
+				user.NewProc("SetLayeredWindowAttributes").Call(parentHwnd, 0, 255, 2)
+			}
 		}
 	}
-	return func() {
+	destroyCover = func() {
 		closeOnce.Do(func() {
 			close(stopChan)
 			if parentHwnd != 0 {
 				user.NewProc("KillTimer").Call(parentHwnd, 1)
+				user.NewProc("KillTimer").Call(parentHwnd, 2)
 				user.NewProc("DestroyWindow").Call(parentHwnd)
 				parentHwnd = 0
 			}
@@ -254,5 +320,20 @@ func showNativeSplash(width, height int32) (func(), func() bool, func(uintptr)) 
 			curBuf = nil
 			runtime.GC()
 		})
+	}
+	return func() {
+		if parentHwnd == 0 {
+			return
+		}
+		// A second close is teardown (for example the message loop has ended).
+		animations := int32(1)
+		win("SystemParametersInfoW", 0x1042, 0, uintptr(unsafe.Pointer(&animations)), 0) // SPI_GETCLIENTAREAANIMATION
+		if !fadeStart.IsZero() || ownerHwnd == 0 || win("IsIconic", ownerHwnd) != 0 || animations == 0 {
+			destroyCover()
+			return
+		}
+		fadeStart = time.Now()
+		user.NewProc("KillTimer").Call(parentHwnd, 1)
+		user.NewProc("SetTimer").Call(parentHwnd, 2, 15, 0)
 	}, isForeground, attachOwner
 }
