@@ -1,16 +1,77 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/storage"
 )
+
+func TestQoderQueueRetriesSameAccount(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "model/list") {
+			fmt.Fprint(w, `{"chat":[{"key":"qfmodel","display_name":"Qwen3.8-Flash"}]}`)
+			return
+		}
+		hits++
+		if hits == 1 {
+			frame, _ := json.Marshal(map[string]any{"body": `{"code":"10605","message":"{\"retryAfterSeconds\":1,\"subCode\":\"RESOURCE_LIMIT\"}"}`})
+			fmt.Fprintf(w, "data: %s\n\n", frame)
+			return
+		}
+		frame, _ := json.Marshal(map[string]any{"body": `{"choices":[{"delta":{"content":"after-queue"},"finish_reason":"stop"}]}`})
+		fmt.Fprintf(w, "data: %s\n\ndata: {\"body\":\"[DONE]\"}\n\n", frame)
+	}))
+	defer server.Close()
+	originalRegion, originalWait, originalSleep := qoder.Regions["cn"], qoderQueueWait, qoderQueueSleep
+	reg := originalRegion
+	reg.InferBase = server.URL
+	qoder.Regions["cn"] = reg
+	var waits []time.Duration
+	qoderQueueWait = func(err error) time.Duration {
+		wait := originalWait(err)
+		waits = append(waits, wait)
+		return wait
+	}
+	qoderQueueSleep = func(ctx context.Context, wait time.Duration) error { return nil }
+	defer func() {
+		qoder.Regions["cn"] = originalRegion
+		qoderQueueWait = originalWait
+		qoderQueueSleep = originalSleep
+	}()
+	store, _ := storage.Open(t.TempDir())
+	acct := storage.Account{ID: "qoder:cn:u", Provider: "qoder", UID: "u", Region: "cn", Enabled: true}
+	store.UpsertAccount(&acct)
+	raw, _ := json.Marshal(providers.Credential{AccessToken: "t"})
+	store.SaveSecret(acct.ID, raw, func(b []byte) ([]byte, error) { return b, nil })
+	svc := New(store, func(id string) ([]byte, error) {
+		return store.LoadSecret(id, func(b []byte) ([]byte, error) { return b, nil })
+	}, "key")
+	for _, stream := range []bool{false, true} {
+		hits = 0
+		waits = nil
+		request := fmt.Sprintf(`{"model":"qoder/qwen3.8-flash","stream":%t,"messages":[{"role":"user","content":"hi"}]}`, stream)
+		req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(request))
+		req = req.WithContext(context.Background())
+		req.Header.Set("Authorization", "Bearer key")
+		w := httptest.NewRecorder()
+		svc.HandleChat(w, req)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), "after-queue") {
+			t.Fatalf("stream=%t failed %d %s", stream, w.Code, w.Body.String())
+		}
+		if hits != 2 || len(waits) != 1 || waits[0] <= 0 {
+			t.Fatalf("stream=%t hits=%d waits=%v", stream, hits, waits)
+		}
+	}
+}
 
 func TestQoderProxyEntry(t *testing.T) {
 	failure := false

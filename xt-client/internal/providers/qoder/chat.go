@@ -4,13 +4,17 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"xiaotao/xt-client/internal/providers"
 )
+
+const queueWaitMax = 60 * time.Second
 
 type ChatClient struct {
 	Region                    Region
@@ -198,6 +202,11 @@ func chatError(frame map[string]any) error {
 		status = 429
 	}
 	message := stringField(frame, "message")
+	if nested, ok := frame["message"].(map[string]any); ok {
+		if raw, err := json.Marshal(nested); err == nil {
+			message = string(raw)
+		}
+	}
 	if details, ok := frame["details"].(map[string]any); ok {
 		if e, ok := details["error"].(map[string]any); ok {
 			if v := stringField(e, "message"); v != "" {
@@ -221,7 +230,81 @@ func chatError(frame map[string]any) error {
 	if len(message) > 500 {
 		message = message[:500]
 	}
+	if code == "10605" {
+		message = `{"code":"10605","message":` + strconv.Quote(message) + `}`
+	}
 	return &providers.UpstreamError{Status: status, Message: message}
+}
+
+func QueueWait(err error) time.Duration {
+	var upstream *providers.UpstreamError
+	if !errors.As(err, &upstream) || upstream.Status != http.StatusTooManyRequests {
+		return 0
+	}
+	text := upstream.Message
+	identified := false
+	for depth := 0; depth < 4 && text != ""; depth++ {
+		payload := map[string]any{}
+		if json.Unmarshal([]byte(text), &payload) != nil {
+			start := strings.IndexByte(text, '{')
+			if start < 0 {
+				break
+			}
+			decoder := json.NewDecoder(strings.NewReader(text[start:]))
+			decoder.UseNumber()
+			if decoder.Decode(&payload) != nil {
+				break
+			}
+		}
+		if fmt.Sprint(payload["code"]) == "10605" {
+			identified = true
+		}
+		if secs, ok := queueSeconds(payload["retryAfterSeconds"]); ok {
+			if identified {
+				return secs
+			}
+			continue
+		}
+		next, _ := payload["message"].(string)
+		if next == "" {
+			break
+		}
+		text = strings.TrimSpace(next)
+	}
+	if identified {
+		return queueWaitMax
+	}
+	return 0
+}
+
+func queueSeconds(value any) (time.Duration, bool) {
+	var seconds float64
+	switch v := value.(type) {
+	case float64:
+		seconds = v
+	case json.Number:
+		n, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		seconds = n
+	case string:
+		n, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return 0, false
+		}
+		seconds = n
+	default:
+		return 0, false
+	}
+	if seconds <= 0 {
+		return 0, false
+	}
+	wait := time.Duration(seconds * float64(time.Second))
+	if wait > queueWaitMax {
+		wait = queueWaitMax
+	}
+	return wait, true
 }
 
 func normalizeUsage(input map[string]any) map[string]any {

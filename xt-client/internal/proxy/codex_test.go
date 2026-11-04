@@ -1,4 +1,4 @@
-﻿package proxy
+package proxy
 
 import (
 	"encoding/json"
@@ -16,7 +16,7 @@ func TestCodexProxyRoutingAndDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("storage.Open failed: %v", err)
 	}
-	
+
 	acct := &storage.Account{
 		ID:        "codex:global:test-user",
 		Provider:  "codex",

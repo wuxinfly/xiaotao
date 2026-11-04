@@ -102,3 +102,28 @@ func TestChatFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueWaitParsesRealPayload(t *testing.T) {
+	err := &providers.UpstreamError{
+		Status: http.StatusTooManyRequests,
+		Message: `{"code":"10605","message":"{\"isQueued\":true,\"modelKey\":\"dfmodel\",` +
+			`\"queueCount\":0,\"queueType\":\"p3\",\"retryAfterSeconds\":30,` +
+			`\"serviceAvailable\":false,\"subCode\":\"RESOURCE_LIMIT\",\"waitTime\":30}",` +
+			`"subCode":"RESOURCE_LIMIT"} | code=403`,
+	}
+	if got := QueueWait(err); got != 30*time.Second {
+		t.Fatalf("queue wait = %v, want 30s", got)
+	}
+	if got := QueueWait(&providers.UpstreamError{Status: http.StatusTooManyRequests, Message: "rate limited"}); got != 0 {
+		t.Fatalf("ordinary 429 wait = %v, want 0", got)
+	}
+	if got := QueueWait(&providers.UpstreamError{Status: http.StatusForbidden, Message: "10605"}); got != 0 {
+		t.Fatalf("10605 outside 429 wait = %v, want 0", got)
+	}
+	if got := QueueWait(&providers.UpstreamError{Status: http.StatusTooManyRequests, Message: `{"code":"10605","message":"busy"}`}); got != queueWaitMax {
+		t.Fatalf("missing retry seconds = %v, want %v", got, queueWaitMax)
+	}
+	if got := QueueWait(&providers.UpstreamError{Status: http.StatusTooManyRequests, Message: `{"code":"10605","message":"{\"retryAfterSeconds\":99999}"}`}); got != queueWaitMax {
+		t.Fatalf("oversized retry seconds = %v, want %v", got, queueWaitMax)
+	}
+}
