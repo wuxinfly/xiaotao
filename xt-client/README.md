@@ -275,3 +275,20 @@ Agent 输入框使用不透明背景，避免覆盖消息时透出正文；深�
 ### 模型目录能力字段（2026-11-04）
 
 `/v1/models` 在基本字段之外提供 `supports_images`、`supports_reasoning` 和已知的 `max_input_tokens`（扩展字段，客户端是否采用取决于其实现）。能力来自账号目录，未声明支持不等于经过实测否定；未知输入窗口不输出。同一完整模型 ID 按启用账号顺序保留首个目录信息，不合并不同账号能力，也不改变带来源前缀的调用方式。实际调用仍受账号状态和上游限制，详见[目录记录](../docs/plans/2026-11-01-model-catalog-followup.md)。Anthropic / Responses 入口和推理参数映射待办见[总体方案](../docs/architecture/xt-client-overview.md)。
+
+## Agent 网页操作与调试（MCP）
+
+新增可选 stdio MCP 接入。复制 `mcp.example.json` 到自己管理的配置路径，安装 Node.js 与 Chrome 后，在 PowerShell 中启动客户端：
+
+```powershell
+$env:XIAOTAO_MCP_CONFIG = 'C:\你的目录\mcp.json'
+& '.\dist\xiaotao.exe'
+```
+
+示例通过 `npx.cmd` 启动 Chrome DevTools MCP，首次运行会下载 npm 包；生产使用建议固定经过验证的包版本。非 Windows 系统使用 `npx`。配置为应用拥有者维护的本机文件，不自动读取项目配置。配置命令以当前用户身份启动，须信任所配置的服务。未设置环境变量时保持原有行为。
+
+每次任务启动服务、完成 MCP 初始化并发现工具，将 JSON Schema 注册到模型；工具结果携带原调用 ID 回传，沿用过程事件。安全模式每次外部工具调用请求确认，完全访问模式直接执行。停止任务或工具超时会终止该服务；任务退出清理进程。初始化和发现每次请求限时 30 秒，工具执行限时 120 秒，单条协议消息上限 8 MiB。服务错误使任务明确失败，不静默忽略。
+
+当前仅支持 stdio 与文本形式工具结果；图片结果保留 MCP JSON，尚未转成模型视觉消息；不支持 HTTP MCP、服务端交互请求或 Windows 桌面控制。浏览器登录态和进程由所选 MCP 服务管理。可要求 Agent 打开测试网页、查看 Console 与 Network 后修改项目并复查。真实浏览器和 Windows 桌面壳尚待实测。
+
+验证记录（2026-11-05）：MCP 独立协议测试覆盖发现、调用、缺失配置与取消；Linux race 检查、独立 vet 和 Windows 测试二进制交叉编译已通过。完整 `go test ./...` 被 SQLite 依赖下载 403 阻挡，且客户端桌面入口只能在 Windows 编译；尚未通过完整构建，不应视为可验收版本。Windows 实测应使用 UAT：`./build.ps1 -Env uat -Verify`，设置 MCP 环境变量后启动 `dist/verify/xiaotao-uat.exe`，依次验证网页打开/输入、Console/Network、安全模式拒绝与停止。必须先退出已有 UAT 实例，以免复用未继承环境变量的服务。停止只保证终止直接 MCP 进程，不保证服务派生的浏览器全部退出。

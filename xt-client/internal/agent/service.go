@@ -361,6 +361,19 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 }
 
 func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, emit func(Event)) error {
+	connections, mcpTools, err := openMCP(ctx)
+	if err != nil {
+		return fmt.Errorf("MCP 启动失败: %w", err)
+	}
+	defer func() {
+		seen := map[*mcpConnection]bool{}
+		for _, c := range connections {
+			if !seen[c] {
+				seen[c] = true
+				c.close()
+			}
+		}
+	}()
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -372,6 +385,7 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 		if len(references) > 0 {
 			tools = append(append([]map[string]any{}, tools...), referenceToolDefinition)
 		}
+		tools = append(append([]map[string]any{}, tools...), mcpTools...)
 		var streamed *Message
 		result, err := client.Complete(ctx, history.Model, messages, tools, func(delta string) {
 			if delta == "" {
@@ -438,7 +452,12 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
 			output := "请先关联项目才能使用文件和命令工具"
 			var toolErr error
-			if call.Name == "read_conversation_reference" {
+			if connection := connections[call.Name]; connection != nil {
+				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)
+				if toolErr == nil {
+					output, toolErr = callMCP(ctx, connection, call.Name, call.Arguments)
+				}
+			} else if call.Name == "read_conversation_reference" {
 				output, toolErr = s.readConversationReference(call.Arguments, references)
 			} else if workspace != nil {
 				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)

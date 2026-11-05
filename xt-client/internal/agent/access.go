@@ -58,6 +58,9 @@ var riskyCommand = regexp.MustCompile(`(?i)(\b(rm|rmdir|del|erase|remove-item|rd
 var packageInstall = regexp.MustCompile(`(?i)\b(npm|pnpm|yarn)\s+(install|i|add|remove|uninstall|publish|update|upgrade|ci)\b`)
 
 func needsApproval(w *Workspace, name string, raw json.RawMessage) (string, bool) {
+	if strings.HasPrefix(name, "mcp_") {
+		return "外部 MCP 工具：" + name + "\n" + string(raw), true
+	}
 	if name == "write_file" && w != nil {
 		var args struct {
 			Path   string `json:"path"`

@@ -176,3 +176,7 @@ Agent 消息区与输入框共用 --agent-content-width / --agent-content-edge �
 
 
 项目侧边栏（2026-11-04）：项目仍按目录分组，项目行提供预填项目的新会话入口与 Portal 操作菜单。`PATCH /api/agent/project/name` 事务更新同目录会话的项目显示元数据，保留历史及更新时间，运行中项目拒绝修改；`POST /api/agent/project/open` 检查目录后通过 Windows ShellExecute 打开资源管理器，两者均校验同源。
+
+## 可选 MCP 扩展
+
+通过应用进程环境变量 `XIAOTAO_MCP_CONFIG` 指定 stdio 服务配置，任务内初始化和发现工具后加入模型工具循环。安全模式逐项确认，取消与超时终止服务。配置和限制见 xt-client README 的 MCP 小节。当前尚未完成真实浏览器验收及图片结果视觉投影，不包含桌面操作。
