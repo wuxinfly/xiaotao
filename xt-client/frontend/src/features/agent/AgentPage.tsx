@@ -443,6 +443,8 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
+  const [quote, setQuote] = useState<string>('');
+  const [quoteSelection, setQuoteSelection] = useState<{text: string; left: number; top: number} | null>(null);
   useEffect(() => {if (!visible || busy) setSessionMenu(null);}, [visible, busy]);
   useEffect(() => { if (busy) setModelMenuOpen(false); }, [busy]);
   const openSessionMenu = useCallback(function openSessionMenu(item: AgentSession, x: number, y: number, trigger: HTMLElement) {
@@ -469,6 +471,31 @@ export function AgentPage({visible}: {visible: boolean}) {
   useEffect(() => { if (!visible || busy || active) setProjectMenuOpen(false); }, [visible, busy, active]);
   const feed = useRef<HTMLDivElement>(null), composer = useRef<HTMLDivElement>(null), sendRef = useRef<() => void>(() => {});
   const followFeed = useRef(true);
+  const captureQuoteSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) { setQuoteSelection(null); return; }
+    const range = selection.getRangeAt(0);
+    const element = (node: Node) => node instanceof Element ? node : node.parentElement;
+    const start = element(range.startContainer)?.closest('.agent-message.role-assistant .agent-message-content');
+    const end = element(range.endContainer)?.closest('.agent-message.role-assistant .agent-message-content');
+    const text = selection.toString().trim();
+    if (!text || !start || start !== end || !feed.current?.contains(start)) { setQuoteSelection(null); return; }
+    const rect = range.getBoundingClientRect();
+    setQuoteSelection({text, left: Math.max(8, Math.min(window.innerWidth - 80, rect.left + rect.width / 2 - 32)), top: Math.max(8, rect.top - 36)});
+  };
+  useEffect(() => {
+    if (!quoteSelection) return;
+    const dismiss = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.agent-quote-selection')) setQuoteSelection(null); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setQuoteSelection(null); };
+    const hide = () => setQuoteSelection(null);
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', escape);
+    document.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); document.removeEventListener('scroll', hide, true); window.removeEventListener('resize', hide); };
+  }, [quoteSelection]);
+  useEffect(() => { setQuote(''); setQuoteSelection(null); }, [active?.id]);
+
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const updateScrollToBottom = useCallback(() => {
     const el = feed.current;
@@ -746,7 +773,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, [visible, settingsOpen, modelsAttempt]);
 
   useEffect(() => {
-    if (!visible) { setSettingsOpen(false); setProjectOpen(false); setModelMenuOpen(false); }
+    if (!visible) { setSettingsOpen(false); setProjectOpen(false); setModelMenuOpen(false); setQuoteSelection(null); }
   }, [visible]);
 
   useEffect(() => {
@@ -755,7 +782,10 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, [active?.messages, active?.activity.length, busy, visible]);
 
   async function send(contentOverride?: string) {
-    const content = (contentOverride ?? promptRef.current).trim();
+    const text = (contentOverride ?? promptRef.current).trim();
+    const submittedQuote = quote;
+    const quotedText = submittedQuote ? '引用小涛的回复：\n\n' + submittedQuote.split('\n').map(line => '> ' + line.replace(/[\\`*_{}\[\]<>#~|]/g, '\\$&')).join('\n') : '';
+    const content = [quotedText, text].filter(Boolean).join('\n\n');
     if (!content || busy || !editor || (!active && !model)) return;
     historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
     followFeed.current = true;
@@ -795,6 +825,7 @@ export function AgentPage({visible}: {visible: boolean}) {
             editor.commands.clearContent();
             closeReferencePicker();
           }
+          setQuote(current => current === submittedQuote ? '' : current);
           submitted = true;
         }
         setActive(current => current?.id === id ? applyEvent(current, event) : current);
@@ -917,7 +948,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   }
 
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
-  canSendRef.current = !busy && (!!prompt.trim() || hasReference) && (!!active || !!model);
+  canSendRef.current = !busy && (!!prompt.trim() || !!quote || hasReference) && (!!active || !!model);
 
   const activity = active?.activity ?? [];
   const entries = useMemo(() => {
@@ -1019,7 +1050,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         </button>
       </header>
 
-      <div className="agent-feed" ref={feed} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; updateScrollToBottom(); if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
+      <div className="agent-feed" ref={feed} onMouseUp={captureQuoteSelection} onKeyUp={event => {if (event.shiftKey || event.key === 'Shift' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) captureQuoteSelection();}} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; updateScrollToBottom(); if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
         {active && historyBefore && <div className="agent-history-load"><button type="button" disabled={historyLoading || busy} onClick={() => void loadOlder()}>{historyLoading ? '正在加载历史…' : historyError ? '加载失败，点击重试' : '加载更早的消息'}</button>{historyError && <span role="status">{historyError}</span>}</div>}
         {!active && <div className="agent-empty">
           <div className="agent-empty-mark"><img src="/agent/mascot-hero.png" alt=""/></div>
@@ -1089,6 +1120,7 @@ export function AgentPage({visible}: {visible: boolean}) {
           </div>
         </div>
         <div className="agent-composer" ref={referenceComposerRef}>
+          {quote && <div className="agent-quote-draft" aria-label="引用的文字"><div><strong>引用小涛的回复</strong><span>{quote}</span></div><button type="button" aria-label="移除引用的文字" title="移除引用" onClick={() => {setQuote(''); editor?.commands.focus();}}><X aria-hidden="true"/></button></div>}
           <EditorContent editor={editor} className="agent-editor"/>
           {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
@@ -1123,6 +1155,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
+    {quoteSelection && createPortal(<button type="button" className="agent-quote-selection" style={{left: quoteSelection.left, top: quoteSelection.top}} onMouseDown={event => event.preventDefault()} onClick={() => {setQuote(quoteSelection.text); setQuoteSelection(null); window.getSelection()?.removeAllRanges(); editor?.commands.focus('end');}}>引用</button>, document.body)}
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
     <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>
     <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>

@@ -659,3 +659,17 @@
 .agent-group-actions svg { width: 15px; height: 15px; }
 @media (hover: none) { .agent-group-actions { visibility: visible; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .agent-group-actions { transition: none; } .agent-group-actions button:active { transform: none; } }
+
+.agent-quote-selection { position: fixed; z-index: 150; padding: 5px 12px; border: 1px solid rgba(104,180,196,.4); border-radius: 6px; background: #103646; color: #d8f3f2; box-shadow: 0 6px 18px rgba(0,0,0,.3); font-size: 11px; cursor: pointer; }
+.agent-quote-selection:hover, .agent-quote-selection:focus-visible { background: #1c5762; outline: 2px solid #80dcd6; outline-offset: 1px; }
+.agent-quote-draft { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; padding: 8px 9px; border-left: 2px solid #65c9c4; border-radius: 4px; background: rgba(31, 89, 99, .32); }
+.agent-quote-draft > div { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.agent-quote-draft strong { color: #91c9c9; font-size: 10px; font-weight: 600; }
+.agent-quote-draft span { max-height: 76px; overflow: auto; color: #c8e1e4; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agent-quote-draft button { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #a2c5cc; cursor: pointer; }
+.agent-quote-draft button:hover, .agent-quote-draft button:focus-visible { background: rgba(110,200,200,.2); outline: 1px solid #80dcd6; }
+.agent-quote-draft button svg { width: 14px; height: 14px; }
+[data-theme='light'] .agent-quote-draft { background: #e5f3f4; }
+[data-theme='light'] .agent-quote-draft strong { color: #367479; }
+[data-theme='light'] .agent-quote-draft span { color: #294e58; }
+[data-theme='light'] .agent-quote-draft button { color: #46767f; }
