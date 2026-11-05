@@ -72,9 +72,9 @@ type metadataProvider struct{}
 func (metadataProvider) Info() providers.Info { return providers.Info{ID: "metadata-test"} }
 func (metadataProvider) ListModels(region string) []providers.ModelInfo {
 	if region == "first" {
-		return []providers.ModelInfo{{ID: "shared", Multimodal: true, MaxInputTokens: 180000}, {ID: "unknown"}}
+		return []providers.ModelInfo{{ID: "shared", Multimodal: true, MaxInputTokens: 180000, PriceFactor: providers.ParsePriceFactor(0.5), IsFree: providers.ParseFreeFlag(false)}, {ID: "unknown"}}
 	}
-	return []providers.ModelInfo{{ID: "shared", Reasoning: true, MaxInputTokens: 600000}, {ID: "other", Reasoning: true}}
+	return []providers.ModelInfo{{ID: "shared", Reasoning: true, MaxInputTokens: 600000, PriceFactor: providers.ParsePriceFactor(2.0)}, {ID: "other", Reasoning: true}}
 }
 
 func TestModelsCapabilityMetadata(t *testing.T) {
@@ -108,7 +108,16 @@ func TestModelsCapabilityMetadata(t *testing.T) {
 	if shared["supports_images"] != true || shared["supports_reasoning"] != false || shared["max_input_tokens"] != 180000 {
 		t.Fatalf("metadata must follow first account, not union: %+v", shared)
 	}
+	if shared["price_factor"] != 0.5 || shared["is_free"] != false {
+		t.Fatalf("wrong account pricing: %+v", shared)
+	}
 	unknown := byID["metadata-test/unknown"]
+	if _, ok := unknown["price_factor"]; ok {
+		t.Fatal("unknown price must be omitted")
+	}
+	if _, ok := unknown["is_free"]; ok {
+		t.Fatal("unknown free flag must be omitted")
+	}
 	if _, ok := unknown["max_input_tokens"]; ok {
 		t.Fatalf("unknown window must be omitted: %+v", unknown)
 	}

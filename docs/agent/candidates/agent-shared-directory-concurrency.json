@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "agent-shared-directory-concurrency",
+  "created_at": "2026-11-05T00:00:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.agent-shared-directory-concurrency",
+  "text": "xt-client 多会话共用所选项目目录，不自动创建 worktree，不提示正常的同项目并发；向模型提供其他运行任务摘要，允许同时修改同一文件，写入时检查读取后的变化，遇到实际冲突重读合并，无法合并再向用户说明。",
+  "rationale": "用户先明确拒绝自动 worktree 隔离，随后再次明确取消并发提示、允许同时修改同一文件，并确认读取后变化检查；两次纠正已在实现计划中记录。",
+  "observations": 2,
+  "source_refs": [
+    "docs/plans/2026-11-05-multi-session.md",
+    "xt-client/internal/agent/workspace.go",
+    "xt-client/internal/agent/service.go"
+  ]
+}

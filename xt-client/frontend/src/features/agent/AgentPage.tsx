@@ -34,6 +34,7 @@ import {
   Square,
   X,
 } from 'lucide-react';
+import {ModelPriceBadge} from '../../components/ModelPriceBadge';
 import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentReferenceCandidate, type AgentSession} from '../../lib/api';
 import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
 import {ConversationReference, conversationReferenceType} from './ConversationReference';
@@ -430,6 +431,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewButtonRef = useRef<HTMLButtonElement>(null);
   const [deleting, setDeleting] = useState('');
+  const [exitingSession, setExitingSession] = useState('');
   const [sessionMenu, setSessionMenu] = useState<{item: AgentSession; x: number; y: number} | null>(null);
   const [renaming, setRenaming] = useState<AgentSession | null>(null);
   const sessionMenuTrigger = useRef<HTMLElement | null>(null);
@@ -442,7 +444,12 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
-  const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
+  const [prompt, setPrompt] = useState(''), [pending, setPending] = useState(false), [loading, setLoading] = useState(true);
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const runningRef = useRef(new Set<string>());
+  const sessionCache = useRef(new Map<string, AgentSession>());
+  const busy = pending || !!active && (runningIds.has(active.id) || active.status === 'running');
+  const drafts = useRef(new Map<string, {json: object; model: string; path: string; name: string; top: number; follow: boolean; quotes: typeof quotes}>());
   const [quotes, setQuotes] = useState<Array<{id: string; messageId: string; start: number; end: number; sourceText: string; text: string; reply: string}>>([]);
   const [quoteSelection, setQuoteSelection] = useState<{text: string; messageId: string; start: number; end: number; left: number; top: number} | null>(null);
   const [editingQuote, setEditingQuote] = useState<string | null>(null);
@@ -502,7 +509,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     window.addEventListener('resize', hide);
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); document.removeEventListener('scroll', hide, true); window.removeEventListener('resize', hide); };
   }, [quoteSelection]);
-  useEffect(() => { setQuotes([]); setQuoteSelection(null); setEditingQuote(null); }, [active?.id]);
+
   useEffect(() => {
     if (!editingQuote) return;
     const escape = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); setEditingQuote(null);}};
@@ -829,6 +836,21 @@ export function AgentPage({visible}: {visible: boolean}) {
     updateScrollToBottom();
   }, [active?.messages, active?.activity.length, busy, visible]);
 
+  function saveDraft() {
+    if (!editor) return;
+    if (active) sessionCache.current.set(active.id, active);
+    drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes});
+  }
+  function restoreDraft(id: string, fallbackModel: string) {
+    const draft = drafts.current.get(id);
+    setQuotes(draft?.quotes || []); setQuoteSelection(null); setEditingQuote(null);
+    editor?.commands.setContent(draft?.json || {type:'doc', content:[{type:'paragraph'}]});
+    setModel(draft?.model || fallbackModel);
+    if (!id) { setPath(draft?.path || ''); setProjectName(draft?.name || ''); }
+    followFeed.current = draft?.follow ?? true;
+    requestAnimationFrame(() => {if (feed.current && draft && !draft.follow) feed.current.scrollTop = draft.top;});
+  }
+
   async function send(contentOverride?: string) {
     const text = (contentOverride ?? promptRef.current).trim();
     const submittedQuotes = quotes;
@@ -842,10 +864,12 @@ export function AgentPage({visible}: {visible: boolean}) {
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
     const references = editorReferenceIds(editor);
-    setBusy(true);
+    setPending(true);
     setError('');
     setActive(current => current ? {...current, error: ''} : current);
     let session = active;
+    let streamID = '';
+    let sending = true;
     let submitted = false;
     try {
       if (!session) {
@@ -854,6 +878,10 @@ export function AgentPage({visible}: {visible: boolean}) {
         setSessions(current => [session!, ...current]);
       }
       const id = session.id;
+      streamID = id;
+      sessionCache.current.set(id, {...session, status:'running', error:''});
+      runningRef.current.add(id);
+      setRunningIds(new Set(runningRef.current));
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -863,60 +891,71 @@ export function AgentPage({visible}: {visible: boolean}) {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error?.message || '发送失败（' + response.status + '）');
       }
+      if (editorMarkdown(editor) === submittedContent) editor.commands.clearContent();
+      if (!active) drafts.current.delete('');
+      drafts.current.delete(id);
+      setQuotes(current => current.filter(item => !submittedQuotes.some(sent => sent.id === item.id && sent.text === item.text && sent.reply === item.reply)));
+      setEditingQuote(null); closeReferencePicker();
+      setPending(false); sending = false;
       await readEventStream(response, event => {
+        const cached = sessionCache.current.get(id);
+        if (cached) {
+          const updated = applyEvent(cached, event);
+          sessionCache.current.set(id, updated);
+          setSessions(current => [{...updated, messages:[], activity:[]}, ...current.filter(item => item.id !== id)]);
+        }
         if (event.type === 'approval' && event.approval) {
           const approval = event.approval;
-          void confirm({title:'确认高危操作？', description: `小涛准备${approval.tool === 'run_command' ? '执行以下命令' : '进行以下操作'}：\n\n${approval.detail}`, confirmLabel:'允许执行'}).then(async approved => {
+          void confirm({title:'确认高危操作？', description: `会话「${session?.title || id}」的小涛准备${approval.tool === 'run_command' ? '执行以下命令' : '进行以下操作'}：\n\n${approval.detail}`, confirmLabel:'允许执行'}).then(async approved => {
             const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/approval', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:approval.id, approved})});
             if (!response.ok) throw new Error('确认请求已失效');
           }).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
         }
-        if (event.type === 'session' && event.message && !submitted) {
-          if (editorMarkdown(editor) === submittedContent) {
-            editor.commands.clearContent();
-            closeReferencePicker();
-          }
-          setQuotes(current => current.filter(item => !submittedQuotes.some(sent => sent.id === item.id && sent.text === item.text && sent.reply === item.reply)));
-          setEditingQuote(null);
-          submitted = true;
-        }
+        if (event.type === 'session' && event.message) submitted = true;
         setActive(current => current?.id === id ? applyEvent(current, event) : current);
       });
       const page = await api.agentHistory(id);
       const latest = page.session;
+      const cached = sessionCache.current.get(latest.id);
+      sessionCache.current.set(latest.id, cached ? {...latest, messages:mergeHistory(cached.messages, latest.messages), activity:mergeHistory(cached.activity, latest.activity)} : latest);
       setActive(current => current?.id === id ? {...latest, messages:mergeHistory(current.messages, latest.messages), activity:mergeHistory(current.activity, latest.activity)} : current);
       setSessions(current => [{...latest, messages:[], activity:[]}, ...current.filter(item => item.id !== id)]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (activeIdRef.current === session?.id || sending) setError(reason instanceof Error ? reason.message : String(reason));
       if (submitted && session) {
         try {
           const page = await api.agentHistory(session.id);
           const latest = page.session;
+          sessionCache.current.set(latest.id, latest);
           setActive(current => current?.id === latest.id ? {...latest, messages:mergeHistory(current.messages, latest.messages), activity:mergeHistory(current.activity, latest.activity)} : current);
           setSessions(current => [{...latest, messages:[], activity:[]}, ...current.filter(item => item.id !== latest.id)]);
         } catch { /* retain visible state */ }
       }
     } finally {
-      setBusy(false);
-      editor.commands.focus();
+      if (sending) setPending(false);
+      if (streamID) {
+        const cached = sessionCache.current.get(streamID);
+        if (cached?.status === 'running') {
+          const failed = {...cached, status:'failed' as const, error:'连接已结束，请查看任务状态'};
+          sessionCache.current.set(streamID, failed);
+          setSessions(current => current.map(item => item.id === streamID ? {...failed, messages:[], activity:[]} : item));
+        }
+        runningRef.current.delete(streamID);
+        setRunningIds(new Set(runningRef.current));
+        setActive(current => current?.id === streamID && current.status === 'running' ? {...current, status:'failed', error:'连接已结束，请查看任务状态'} : current);
+      }
+      if (activeIdRef.current === streamID) editor.commands.focus();
     }
   }
   sendRef.current = () => {void send();};
 
   async function openReferencedSession(id: string) {
-    if (busy) return;
     setReferenceDetail(null);
-    setBusy(true);
-    setError('');
-    try {
-      resetHistory(); setOpenActivities({});
-      const page = await api.agentHistory(id);
-      setActive(page.session);
-      setHistoryBefore(page.before);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setBusy(false);
+    const session = sessions.find(item => item.id === id);
+    if (session) await selectSession(session);
+    else {
+      try { const page = await api.agentHistory(id); await selectSession(page.session); }
+      catch (reason) { setError(String(reason)); }
     }
   }
 
@@ -925,15 +964,16 @@ export function AgentPage({visible}: {visible: boolean}) {
   const sidebarProjectTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => { if (!visible || busy) setSidebarProjectMenu(null); }, [visible, busy]);
   const newProjectChat = useCallback(async (projectPath: string, name: string) => {
-    if (busy) return;
-    setBusy(true);
+    if (pending) return;
+    saveDraft();
+    setPending(true);
     try {
       const resolved = await api.resolveAgentProject(projectPath);
-      resetHistory(); setActive(null); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
+      resetHistory(); setActive(null); setQuotes([]); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
       editor?.commands.clearContent(); editor?.commands.focus();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
-    finally {setBusy(false);}
-  }, [busy, editor, resetHistory]);
+    finally {setPending(false);}
+  }, [pending, editor, resetHistory, model, path, projectName, quotes]);
   const openSidebarProjectMenu = useCallback((path: string, name: string, trigger: HTMLElement, key: string) => {
     sidebarProjectTrigger.current = trigger;
     setSessionMenu(null);
@@ -941,14 +981,15 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, []);
 
   function newChat() {
-    if (busy) return;
+    if (pending) return;
+    saveDraft();
     resetHistory();
     setActive(null);
     setPath('');
     setProjectName('');
     setError('');
     setOpenActivities({});
-    editor?.commands.clearContent();
+    restoreDraft('', model);
     editor?.commands.focus();
   }
 
@@ -957,13 +998,16 @@ export function AgentPage({visible}: {visible: boolean}) {
   }
 
   const selectSession = useCallback(async (session: AgentSession) => {
-    if (busy || session.id === active?.id) return;
+    if (pending || session.id === activeIdRef.current) return;
+    saveDraft();
     setError('');
-    setBusy(true);
+    setPending(true);
     try {
       historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
       const page = await api.agentHistory(session.id);
-      const detail = page.session;
+      const cached = sessionCache.current.get(session.id);
+      const detail = runningRef.current.has(session.id) && cached ? cached : cached
+        ? {...page.session, messages:mergeHistory(cached.messages, page.session.messages), activity:mergeHistory(cached.activity, page.session.activity)} : page.session;
       followFeed.current = true;
       setHistoryBefore(page.before);
       setHistoryError('');
@@ -972,11 +1016,11 @@ export function AgentPage({visible}: {visible: boolean}) {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       return;
-    } finally { setBusy(false); }
+    } finally { setPending(false); }
     setOpenActivities({});
-    editor?.commands.clearContent();
+    restoreDraft(session.id, session.model);
     editor?.commands.focus();
-  }, [busy, active?.id, editor]);
+  }, [pending, active?.id, editor, model, path, projectName, quotes]);
 
   async function deleteSession(item: AgentSession) {
     if (busy || deleting) return;
@@ -984,11 +1028,15 @@ export function AgentPage({visible}: {visible: boolean}) {
     setDeleting(item.id);
     try {
       await api.deleteAgentSession(item.id);
+      setExitingSession(item.id);
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!reduceMotion) await new Promise(resolve => window.setTimeout(resolve, 180));
       setSessions(current => current.filter(session => session.id !== item.id));
       if (active?.id === item.id) newChat();
       setError('');
+      if (!reduceMotion) await new Promise(resolve => window.setTimeout(resolve, 220));
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setDeleting(''); }
+    finally { setDeleting(''); setExitingSession(''); }
   }
 
   function saveAgentSettings(nextModels: string[]) {
@@ -1074,7 +1122,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   return <section className="agent-workspace" aria-label="小涛 Agent">
     <aside className="agent-sidebar">
-      <button className="agent-new" type="button" onClick={newChat} disabled={busy}>
+      <button className="agent-new" type="button" onClick={newChat} disabled={pending}>
         <MessageSquarePlus aria-hidden="true"/><span>新会话</span>
       </button>
       <div className="agent-history-heading">
@@ -1084,7 +1132,7 @@ export function AgentPage({visible}: {visible: boolean}) {
           {(['project', 'session'] as const).map(option => <button type="button" key={option} className={view === option ? 'is-active' : ''} aria-pressed={view === option} onClick={() => {setView(option); localStorage.setItem('xiaotao.agent.historyView', option); setViewMenuOpen(false); viewButtonRef.current?.focus();}}><span>{option === 'project' ? '按项目查看' : '按会话查看'}</span>{view === option && <Check aria-hidden="true"/>}</button>)}
         </Popover>
       </div>
-      <SessionList sessions={sessions} activeId={active?.id} view={view} loading={loading} busy={busy} deleting={deleting} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onSelect={selectSession} onMenu={openSessionMenu}/>
+      <SessionList runningIds={runningIds} sessions={sessions} activeId={active?.id} view={view} loading={loading} busy={pending} deleting={deleting} exitingId={exitingSession} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onSelect={selectSession} onMenu={openSessionMenu}/>
       <div className="agent-sidebar-foot">
         <span className="agent-status-dot"/>
         <span>本地工作区</span>
@@ -1189,7 +1237,7 @@ export function AgentPage({visible}: {visible: boolean}) {
                   <span>{availablePickerModels.find(item => item.model === (model || active?.model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>
                 </button>
                 <Popover open={modelMenuOpen} onClose={() => setModelMenuOpen(false)} anchorRef={modelButtonRef} side="top" align="end" className="agent-model-menu" aria-label="选择模型">
-                  {availablePickerModels.map(item => <button type="button" role="menuitemradio" aria-checked={item.model === model} key={item.model} onClick={() => {setModel(item.model); setModelMenuOpen(false); modelButtonRef.current?.focus();}}><span>{item.label}</span>{item.model === model && <Check aria-hidden="true"/>}</button>)}
+                  {availablePickerModels.map(item => <button type="button" role="menuitemradio" aria-checked={item.model === model} key={item.model} onClick={() => {setModel(item.model); setModelMenuOpen(false); modelButtonRef.current?.focus();}}><span>{item.label}<ModelPriceBadge {...item}/></span>{item.model === model && <Check aria-hidden="true"/>}</button>)}
                 </Popover>
               </div>
               {busy

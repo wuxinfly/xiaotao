@@ -102,6 +102,12 @@ func (s *Service) Models() ([]map[string]any, error) {
 				"id": id, "object": "model", "created": 0, "owned_by": "xiaotao",
 				"supports_images": m.Multimodal, "supports_reasoning": m.Reasoning,
 			}
+			if m.PriceFactor != nil {
+				entry["price_factor"] = *m.PriceFactor
+			}
+			if m.IsFree != nil {
+				entry["is_free"] = *m.IsFree
+			}
 			if m.MaxInputTokens > 0 {
 				entry["max_input_tokens"] = m.MaxInputTokens
 			}

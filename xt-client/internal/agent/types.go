@@ -56,8 +56,10 @@ type Options struct {
 }
 
 type ModelOption struct {
-	Model string `json:"model"`
-	Label string `json:"label"`
+	PriceFactor *float64 `json:"priceFactor,omitempty"`
+	IsFree      *bool    `json:"isFree,omitempty"`
+	Model       string   `json:"model"`
+	Label       string   `json:"label"`
 }
 
 type ConversationReference struct {

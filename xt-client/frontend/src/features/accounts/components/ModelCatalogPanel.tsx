@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import {ModelPriceBadge} from '../../../components/ModelPriceBadge';
 import { api, type Account, type ModelCatalog } from '../../../lib/api';
 import { toast } from '../../../components/toast';
 
@@ -58,7 +59,7 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
         const id = `${providerId}/${model.id}`;
         return <div className="model-catalog-row" key={id}>
           <div className="model-catalog-copy">
-            <strong>{model.displayName || model.id}</strong>
+            <strong>{model.displayName || model.id}<ModelPriceBadge {...model}/></strong>
             <code>{id}</code>
           </div>
           <button type="button" className="model-catalog-copy-btn" onClick={() => void copy(id)} aria-label={`复制 ${id}`}>

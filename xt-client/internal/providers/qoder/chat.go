@@ -238,7 +238,7 @@ func chatError(frame map[string]any) error {
 
 func QueueWait(err error) time.Duration {
 	var upstream *providers.UpstreamError
-	if !errors.As(err, &upstream) || upstream.Status != http.StatusTooManyRequests {
+	if !errors.As(err, &upstream) || (upstream.Status != http.StatusTooManyRequests && upstream.Status != http.StatusForbidden) {
 		return 0
 	}
 	text := upstream.Message

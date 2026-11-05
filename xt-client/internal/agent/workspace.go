@@ -1,16 +1,31 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 const maxFileBytes = 512 * 1024
 
 type Workspace struct {
-	Root string
+	Root     string
+	observed map[string][32]byte
+}
+
+// Coordinates our file tools across sessions, including paths outside a project.
+// External editors and commands do not participate in this lock.
+var fileToolMu sync.Mutex
+
+func fileObservationKey(target string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(target)
+	}
+	return target
 }
 
 func OpenWorkspace(raw string) (*Workspace, error) {
@@ -41,12 +56,18 @@ func (w *Workspace) Resolve(path string) (string, error) {
 }
 
 func (w *Workspace) Read(relative string, offset, limit int) (string, error) {
+	fileToolMu.Lock()
+	defer fileToolMu.Unlock()
 	target, err := w.Resolve(relative)
 	if err != nil {
 		return "", err
 	}
 	info, err := os.Stat(target)
 	if err != nil {
+		// A fresh read confirming deletion acknowledges that change.
+		if os.IsNotExist(err) {
+			delete(w.observed, fileObservationKey(target))
+		}
 		return "", err
 	}
 	if !info.Mode().IsRegular() {
@@ -78,13 +99,31 @@ func (w *Workspace) Read(relative string, offset, limit int) (string, error) {
 	for i := start; i < end; i++ {
 		fmt.Fprintf(&b, "%d\t%s\n", i+1, lines[i])
 	}
+	if w.observed == nil {
+		w.observed = make(map[string][32]byte)
+	}
+	w.observed[fileObservationKey(target)] = sha256.Sum256(data)
 	return b.String(), nil
 }
 
 func (w *Workspace) Write(relative, content string, appendMode bool) error {
+	fileToolMu.Lock()
+	defer fileToolMu.Unlock()
 	target, err := w.Resolve(relative)
 	if err != nil {
 		return err
+	}
+	key := fileObservationKey(target)
+	current, readErr := os.ReadFile(target)
+	previous, observed := w.observed[key]
+	if !observed && readErr == nil {
+		return fmt.Errorf("写入前请先 read_file 读取 %s 的最新内容，再保留现有修改进行写入", relative)
+	}
+	if observed && (readErr != nil || sha256.Sum256(current) != previous) {
+		return fmt.Errorf("文件冲突：%s 自上次读取或写入后已变化，未执行写入。请重新 read_file，保留其他任务修改并合并；无法合并时向用户说明冲突", relative)
+	}
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return readErr
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -101,5 +140,17 @@ func (w *Workspace) Write(relative, content string, appendMode bool) error {
 		f.Close()
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if appendMode {
+		current = append(current, []byte(content)...)
+	} else {
+		current = []byte(content)
+	}
+	if w.observed == nil {
+		w.observed = make(map[string][32]byte)
+	}
+	w.observed[key] = sha256.Sum256(current)
+	return nil
 }

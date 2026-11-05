@@ -164,7 +164,12 @@ export interface AgentProject {
   name: string;
 }
 
-export interface AgentModelOption {
+export interface ModelPricing {
+ priceFactor?: number;
+ isFree?: boolean;
+}
+
+export interface AgentModelOption extends ModelPricing {
   model: string;
   label: string;
 }
@@ -271,7 +276,7 @@ async function dashboardRequest(): Promise<DashboardSnapshot> {
 }
 
 export interface ModelCatalog {
-  models: { id: string; displayName?: string; multimodal: boolean }[];
+  models: ({ id: string; displayName?: string; multimodal: boolean } & ModelPricing)[];
   source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error';
   error?: string;
 }

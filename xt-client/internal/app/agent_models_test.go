@@ -48,3 +48,17 @@ func TestAgentModelsFetchConcurrentlyAndKeepAccountOrder(t *testing.T) {
 		t.Fatal("fetch did not finish")
 	}
 }
+
+func TestAgentModelsPricingFollowsFirstAccount(t *testing.T) {
+	accounts := []*storage.Account{{ID: "first", Provider: "qoder", Enabled: true}, {ID: "second", Provider: "qoder", Enabled: true}}
+	models := agentModelsForAccounts(accounts, func(a storage.Account) []providers.ModelInfo {
+		factor := 0.5
+		if a.ID == "second" {
+			factor = 2
+		}
+		return []providers.ModelInfo{{ID: "m", PriceFactor: &factor}}
+	})
+	if len(models) != 1 || models[0].PriceFactor == nil || *models[0].PriceFactor != 0.5 {
+		t.Fatalf("wrong routing price: %v", models)
+	}
+}

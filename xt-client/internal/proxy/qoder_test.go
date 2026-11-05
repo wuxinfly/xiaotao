@@ -15,6 +15,14 @@ import (
 )
 
 func TestQoderQueueRetriesSameAccount(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wrapped403=%t", wrapped), func(t *testing.T) {
+			testQoderQueueRetriesSameAccount(t, wrapped)
+		})
+	}
+}
+
+func testQoderQueueRetriesSameAccount(t *testing.T, wrapped bool) {
 	var hits int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "model/list") {
@@ -23,7 +31,13 @@ func TestQoderQueueRetriesSameAccount(t *testing.T) {
 		}
 		hits++
 		if hits == 1 {
-			frame, _ := json.Marshal(map[string]any{"body": `{"code":"10605","message":"{\"retryAfterSeconds\":1,\"subCode\":\"RESOURCE_LIMIT\"}"}`})
+			payload := map[string]any{"code": "10605", "message": `{"retryAfterSeconds":1,"subCode":"RESOURCE_LIMIT"}`}
+			if wrapped {
+				inner, _ := json.Marshal(payload)
+				payload = map[string]any{"code": "403", "message": string(inner)}
+			}
+			inner, _ := json.Marshal(payload)
+			frame, _ := json.Marshal(map[string]any{"body": string(inner)})
 			fmt.Fprintf(w, "data: %s\n\n", frame)
 			return
 		}
@@ -121,5 +135,26 @@ func TestQoderProxyEntry(t *testing.T) {
 	svc.HandleChat(w, req)
 	if w.Code != 403 || strings.Contains(w.Header().Get("Content-Type"), "event-stream") || strings.Contains(w.Body.String(), "[DONE]") {
 		t.Fatalf("upstream failure disguised as stream: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestQoderQueueDoesNotReplayOutput(t *testing.T) {
+	hits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"partial"}}]}`+"\n\n")
+		inner, _ := json.Marshal(map[string]any{"code": "10605", "message": `{"retryAfterSeconds":1}`})
+		frame, _ := json.Marshal(map[string]any{"code": "403", "message": string(inner)})
+		fmt.Fprintf(w, "data: %s\n\n", frame)
+	}))
+	defer server.Close()
+	client := qoder.ChatClient{Region: qoder.Region{InferBase: server.URL}, HTTP: server.Client()}
+	events := 0
+	err := qoderWithQueue(context.Background(), client, &providers.Credential{}, providers.ModelInfo{UpstreamID: "m"}, nil, func(qoder.ChatEvent) error {
+		events++
+		return nil
+	})
+	if err == nil || hits != 1 || events != 1 {
+		t.Fatalf("err=%v hits=%d events=%d", err, hits, events)
 	}
 }

@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
+import {ModelPriceBadge} from '../../components/ModelPriceBadge';
 import {ModalFrame} from '../../components/modal/ModalFrame';
 import {Check, ChevronDown, FolderOpen, Search, X} from 'lucide-react';
 import {api, type AgentConversationReference, type AgentModelOption} from '../../lib/api';
@@ -150,7 +151,7 @@ export function AgentSettingsModal({models, selected, loading, error, onRetry, o
               >
                 <span className="agent-model-check">{active && <Check aria-hidden="true"/>}</span>
                 <span className="agent-model-choice-copy">
-                  <strong>{item.label || name}</strong>
+                  <strong>{item.label || name}<ModelPriceBadge {...item}/></strong>
                   <code>{item.model}</code>
                 </span>
               </button>;

@@ -88,11 +88,12 @@ func FetchUpstreamModels(cred *providers.Credential, machineID, deviceID string)
 func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 	var parsed struct {
 		ConfigInfoList []struct {
-			Name      string         `json:"config_name"`
-			Switch    *bool          `json:"config_switch"`
-			Invisible *bool          `json:"is_invisible_to_user"`
-			Context   any            `json:"context_window_tokens"`
-			Display   catalogDisplay `json:"display_config"`
+			Name      string          `json:"config_name"`
+			Switch    *bool           `json:"config_switch"`
+			Invisible *bool           `json:"is_invisible_to_user"`
+			Context   any             `json:"context_window_tokens"`
+			Display   catalogDisplay  `json:"display_config"`
+			Contact   json.RawMessage `json:"display_contact_config"`
 		} `json:"config_info_list"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -107,7 +108,7 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 			continue
 		}
 		seen[id] = true
-		out = append(out, providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi})
+		out = append(out, providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi, PriceFactor: catalogPriceFactor(e.Contact)})
 	}
 	if len(out) == 0 {
 		return nil, ErrEmptyCatalog
@@ -166,4 +167,25 @@ func UpstreamModel(id string) string {
 		return name
 	}
 	return id
+}
+
+func catalogPriceFactor(raw json.RawMessage) *float64 {
+	if len(raw) > 0 && raw[0] == '"' {
+		var text string
+		if json.Unmarshal(raw, &text) != nil {
+			return nil
+		}
+		raw = []byte(text)
+	}
+	var contact struct {
+		ConsumptionRate struct {
+			Data struct {
+				Rate any `json:"rate"`
+			} `json:"data"`
+		} `json:"consumption_rate"`
+	}
+	if json.Unmarshal(raw, &contact) != nil {
+		return nil
+	}
+	return providers.ParsePriceFactor(contact.ConsumptionRate.Data.Rate)
 }
