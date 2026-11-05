@@ -31,6 +31,9 @@ type Activity struct {
 	Kind      string     `json:"kind"`
 	Title     string     `json:"title"`
 	Detail    string     `json:"detail,omitempty"`
+	Tool      string     `json:"tool,omitempty"`
+	Input     string     `json:"input,omitempty"`
+	Output    string     `json:"output,omitempty"`
 	Status    string     `json:"status"`
 	StartedAt time.Time  `json:"startedAt"`
 	EndedAt   *time.Time `json:"endedAt,omitempty"`

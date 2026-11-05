@@ -216,6 +216,9 @@ export interface AgentActivity {
   kind: string;
   title: string;
   detail?: string;
+  tool?: string;
+  input?: string;
+  output?: string;
   status: 'running' | 'completed' | 'failed';
   startedAt: string;
   endedAt?: string;
@@ -281,7 +284,13 @@ export interface ModelCatalog {
   error?: string;
 }
 
+export interface MCPServer { command: string; args: string[]; disabled?: boolean }
+export interface MCPSettings { mcpServers: Record<string, MCPServer>; source?: 'local' | 'environment' | 'empty' }
+
 export const api = {
+  agentMCP: (signal?: AbortSignal) => request<MCPSettings>('/api/agent/mcp', {signal}),
+  saveAgentMCP: (settings: MCPSettings) => request<{ok: boolean}>('/api/agent/mcp', {method:'PUT', body:JSON.stringify(settings)}),
+  testAgentMCP: (server: MCPServer, signal?: AbortSignal) => request<{tools: string[]}>('/api/agent/mcp/test', {method:'POST', body:JSON.stringify(server), signal}),
   accountModels: (id: string) => request<ModelCatalog>(`/api/proxy/models?accountId=${encodeURIComponent(id)}`, { method: 'POST' }),
   providers: () => request<{ providers: ProviderInfo[] }>('/api/providers'),
   accounts: () => request<{ accounts: Account[] }>('/api/accounts'),

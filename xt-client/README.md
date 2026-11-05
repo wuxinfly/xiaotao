@@ -290,18 +290,26 @@ Agent 输入框使用不透明背景，避免覆盖消息时透出正文；深�
 
 ## Agent 网页操作与调试（MCP）
 
-新增可选 stdio MCP 接入。复制 `mcp.example.json` 到自己管理的配置路径，安装 Node.js 与 Chrome 后，在 PowerShell 中启动客户端：
+在“Agent 设置 → MCP 工具”中添加服务，填写名称、启动命令和参数（每行一个，不加 shell 引号），可启用、禁用或删除服务。“添加 Chrome 浏览器工具”会填入 Chrome DevTools MCP 配置，需要本机安装 Node.js 与 Chrome；首次测试或使用时会下载 npm 包，生产使用建议固定经过验证的版本。
+
+“测试连接”使用当前草稿启动服务、初始化并读取工具列表，不调用工具、不保存草稿；可取消，整体限时 35 秒（浏览器请求 40 秒兜底）。“保存 MCP 配置”写入当前环境数据目录的 `agent/mcp.json`，下一次任务生效，无需重启客户端；已有任务保持原连接。正式版与 UAT 独立保存，配置不会从项目自动读取，也不会导入另一环境的 MCP 配置。命令以当前用户身份启动，只配置可信服务；安全模式仍会逐次确认模型发起的 MCP 工具调用。
+
+兼容原有环境变量入口：没有本地 `agent/mcp.json` 时读取 `XIAOTAO_MCP_CONFIG`；设置页会显示来源，保存后使用本地配置，不回写外部文件。本地空配置也优先于环境变量。也可以复制 `mcp.example.json` 到自己管理的配置路径，在 PowerShell 中启动客户端：
 
 ```powershell
 $env:XIAOTAO_MCP_CONFIG = 'C:\你的目录\mcp.json'
 & '.\dist\xiaotao.exe'
 ```
 
-示例通过 `npx.cmd` 启动 Chrome DevTools MCP，首次运行会下载 npm 包；生产使用建议固定经过验证的包版本。非 Windows 系统使用 `npx`。配置为应用拥有者维护的本机文件，不自动读取项目配置。配置命令以当前用户身份启动，须信任所配置的服务。未设置环境变量时保持原有行为。
+示例通过 `npx.cmd` 启动 Chrome DevTools MCP；非 Windows 系统使用 `npx`。没有本地配置且未设置环境变量时，不加载外部工具。每个服务支持 `command`、`args` 和可选 `disabled`；本期不支持服务环境变量或 HTTP 连接。
 
 每次任务启动服务、完成 MCP 初始化并发现工具，将 JSON Schema 注册到模型；工具结果携带原调用 ID 回传，沿用过程事件。安全模式每次外部工具调用请求确认，完全访问模式直接执行。停止任务或工具超时会终止该服务；任务退出清理进程。初始化和发现每次请求限时 30 秒，工具执行限时 120 秒，单条协议消息上限 8 MiB。服务错误使任务明确失败，不静默忽略。
 
-当前仅支持 stdio 与文本形式工具结果；图片结果保留 MCP JSON，尚未转成模型视觉消息；不支持 HTTP MCP、服务端交互请求或 Windows 桌面控制。浏览器登录态和进程由所选 MCP 服务管理。可要求 Agent 打开测试网页、查看 Console 与 Network 后修改项目并复查。真实浏览器和 Windows 桌面壳尚待实测。
+当前仅支持 stdio 与文本形式工具结果；图片结果保留 MCP JSON，尚未转成模型视觉消息；不支持 HTTP MCP、服务端交互请求或 Windows 桌面控制。浏览器登录态和进程由所选 MCP 服务管理。可要求 Agent 打开测试网页、查看 Console 与 Network 后修改项目并复查。2026-11-05 用户实测反馈已连接 32 个浏览器工具，可打开 example.com，并返回页面标题与控制台检查结果；Network、安全模式拒绝、停止及桌面壳细节仍待专项验收。
+
+设置界面回归：在 `frontend` 执行 `node --test tests/mcp-settings.browser.test.mjs`，使用隔离合成 API 验证配置保存、禁用、连接反馈、失败保留草稿、页签切换、窄窗口和浅海主题。管理接口为 GET/PUT `/api/agent/mcp`、POST `/api/agent/mcp/test`，均校验同源。设计与验收见 [MCP 设置计划](../docs/plans/2026-11-05-mcp-settings.md)。
+
+MCP 执行过程显示具体动作（例如“打开网页”“检查控制台消息”）和目标 URL、页面或元素标识；未知工具显示真实名称。展开步骤的“参数与结果”可查看服务/工具名、参数及结果预览，失败步骤显示失败原因。参数和结果预览各最多 6000 字符，图片等非文本内容仅显示类型；完整工具结果仍按原调用 ID 交给模型。元数据随活动记录保存，旧记录缺少的信息不会按临时编号猜测补全。前端回归：`node --test tests/mcp-activity.browser.test.mjs`；设计与验收见 [MCP 执行过程](../docs/plans/2026-11-05-mcp-activity.md)。
 
 验证记录（2026-11-05）：MCP 独立协议测试覆盖发现、调用、缺失配置与取消；Linux race 检查、独立 vet 和 Windows 测试二进制交叉编译已通过。完整 `go test ./...` 被 SQLite 依赖下载 403 阻挡，且客户端桌面入口只能在 Windows 编译；尚未通过完整构建，不应视为可验收版本。Windows 实测应使用 UAT：`./build.ps1 -Env uat -Verify`，设置 MCP 环境变量后启动 `dist/verify/xiaotao-uat.exe`，依次验证网页打开/输入、Console/Network、安全模式拒绝与停止。必须先退出已有 UAT 实例，以免复用未继承环境变量的服务。停止只保证终止直接 MCP 进程，不保证服务派生的浏览器全部退出。
 
@@ -314,3 +322,5 @@ WorkBuddy、Antigravity、Codex 当前接入没有明确的同类消耗倍率来
 模型 API：账号目录及 /api/agent/models 可选 priceFactor、isFree；/v1/models 可选 price_factor、is_free。缺失字段表示未知，零值与 false 保留。该信息仅用于展示，不改变路由、重试或用量统计。
 
 前端回归：在 frontend 执行 node --test tests/model-pricing.browser.test.mjs，全部 API 使用隔离合成数据，覆盖付费、免费优惠、零值、未知值、三处列表、窄窗口及浅海主题。桌面壳和真实账号倍率变化尚待新包验收。
+
+Agent 当前轮执行过程中，过程详情自动保持展开，点击摘要、外部区域或 Escape 不会提前收起；工具完成后继续思考及流式回复期间也保持展开。本轮完成、失败或停止后自动收起，历史过程仍可手动展开查看。回归：在 frontend 执行 `node --test --test-concurrency=1 tests/agent-stream.browser.test.mjs tests/agent-process.browser.test.mjs`。

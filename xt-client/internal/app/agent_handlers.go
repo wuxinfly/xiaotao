@@ -10,6 +10,55 @@ import (
 )
 
 func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+	mux.HandleFunc("GET /api/agent/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		settings, err := svc.MCPSettings()
+		if err != nil {
+			apiError(w, 500, err.Error())
+			return
+		}
+		send(w, settings)
+	})
+	mux.HandleFunc("PUT /api/agent/mcp", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var settings agent.MCPSettings
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256*1024))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&settings); err != nil {
+			apiError(w, 400, "MCP 配置格式无效")
+			return
+		}
+		if err := svc.SaveMCPSettings(settings); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST /api/agent/mcp/test", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var server agent.MCPServer
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&server); err != nil {
+			apiError(w, 400, "MCP 服务格式无效")
+			return
+		}
+		tools, err := svc.TestMCP(r.Context(), server)
+		if err != nil {
+			apiError(w, 400, "连接失败: "+err.Error())
+			return
+		}
+		send(w, map[string]any{"tools": tools})
+	})
 	mux.HandleFunc("GET /api/agent/access-mode", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

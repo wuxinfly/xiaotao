@@ -51,7 +51,8 @@ func TestMCPDiscoveryAndCall(t *testing.T) {
 	t.Setenv("XIAOTAO_MCP_CONFIG", path)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connections, definitions, err := openMCP(ctx)
+	svc := NewService(t.TempDir(), "", nil, nil, nil)
+	connections, definitions, err := svc.openMCP(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,8 @@ func TestMCPDiscoveryAndCall(t *testing.T) {
 }
 func TestMCPConfigFailure(t *testing.T) {
 	t.Setenv("XIAOTAO_MCP_CONFIG", t.TempDir()+"/missing.json")
-	if _, _, err := openMCP(context.Background()); err == nil {
+	svc := NewService(t.TempDir(), "", nil, nil, nil)
+	if _, _, err := svc.openMCP(context.Background()); err == nil {
 		t.Fatal("missing config accepted")
 	}
 }

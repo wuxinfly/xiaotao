@@ -121,7 +121,7 @@ const MessageRow = memo(function MessageRow({item, followsProcess}: {item: Agent
   </article>;
 }, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references));
 
-function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () => void; children: React.ReactNode}) {
+function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boolean; onClose: () => void; children: React.ReactNode; maxHeight?: number}) {
   const anchor = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(open);
@@ -145,7 +145,7 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
       const below = window.innerHeight - rect.bottom - 12;
       const above = rect.top - 12;
       const upward = below < 160 && above > below;
-      const height = Math.max(0, Math.min(220, upward ? above : below));
+      const height = Math.max(0, Math.min(maxHeight, upward ? above : below));
       setPosition({left: rect.left, top: upward ? rect.top - height - 4 : rect.bottom + 4, width: rect.width, maxHeight: height});
     };
     const dismiss = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor.current?.parentElement?.contains(event.target as Node)) onClose(); };
@@ -156,7 +156,7 @@ function ProcessDetails({open, onClose, children}: {open: boolean; onClose: () =
     document.addEventListener('pointerdown', dismiss);
     document.addEventListener('keydown', escape);
     return () => { window.removeEventListener('resize', update); document.removeEventListener('scroll', update, true); document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
-  }, [open, onClose]);
+  }, [open, onClose, maxHeight]);
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
 }
 
@@ -1160,8 +1160,8 @@ export function AgentPage({visible}: {visible: boolean}) {
         {entries.map((entry, index) => {
           if (entry.kind === 'activity') {
             const id = entry.items[0].id;
-            const running = busy && index === entries.length - 1;
-            const open = !!openActivities[id];
+            const running = busy && index >= currentTurnStart;
+            const open = running || !!openActivities[id];
             const latest = entry.items.at(-1);
             const next = entries[index + 1];
             const previous = entries[index - 1];
@@ -1169,17 +1169,20 @@ export function AgentPage({visible}: {visible: boolean}) {
             const ended = next?.kind === 'message' && next.item.role === 'assistant' ? next.item.createdAt : latest?.endedAt;
             const status = running ? latest?.status === 'running' ? '正在执行' : '继续思考' : next?.kind === 'message' && next.item.role === 'assistant' ? '执行完成' : active?.status === 'canceled' ? '已停止' : active?.status === 'failed' ? '执行中断' : '步骤已结束';
             return <div key={id} className="agent-process-row">{avatarOwners.has(index) && <div className="agent-message-avatar"><AgentDroplet state={running ? activityState(latest?.kind) : status === '执行中断' ? 'error' : status === '已停止' ? 'waiting' : 'completed'}/></div>}<div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
-              <button type="button" className="agent-process-summary" onClick={() => setOpenActivities(current => ({...current, [id]: !open}))} aria-expanded={open}>
+              <button type="button" className="agent-process-summary" onClick={() => {if (!running) setOpenActivities(current => ({...current, [id]: !open}));}} aria-expanded={open}>
                 <span className="agent-process-icon">{running ? <LoaderCircle className="agent-spin" aria-hidden="true"/> : status === '执行中断' || status === '已停止' ? <X aria-hidden="true"/> : <Check aria-hidden="true"/>}</span>
                 <span><strong>{status}</strong><small>{[running && latest?.status !== 'running' ? '最近操作' : '', latest?.title, latest?.detail].filter(Boolean).join(' · ')}</small></span>
                 <span className="agent-process-duration">{running ? formatElapsed(started, clock) : ended ? formatElapsed(started, ended) : '耗时未知'}</span>
                 <ChevronDown className="agent-process-chevron" aria-hidden="true"/>
               </button>
-              <ProcessDetails open={open} onClose={() => setOpenActivities(current => ({...current, [id]: false}))}>
+              <ProcessDetails open={open} maxHeight={entry.items.some(item => item.tool) ? 360 : 220} onClose={() => {if (!running) setOpenActivities(current => ({...current, [id]: false}));}}>
                 {entry.details.map(detail => {
                   if (detail.kind === 'message') return <li key={detail.item.id} className="agent-process-note"><div><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{detail.item.content}</Markdown></div></li>;
                   const item = detail.item;
-                  return <li key={item.id} data-status={item.status}><span>{activityIcon(item)}</span><div><strong>{item.title}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</div><time>{item.endedAt ? formatElapsed(item.startedAt, item.endedAt) : item.status === 'running' && running ? formatElapsed(item.startedAt, clock) : ''}</time></li>;
+                  return <li key={item.id} data-status={item.status} className={item.tool ? 'agent-tool-activity' : undefined}><span>{activityIcon(item)}</span><div>
+                    <div className="agent-activity-heading"><strong>{item.title}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</div>
+                    {item.tool && <details className="agent-tool-details"><summary aria-label={`查看${item.title}的参数与结果`}>参数与结果</summary><code className="agent-tool-identity">{item.tool}</code>{item.input && <><span>调用参数</span><pre>{item.input}</pre></>}<span>{item.status === 'failed' ? '失败原因' : '结果预览'}</span><pre>{item.output || (item.status === 'running' ? '执行中，等待结果…' : '未记录结果。')}</pre></details>}
+                  </div><time>{item.endedAt ? formatElapsed(item.startedAt, item.endedAt) : item.status === 'running' && running ? formatElapsed(item.startedAt, clock) : ''}</time></li>;
                 })}
               </ProcessDetails>
             </div></div>;

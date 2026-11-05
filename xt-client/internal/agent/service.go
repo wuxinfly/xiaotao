@@ -380,19 +380,11 @@ func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelCl
 }
 
 func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, emit func(Event)) error {
-	connections, mcpTools, err := openMCP(ctx)
+	connections, mcpTools, err := s.openMCP(ctx)
 	if err != nil {
 		return fmt.Errorf("MCP 启动失败: %w", err)
 	}
-	defer func() {
-		seen := map[*mcpConnection]bool{}
-		for _, c := range connections {
-			if !seen[c] {
-				seen[c] = true
-				c.close()
-			}
-		}
-	}()
+	defer closeMCPConnections(connections)
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -470,6 +462,9 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 				Status:    "running",
 				StartedAt: time.Now(),
 			}
+			if connection := connections[call.Name]; connection != nil {
+				describeMCPActivity(&activity, connection, call)
+			}
 			history.Activity = append(history.Activity, activity)
 			history.UpdatedAt = time.Now()
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
@@ -502,6 +497,13 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 				activity.Status = "failed"
 				if output == "" {
 					output = toolErr.Error()
+				}
+			}
+			if activity.Tool != "" {
+				if toolErr != nil {
+					activity.Output = mcpOutputPreview(toolErr.Error())
+				} else {
+					activity.Output = mcpOutputPreview(output)
 				}
 			}
 			history.Activity[len(history.Activity)-1] = activity

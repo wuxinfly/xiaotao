@@ -17,10 +17,12 @@ import (
 )
 
 // MCP servers are configured by the application owner, never by project content.
-type mcpConfig struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
+type MCPServer struct {
+	Command  string   `json:"command"`
+	Args     []string `json:"args"`
+	Disabled bool     `json:"disabled,omitempty"`
 }
+type mcpConfig = MCPServer
 type mcpConnection struct {
 	cmd    *exec.Cmd
 	input  io.WriteCloser
@@ -28,6 +30,7 @@ type mcpConnection struct {
 	id     int
 	mu     sync.Mutex
 	names  map[string]string
+	server string
 }
 
 func (c *mcpConnection) close() {
@@ -88,41 +91,32 @@ func (c *mcpConnection) rpc(ctx context.Context, method string, params any, targ
 	}
 	return io.ErrUnexpectedEOF
 }
-func openMCP(ctx context.Context) (map[string]*mcpConnection, []map[string]any, error) {
-	path := os.Getenv("XIAOTAO_MCP_CONFIG")
-	connections := map[string]*mcpConnection{}
-	if path == "" {
-		return connections, nil, nil
-	}
-	data, err := os.ReadFile(path)
+func (s *Service) openMCP(ctx context.Context) (map[string]*mcpConnection, []map[string]any, error) {
+	settings, err := s.MCPSettings()
 	if err != nil {
 		return nil, nil, err
 	}
-	var config struct {
-		Servers map[string]mcpConfig `json:"mcpServers"`
-	}
-	if err = json.Unmarshal(data, &config); err != nil {
-		return nil, nil, err
-	}
+	return openMCPServers(ctx, settings.Servers)
+}
+
+func openMCPServers(ctx context.Context, servers map[string]MCPServer) (map[string]*mcpConnection, []map[string]any, error) {
+	connections := map[string]*mcpConnection{}
 	var definitions []map[string]any
 	fail := func(err error) (map[string]*mcpConnection, []map[string]any, error) {
-		seen := map[*mcpConnection]bool{}
-		for _, c := range connections {
-			if !seen[c] {
-				seen[c] = true
-				c.close()
-			}
-		}
+		closeMCPConnections(connections)
 		return nil, nil, err
 	}
 	index := 0
-	serverNames := make([]string, 0, len(config.Servers))
-	for name := range config.Servers {
+	serverNames := make([]string, 0, len(servers))
+	for name, server := range servers {
+		if server.Disabled {
+			continue
+		}
 		serverNames = append(serverNames, name)
 	}
 	sort.Strings(serverNames)
 	for _, serverName := range serverNames {
-		server := config.Servers[serverName]
+		server := servers[serverName]
 		cmd, err := mcpCommand(ctx, server)
 		if err != nil {
 			return fail(err)
@@ -142,7 +136,7 @@ func openMCP(ctx context.Context) (map[string]*mcpConnection, []map[string]any, 
 			output.Close()
 			return fail(err)
 		}
-		c := &mcpConnection{cmd: cmd, input: input, output: bufio.NewScanner(output), names: map[string]string{}}
+		c := &mcpConnection{cmd: cmd, input: input, output: bufio.NewScanner(output), names: map[string]string{}, server: serverName}
 		c.output.Buffer(make([]byte, 4096), 8*1024*1024)
 		key := fmt.Sprintf("server_%d", index)
 		connections[key] = c
