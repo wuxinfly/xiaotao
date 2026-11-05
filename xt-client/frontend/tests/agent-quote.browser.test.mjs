@@ -28,23 +28,39 @@ test('selected reply text can be quoted, removed, and sent with or without a que
   });
   await page.goto('http://127.0.0.1:5194'); await page.locator('.agent-session-select[title="引用测试"]').click();
   await page.locator('.agent-message.role-assistant .agent-message-content').waitFor();
-  async function selectQuote() {
-   await page.locator('.agent-message.role-assistant .agent-message-content p').first().evaluate(el=>{
+  async function selectQuote(start, end) {
+   await page.locator('.agent-message.role-assistant .agent-message-content p').first().evaluate((el, offsets)=>{
     const text=el.firstChild, range=document.createRange(), selection=window.getSelection();
-    range.setStart(text,0); range.setEnd(text,7); selection.removeAllRanges(); selection.addRange(range);
+    range.setStart(text,offsets[0]); range.setEnd(text,offsets[1]); selection.removeAllRanges(); selection.addRange(range);
     el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
-   });
+   }, [start,end]);
    await page.getByRole('button',{name:'引用',exact:true}).click();
   }
-  await selectQuote(); await page.getByLabel('引用的文字',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'移除引用的文字'}).click(); assert.equal(await page.getByLabel('引用的文字',{exact:true}).count(),0);
-  await selectQuote(); const editor=page.getByRole('textbox',{name:'给小涛发消息'}); await editor.fill('为什么？'); await page.getByRole('button',{name:'发送消息'}).click();
+  await selectQuote(0,7); await page.getByLabel('引用的文字',{exact:true}).waitFor();
+  await page.locator('.agent-quote-marker').first().waitFor();
+  await page.locator('.agent-quote-marker').first().click();
+  await page.getByLabel('回复',{exact:true}).fill('为什么要重启？');
+  await page.getByRole('button',{name:'完成',exact:true}).click();
+  await selectQuote(8,14);
+  assert.equal(await page.locator('.agent-quote-chip').count(),2);
+  await page.waitForFunction(()=>document.querySelectorAll('.agent-quote-marker').length===2);
+  await page.locator('.agent-quote-marker').nth(1).click();
+  await page.getByLabel('引用文字',{exact:true}).fill('检查服务状态');
+  await page.getByLabel('回复',{exact:true}).fill('如何检查？');
+  await page.getByRole('button',{name:'完成',exact:true}).click();
+  const editor=page.getByRole('textbox',{name:'给小涛发消息'}); await editor.fill('请分别回答'); await page.getByRole('button',{name:'发送消息'}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.agent-message.role-user').length===1);
-  assert.match(sent[0],/引用小涛的回复：\n\n> 需要先重启服务\n\n为什么？/);
-  assert.equal(await page.locator('.agent-message.role-user blockquote').first().innerText(),'需要先重启服务');
+  assert.match(sent[0],/引用小涛的回复 1：\n\n> 需要先重启服务\n\n我的回复：为什么要重启？/);
+  assert.match(sent[0],/引用小涛的回复 2：\n\n> 检查服务状态\n\n我的回复：如何检查？\n\n请分别回答/);
+  assert.equal(await page.locator('.agent-message.role-user blockquote').count(),2);
+  assert.equal(await page.locator('.agent-quote-marker').count(),0);
+  assert.equal(await page.locator('.agent-quote-highlight').count(),0);
   await page.waitForFunction(()=>!document.querySelector('.agent-send.is-stop'));
-  await selectQuote(); await page.getByRole('button',{name:'发送消息'}).click();
+  await selectQuote(0,7); await page.getByRole('button',{name:'移除引用 1'}).click();
+  assert.equal(await page.locator('.agent-quote-chip').count(),0);
+  await selectQuote(0,7); await page.getByRole('button',{name:'发送消息'}).click();
   await page.waitForFunction(()=>document.querySelectorAll('.agent-message.role-user').length===2);
-  assert.equal(sent[1], '引用小涛的回复：\n\n> 需要先重启服务');
+  assert.equal(sent[1], '引用小涛的回复 1：\n\n> 需要先重启服务');
+
  } finally {await browser?.close();server.kill();}
 });
