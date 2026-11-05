@@ -53,13 +53,15 @@ func parseModels(raw []byte) ([]providers.ModelInfo, error) {
 			continue
 		}
 		var entries []struct {
-			Key       string `json:"key"`
-			Name      string `json:"display_name"`
-			Enable    *bool  `json:"enable"`
-			Source    string `json:"source"`
-			Vision    bool   `json:"is_vl"`
-			Reasoning bool   `json:"is_reasoning"`
-			MaxInput  int    `json:"max_input_tokens"`
+			Key         string `json:"key"`
+			Name        string `json:"display_name"`
+			Enable      *bool  `json:"enable"`
+			Source      string `json:"source"`
+			Vision      bool   `json:"is_vl"`
+			Reasoning   bool   `json:"is_reasoning"`
+			MaxInput    int    `json:"max_input_tokens"`
+			PriceFactor any    `json:"price_factor"`
+			IsFree      any    `json:"is_free"`
 		}
 		if json.Unmarshal(encoded, &entries) != nil {
 			return nil, fmt.Errorf("invalid Qoder model scene")
@@ -80,7 +82,7 @@ func parseModels(raw []byte) ([]providers.ModelInfo, error) {
 				hash := sha256.Sum256([]byte(e.Key))
 				id = fmt.Sprintf("%s-%x", name, hash[:4])
 			}
-			out = append(out, providers.ModelInfo{ID: id, DisplayName: e.Name, UpstreamID: e.Key, Multimodal: e.Vision, Reasoning: e.Reasoning, MaxInputTokens: e.MaxInput})
+			out = append(out, providers.ModelInfo{ID: id, DisplayName: e.Name, UpstreamID: e.Key, Multimodal: e.Vision, Reasoning: e.Reasoning, MaxInputTokens: e.MaxInput, PriceFactor: providers.ParsePriceFactor(e.PriceFactor), IsFree: providers.ParseFreeFlag(e.IsFree)})
 		}
 	}
 	if !valid {

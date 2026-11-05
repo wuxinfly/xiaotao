@@ -11,11 +11,12 @@ export const useConfirm = () => useContext(Context);
 export function ConfirmProvider({children}: {children: ReactNode}) {
   const [request, setRequest] = useState<Request | null>(null);
   const pending = useRef<Request | null>(null);
+  const queue = useRef<Request[]>([]);
   const cancel = useRef<HTMLButtonElement>(null);
   const accept = useRef<HTMLButtonElement>(null);
   const previous = useRef<HTMLElement | null>(null);
   const confirm = useCallback((options: Options) => new Promise<boolean>(resolve => {
-    if (pending.current) { resolve(false); return; }
+    if (pending.current) { queue.current.push({...options, resolve}); return; }
     previous.current = document.activeElement as HTMLElement | null;
     const next = {...options, resolve};
     pending.current = next;
@@ -24,13 +25,15 @@ export function ConfirmProvider({children}: {children: ReactNode}) {
   const finish = useCallback((value: boolean) => {
     const current = pending.current;
     if (!current) return;
-    pending.current = null;
-    setRequest(null);
+    const next = queue.current.shift() || null;
+    pending.current = next;
+    setRequest(next);
     current.resolve(value);
+    if (next) return;
     const target = previous.current;
     requestAnimationFrame(() => {if (target?.isConnected) target.focus();});
   }, []);
-  useEffect(() => () => {pending.current?.resolve(false); pending.current = null;}, []);
+  useEffect(() => () => {pending.current?.resolve(false); pending.current = null; queue.current.forEach(item => item.resolve(false)); queue.current = [];}, []);
   useEffect(() => {
     if (!request) return;
     cancel.current?.focus();

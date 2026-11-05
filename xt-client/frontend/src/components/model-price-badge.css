@@ -1,0 +1,7 @@
+.model-price-badge {
+ display: inline-flex; align-items: center; flex-shrink: 0; margin-inline-start: 8px;
+ padding: 1px 6px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+ border-radius: 5px; color: var(--muted); font-size: 10px; font-weight: 500;
+ line-height: 1.5; white-space: nowrap; vertical-align: middle;
+}
+.model-price-badge.is-free { color: var(--ocean-text); background: color-mix(in srgb, var(--ocean-text) 8%, transparent); }

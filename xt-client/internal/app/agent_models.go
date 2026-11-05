@@ -23,14 +23,20 @@ func agentModelsForAccounts(accounts []*storage.Account, fetch func(storage.Acco
 				if model.DisplayName != "" {
 					label = model.DisplayName + " · " + acct.Provider
 				}
-				results[i] = append(results[i], agent.ModelOption{Model: id, Label: label})
+				results[i] = append(results[i], agent.ModelOption{Model: id, Label: label, PriceFactor: model.PriceFactor, IsFree: model.IsFree})
 			}
 		}(i, *acct)
 	}
 	wg.Wait()
 	out := []agent.ModelOption{}
+	seen := map[string]bool{}
 	for _, result := range results {
-		out = append(out, result...)
+		for _, model := range result {
+			if !seen[model.Model] {
+				seen[model.Model] = true
+				out = append(out, model)
+			}
+		}
 	}
 	return out
 }

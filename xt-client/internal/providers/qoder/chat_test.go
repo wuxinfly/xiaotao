@@ -127,3 +127,15 @@ func TestQueueWaitParsesRealPayload(t *testing.T) {
 		t.Fatalf("oversized retry seconds = %v, want %v", got, queueWaitMax)
 	}
 }
+
+func TestQueueWaitForbiddenRequiresStructuredQueueCode(t *testing.T) {
+	for _, message := range []string{"10605", "forbidden", `{"code":"403","message":"RESOURCE_LIMIT"}`} {
+		if got := QueueWait(&providers.UpstreamError{Status: http.StatusForbidden, Message: message}); got != 0 {
+			t.Fatalf("non-queue forbidden %q: wait=%v", message, got)
+		}
+	}
+	frame := map[string]any{"code": "403", "message": `{"code":"10605","message":"{\"retryAfterSeconds\":30}","subCode":"RESOURCE_LIMIT"}`}
+	if got := QueueWait(chatError(frame)); got != 30*time.Second {
+		t.Fatalf("wrapped queue wait=%v, want 30s", got)
+	}
+}

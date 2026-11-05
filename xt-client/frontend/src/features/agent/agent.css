@@ -606,7 +606,7 @@
 .agent-history-menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: #a9c8d1; text-align: left; font-size: 12px; transition: background 160ms, color 160ms; }
 .agent-history-menu button:hover, .agent-history-menu button.is-active { background: rgba(42, 104, 115, .4); color: #e4faf9; }
 .agent-history-menu svg { color: #75dcd2; }
-.agent-session-group { margin-bottom: 9px; }
+.agent-session-group { margin-bottom: 0; }
 .agent-group-label { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 8px; border: 0; background: transparent; color: #789caa; font-size: 11px; font-weight: 600; text-align: left; }
 .agent-group-label:hover { background: transparent; color: #c4e3e8; }
 .agent-session-group .agent-group-label-recent,
@@ -638,8 +638,19 @@
 /* Windowed sidebar rows use stable logical heights at every viewport width. */
 .agent-session-window { position: relative; overflow-anchor: none; }
 .agent-session-window-row { position: absolute; left: 0; right: 0; }
-.agent-session-window-row .agent-session-row { height: 56px; }
-.agent-session-window-row .agent-session-select { height: 54px; justify-content: center; }
+.agent-session-window.is-removing .agent-session-window-row { transition: top 220ms cubic-bezier(.22, 1, .36, 1); }
+.agent-session-window-row.is-exiting { pointer-events: none; animation: agent-session-dismiss 180ms ease-in forwards; }
+@keyframes agent-session-dismiss {
+  to { opacity: 0; transform: translateX(-12px) scale(.98); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-session-window.is-removing .agent-session-window-row { transition: none; }
+  .agent-session-window-row.is-exiting { animation: none; }
+}
+.agent-session-window-row .agent-session-row { height: 38px; }
+.agent-session-window-row .agent-session-select { height: 36px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; padding-top: 0; padding-bottom: 0; }
+.agent-session-window-row .agent-session-select > .agent-session-title { flex: 1; min-width: 0; }
+.agent-session-window-row .agent-session-select > small { flex: none; }
 .agent-session-window-row .agent-group-label { height: 34px; }
 .agent-history-load { flex: none; text-align: center; margin-bottom: 16px; overflow-anchor: none; }
 .agent-history-load button { border: 1px solid var(--agent-line); border-radius: 7px; padding: 6px 12px; color: var(--agent-muted); background: var(--agent-panel); transition: color 160ms, background-color 160ms; }
@@ -647,18 +658,28 @@
 .agent-history-load span { display: block; margin-top: 6px; color: var(--agent-muted); font-size: 12px; }
 .agent-feed { overflow-anchor: none; }
 
-.agent-session-group { display: flex; align-items: center; border-radius: 8px; }
-.agent-session-group:hover, .agent-session-group:focus-within { background: var(--surface-hover, rgba(112,174,191,.1)); }
+.agent-session-group { display: flex; align-items: center; border-radius: 8px; background: transparent; transition: background-color 160ms ease; }
+.agent-session-group .agent-group-label { color: var(--agent-text); }
+.agent-session-list .agent-session-select { position: relative; padding-left: 29px; }
+.agent-session-select .agent-session-indicator { position: absolute; left: 12px; top: 50%; margin-top: -2.5px; width: 5px; height: 5px; border-radius: 50%; background: #70e5de; overflow: visible; }
+.agent-session-indicator.is-running::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 1px solid #70e5de; animation: agent-session-breathe 1600ms ease-out infinite; }
+.agent-session-select .agent-session-indicator.is-failed { background: #efb65b; }
+[data-theme='light'] .agent-session-select .agent-session-indicator { background: #087f83; }
+[data-theme='light'] .agent-session-indicator.is-running::after { border-color: #087f83; }
+[data-theme='light'] .agent-session-select .agent-session-indicator.is-failed { background: #a5660c; }
+@keyframes agent-session-breathe { from { transform: scale(.6); opacity: .7; } to { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .agent-session-indicator.is-running::after { animation: none; opacity: .4; } }
+.agent-session-group:hover { background: var(--surface-hover, rgba(112,174,191,.1)); }
 .agent-session-group .agent-group-label { flex: 1; min-width: 0; }
 .agent-group-actions { display: flex; align-items: center; gap: 2px; padding-right: 4px; flex: none; visibility: hidden; opacity: 0; transition: opacity 160ms ease; }
-.agent-session-group:hover .agent-group-actions, .agent-session-group:focus-within .agent-group-actions { visibility: visible; opacity: 1; }
+.agent-session-group:hover .agent-group-actions, .agent-session-group:has(:focus-visible) .agent-group-actions { visibility: visible; opacity: 1; }
 .agent-group-actions button { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; min-width: 0; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
 .agent-group-actions button:hover { background: rgba(112,174,191,.18); }
 .agent-group-actions button:focus-visible { outline: 2px solid #68d9d0; }
 .agent-group-actions button:active { transform: scale(.94); }
 .agent-group-actions svg { width: 15px; height: 15px; }
 @media (hover: none) { .agent-group-actions { visibility: visible; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .agent-group-actions { transition: none; } .agent-group-actions button:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .agent-group-actions, .agent-session-group { transition: none; } .agent-group-actions button:active { transform: none; } }
 
 .agent-quote-selection { position: fixed; z-index: 150; padding: 5px 12px; border: 1px solid rgba(104,180,196,.4); border-radius: 6px; background: #103646; color: #d8f3f2; box-shadow: 0 6px 18px rgba(0,0,0,.3); font-size: 11px; cursor: pointer; }
 .agent-quote-selection:hover, .agent-quote-selection:focus-visible { background: #1c5762; outline: 2px solid #80dcd6; outline-offset: 1px; }
