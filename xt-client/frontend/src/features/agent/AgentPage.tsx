@@ -105,7 +105,7 @@ function formatElapsed(start: string, end: string | number) {
 }
 
 const MessageRow = memo(function MessageRow({item, followsProcess}: {item: AgentMessage; followsProcess: boolean}) {
-  return <article className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
+  return <article data-message-id={item.id} className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
     {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet running={false}/></div>}
     <div className="agent-message-body">
       {item.role === 'user' && !!item.references?.length && <div className="agent-message-references" aria-label="已引用对话">
@@ -443,8 +443,10 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true);
-  const [quote, setQuote] = useState<string>('');
-  const [quoteSelection, setQuoteSelection] = useState<{text: string; left: number; top: number} | null>(null);
+  const [quotes, setQuotes] = useState<Array<{id: string; messageId: string; start: number; end: number; sourceText: string; text: string; reply: string}>>([]);
+  const [quoteSelection, setQuoteSelection] = useState<{text: string; messageId: string; start: number; end: number; left: number; top: number} | null>(null);
+  const [editingQuote, setEditingQuote] = useState<string | null>(null);
+  const [quoteMarks, setQuoteMarks] = useState<Array<{id: string; rects: Array<{left: number; top: number; width: number; height: number}>; left: number; top: number}>>([]);
   useEffect(() => {if (!visible || busy) setSessionMenu(null);}, [visible, busy]);
   useEffect(() => { if (busy) setModelMenuOpen(false); }, [busy]);
   const openSessionMenu = useCallback(function openSessionMenu(item: AgentSession, x: number, y: number, trigger: HTMLElement) {
@@ -478,10 +480,16 @@ export function AgentPage({visible}: {visible: boolean}) {
     const element = (node: Node) => node instanceof Element ? node : node.parentElement;
     const start = element(range.startContainer)?.closest('.agent-message.role-assistant .agent-message-content');
     const end = element(range.endContainer)?.closest('.agent-message.role-assistant .agent-message-content');
-    const text = selection.toString().trim();
-    if (!text || !start || start !== end || !feed.current?.contains(start)) { setQuoteSelection(null); return; }
+    const raw = selection.toString();
+    const text = raw.trim();
+    const messageId = start?.closest<HTMLElement>('[data-message-id]')?.dataset.messageId;
+    if (!text || !start || start !== end || !messageId || !feed.current?.contains(start)) { setQuoteSelection(null); return; }
+    const before = range.cloneRange();
+    before.selectNodeContents(start);
+    before.setEnd(range.startContainer, range.startOffset);
+    const offset = before.toString().length + (raw.length - raw.trimStart().length);
     const rect = range.getBoundingClientRect();
-    setQuoteSelection({text, left: Math.max(8, Math.min(window.innerWidth - 80, rect.left + rect.width / 2 - 32)), top: Math.max(8, rect.top - 36)});
+    setQuoteSelection({text, messageId, start: offset, end: offset + text.length, left: Math.max(8, Math.min(window.innerWidth - 80, rect.left + rect.width / 2 - 32)), top: Math.max(8, rect.top - 36)});
   };
   useEffect(() => {
     if (!quoteSelection) return;
@@ -494,7 +502,47 @@ export function AgentPage({visible}: {visible: boolean}) {
     window.addEventListener('resize', hide);
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); document.removeEventListener('scroll', hide, true); window.removeEventListener('resize', hide); };
   }, [quoteSelection]);
-  useEffect(() => { setQuote(''); setQuoteSelection(null); }, [active?.id]);
+  useEffect(() => { setQuotes([]); setQuoteSelection(null); setEditingQuote(null); }, [active?.id]);
+  useEffect(() => {
+    if (!editingQuote) return;
+    const escape = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); setEditingQuote(null);}};
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [editingQuote]);
+  useEffect(() => {
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const host = feed.current;
+        if (!host || !visible) { setQuoteMarks([]); return; }
+        const bounds = host.getBoundingClientRect();
+        const marks: typeof quoteMarks = [];
+        for (const quote of quotes) {
+          const content = Array.from(host.querySelectorAll<HTMLElement>('.agent-message.role-assistant')).find(el => el.dataset.messageId === quote.messageId)?.querySelector('.agent-message-content');
+          if (!content) continue;
+          const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+          let node: Node | null, position = 0, first: {node: Node; offset: number} | undefined, last: {node: Node; offset: number} | undefined;
+          while ((node = walker.nextNode())) {
+            const length = node.textContent?.length ?? 0;
+            if (!first && quote.start >= position && quote.start < position + length) first = {node, offset: quote.start - position};
+            if (quote.end > position && quote.end <= position + length) { last = {node, offset: quote.end - position}; break; }
+            position += length;
+          }
+          if (!first || !last) continue;
+          const range = document.createRange(); range.setStart(first.node, first.offset); range.setEnd(last.node, last.offset);
+          if (range.toString() !== quote.sourceText) continue;
+          const rects = Array.from(range.getClientRects()).map(rect => ({left: Math.max(rect.left, bounds.left), top: Math.max(rect.top, bounds.top), width: Math.min(rect.right, bounds.right) - Math.max(rect.left, bounds.left), height: Math.min(rect.bottom, bounds.bottom) - Math.max(rect.top, bounds.top)})).filter(rect => rect.width > 0 && rect.height > 0);
+          if (!rects.length) continue;
+          const lastRect = rects[rects.length - 1];
+          marks.push({id: quote.id, rects, left: Math.min(bounds.right - 20, lastRect.left + lastRect.width), top: Math.max(bounds.top, lastRect.top - 8)});
+        }
+        setQuoteMarks(marks);
+      });
+    };
+    update(); document.addEventListener('scroll', update, true); window.addEventListener('resize', update);
+    return () => {cancelAnimationFrame(frame); document.removeEventListener('scroll', update, true); window.removeEventListener('resize', update);};
+  }, [quotes, active?.messages, visible]);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const updateScrollToBottom = useCallback(() => {
@@ -783,10 +831,13 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   async function send(contentOverride?: string) {
     const text = (contentOverride ?? promptRef.current).trim();
-    const submittedQuote = quote;
-    const quotedText = submittedQuote ? '引用小涛的回复：\n\n' + submittedQuote.split('\n').map(line => '> ' + line.replace(/[\\`*_{}\[\]<>#~|]/g, '\\$&')).join('\n') : '';
-    const content = [quotedText, text].filter(Boolean).join('\n\n');
-    if (!content || busy || !editor || (!active && !model)) return;
+    const submittedQuotes = quotes;
+    const quoteBlocks = submittedQuotes.map((item, index) => {
+      const quoted = item.text.split('\n').map(line => '> ' + line.replace(/[\\`*_{}\[\]<>#~|]/g, '\\$&')).join('\n');
+      return `引用小涛的回复 ${index + 1}：\n\n${quoted}${item.reply.trim() ? `\n\n我的回复：${item.reply.trim()}` : ''}`;
+    });
+    const content = [...quoteBlocks, text].filter(Boolean).join('\n\n');
+    if (!content || quotes.some(item => !item.text.trim()) || busy || !editor || (!active && !model)) return;
     historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
@@ -825,7 +876,8 @@ export function AgentPage({visible}: {visible: boolean}) {
             editor.commands.clearContent();
             closeReferencePicker();
           }
-          setQuote(current => current === submittedQuote ? '' : current);
+          setQuotes(current => current.filter(item => !submittedQuotes.some(sent => sent.id === item.id && sent.text === item.text && sent.reply === item.reply)));
+          setEditingQuote(null);
           submitted = true;
         }
         setActive(current => current?.id === id ? applyEvent(current, event) : current);
@@ -948,7 +1000,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   }
 
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
-  canSendRef.current = !busy && (!!prompt.trim() || !!quote || hasReference) && (!!active || !!model);
+  canSendRef.current = !busy && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference) && (!!active || !!model);
 
   const activity = active?.activity ?? [];
   const entries = useMemo(() => {
@@ -1120,7 +1172,7 @@ export function AgentPage({visible}: {visible: boolean}) {
           </div>
         </div>
         <div className="agent-composer" ref={referenceComposerRef}>
-          {quote && <div className="agent-quote-draft" aria-label="引用的文字"><div><strong>引用小涛的回复</strong><span>{quote}</span></div><button type="button" aria-label="移除引用的文字" title="移除引用" onClick={() => {setQuote(''); editor?.commands.focus();}}><X aria-hidden="true"/></button></div>}
+          {!!quotes.length && <div className="agent-quote-drafts" aria-label="引用的文字">{quotes.map((item, index) => <div className="agent-quote-chip" key={item.id}><button type="button" className="agent-quote-chip-open" title={item.text} onClick={() => setEditingQuote(item.id)} aria-label={`编辑引用 ${index + 1}`}><span>{index + 1}</span><span>{item.text}</span></button><button type="button" className="agent-quote-chip-remove" aria-label={`移除引用 ${index + 1}`} onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(current => current === item.id ? null : current);}}><X aria-hidden="true"/></button></div>)}</div>}
           <EditorContent editor={editor} className="agent-editor"/>
           {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
@@ -1155,7 +1207,8 @@ export function AgentPage({visible}: {visible: boolean}) {
 
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
-    {quoteSelection && createPortal(<button type="button" className="agent-quote-selection" style={{left: quoteSelection.left, top: quoteSelection.top}} onMouseDown={event => event.preventDefault()} onClick={() => {setQuote(quoteSelection.text); setQuoteSelection(null); window.getSelection()?.removeAllRanges(); editor?.commands.focus('end');}}>引用</button>, document.body)}
+    {visible && createPortal(<>{quoteMarks.map(mark => <ReactFragment key={mark.id}>{mark.rects.map((rect, index) => <span key={index} className="agent-quote-highlight" style={rect} aria-hidden="true"/>)}<button type="button" className="agent-quote-marker" style={{left: mark.left, top: mark.top}} aria-label={`编辑引用 ${quotes.findIndex(item => item.id === mark.id) + 1}`} title="编辑引用" onClick={() => setEditingQuote(mark.id)}>{quotes.findIndex(item => item.id === mark.id) + 1}</button></ReactFragment>)}{editingQuote && (() => {const item = quotes.find(quote => quote.id === editingQuote); if (!item) return null; const mark = quoteMarks.find(value => value.id === item.id); const left = mark ? Math.max(8, Math.min(window.innerWidth - 296, mark.left - 120)) : Math.max(8, (window.innerWidth - 288) / 2); const top = mark ? Math.max(8, Math.min(window.innerHeight - 270, mark.top + 24)) : Math.max(8, (window.innerHeight - 260) / 2); return <div className="agent-quote-editor" role="dialog" aria-label="编辑引用" style={{left, top}}><div className="agent-quote-editor-head"><strong>编辑引用 {quotes.findIndex(quote => quote.id === item.id) + 1}</strong><button type="button" aria-label="关闭引用编辑" onClick={() => setEditingQuote(null)}><X aria-hidden="true"/></button></div><label>引用文字<textarea aria-label="引用文字" value={item.text} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, text:event.target.value} : quote))}/></label><label>回复<textarea aria-label="回复" placeholder="写下对这段文字的回复（可选）" value={item.reply} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, reply:event.target.value} : quote))}/></label><div className="agent-quote-editor-actions"><button type="button" onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(null);}}>移除引用</button><button type="button" disabled={!item.text.trim()} onClick={() => setEditingQuote(null)}>完成</button></div></div>;})()}</>, document.body)}
+    {quoteSelection && createPortal(<button type="button" className="agent-quote-selection" style={{left: quoteSelection.left, top: quoteSelection.top}} onMouseDown={event => event.preventDefault()} onClick={() => {const selected = quoteSelection; const existing = quotes.find(item => item.messageId === selected.messageId && item.start === selected.start && item.end === selected.end); if (existing) {setEditingQuote(existing.id);} else {setQuotes(current => [...current, {id: crypto.randomUUID(), messageId: selected.messageId, start: selected.start, end: selected.end, sourceText: selected.text, text: selected.text, reply: ''}]);} setQuoteSelection(null); window.getSelection()?.removeAllRanges(); editor?.commands.focus('end');}}>引用</button>, document.body)}
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
     <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>
     <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
