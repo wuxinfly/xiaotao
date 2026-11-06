@@ -25,7 +25,7 @@ func TestCoreBundleAndLifecycle(t *testing.T) {
 		t.Fatalf("Core installation: %v, %v", entries, err)
 	}
 	root := filepath.Join(data, "core", entries[0].Name())
-	for _, name := range []string{"SKILL.md", "references/progress-saving.md", "references/storage.md", "scripts/save_progress.py", "scripts/memory_catalog.py"} {
+	for _, name := range []string{"SKILL.md", "references/progress-saving.md", "references/storage.md", "references/evolution.md", "scripts/evolution.py", "scripts/save_progress.py", "scripts/memory_catalog.py"} {
 		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
 		if err != nil {
 			t.Fatal(err)

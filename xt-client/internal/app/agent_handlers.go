@@ -10,6 +10,7 @@ import (
 )
 
 func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+	registerSkillRoutes(mux, svc, requireOrigin, send, apiError)
 	mux.HandleFunc("GET /api/agent/mcp", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

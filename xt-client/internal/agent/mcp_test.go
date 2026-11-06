@@ -52,7 +52,12 @@ func TestMCPDiscoveryAndCall(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	svc := NewService(t.TempDir(), "", nil, nil, nil)
-	connections, definitions, err := svc.openMCP(ctx)
+	settings, err := svc.MCPSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(settings.Servers, browserMCPName) // Keep the protocol fixture isolated from real browser startup.
+	connections, definitions, err := openMCPServers(ctx, settings.Servers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,4 +113,37 @@ func TestMCPCancel(t *testing.T) {
 	if callCtx.Err() == nil {
 		t.Fatalf("unexpected failure: %v", err)
 	}
+}
+
+// Replace only the process launcher in tests; settings still merge the enabled builtin.
+func TestMain(m *testing.M) {
+	builtinBrowserMCP = func() MCPServer {
+		return MCPServer{Command: os.Args[0], Args: []string{"-test.run=^TestBuiltinBrowserFixture$", "-test.v=false"}}
+	}
+	os.Exit(m.Run())
+}
+
+func TestBuiltinBrowserFixture(t *testing.T) {
+	if len(os.Args) < 2 || os.Args[1] != "-test.run=^TestBuiltinBrowserFixture$" {
+		return
+	}
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		var request struct {
+			ID     int    `json:"id"`
+			Method string `json:"method"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &request) != nil {
+			os.Exit(2)
+		}
+		if request.ID == 0 {
+			continue
+		}
+		var result any = map[string]any{}
+		if request.Method == "tools/list" {
+			result = map[string]any{"tools": []any{}}
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
+	}
+	os.Exit(0)
 }

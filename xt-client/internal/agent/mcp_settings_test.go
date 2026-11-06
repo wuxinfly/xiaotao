@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,7 +33,7 @@ func TestMCPSettingsPersistenceAndPriority(t *testing.T) {
 		t.Fatal("invalid config saved")
 	}
 	reread, _ = svc.MCPSettings()
-	if len(reread.Servers) != 1 || reread.Servers["local"].Command != "local" {
+	if len(reread.Servers) != 2 || reread.Servers["local"].Command != "local" {
 		t.Fatal("invalid save clobbered config")
 	}
 	// An empty local file explicitly overrides a legacy environment config.
@@ -40,7 +41,7 @@ func TestMCPSettingsPersistenceAndPriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	reread, err = svc.MCPSettings()
-	if err != nil || len(reread.Servers) != 0 || reread.Source != "local" {
+	if err != nil || len(reread.Servers) != 1 || reread.Source != "local" {
 		t.Fatalf("empty override: %+v %v", reread, err)
 	}
 	unchanged, _ := os.ReadFile(external)
@@ -96,5 +97,39 @@ func TestMCPSettingsConnectionTestDoesNotSave(t *testing.T) {
 	}
 	if needs, ok := needsApproval(nil, "mcp_0", json.RawMessage(`{}`)); !ok || needs == "" {
 		t.Fatal("MCP approval lost")
+	}
+}
+
+func TestBuiltinBrowserCannotBeRemovedOrOverridden(t *testing.T) {
+	t.Setenv("XIAOTAO_MCP_CONFIG", "")
+	svc := NewService(t.TempDir(), "", nil, nil, nil)
+	for _, input := range []MCPSettings{{}, {Servers: map[string]MCPServer{browserMCPName: {Command: "untrusted", Disabled: true}}}} {
+		if err := svc.SaveMCPSettings(input); err != nil {
+			t.Fatal(err)
+		}
+		settings, err := svc.MCPSettings()
+		if err != nil {
+			t.Fatal(err)
+		}
+		browser := settings.Servers[browserMCPName]
+		if browser.Disabled || browser.Command == "untrusted" || len(browser.Args) != 2 {
+			t.Fatalf("builtin lost: %+v", browser)
+		}
+	}
+}
+
+func TestBuiltinBrowserPreservesCustomServerCapacity(t *testing.T) {
+	t.Setenv("XIAOTAO_MCP_CONFIG", "")
+	servers := map[string]MCPServer{}
+	for i := 0; i < 32; i++ {
+		servers[fmt.Sprintf("custom-%d", i)] = MCPServer{Command: "node"}
+	}
+	svc := NewService(t.TempDir(), "", nil, nil, nil)
+	if err := svc.SaveMCPSettings(MCPSettings{Servers: servers}); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := svc.MCPSettings()
+	if err != nil || len(settings.Servers) != 33 {
+		t.Fatalf("capacity: %+v %v", settings, err)
 	}
 }

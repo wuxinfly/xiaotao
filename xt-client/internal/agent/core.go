@@ -56,7 +56,7 @@ func prepareCore(dataDir string, initial bool) (string, error) {
 		}
 	}
 	var prompt strings.Builder
-	fmt.Fprintf(&prompt, "\nXiaoTao 完整 Core 目录：%s\n使用 read_file 按当前步骤读取此目录的 SKILL.md 与 references；相对链接均相对此目录。脚本仅使用此内置目录的可信副本。\n", root)
+	fmt.Fprintf(&prompt, "\nXiaoTao 完整 Core 目录：%s\n使用 read_file 按当前步骤读取此目录的 SKILL.md 与 references；相对链接均相对此目录。小涛 Core 脚本仅使用此内置目录的可信副本；第三方技能按单独的本地 Skills 索引与当前授权使用。\n", root)
 	prompt.WriteString("宿主能力：只有单个执行者和 list_files/search_files/read_file/write_file/run_command；没有独立子代理、Hook、自动压缩或后台恢复。需要 Worker 时如实使用 in-session-fallback，不虚报委派；记忆脚本需要本机 Python，缺少时说明限制，不声称保存成功。客户端不是 Codex 宿主，阶段保存使用通用 save_progress.py 入口，不使用 Codex Hook 回执。\n")
 	if initial {
 		prompt.WriteString("\n以下是完整 XiaoTao SKILL.md：\n")

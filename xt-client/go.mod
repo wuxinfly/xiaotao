@@ -12,10 +12,11 @@ require (
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.61.1 // indirect
 )
 
 require (
 	github.com/jchv/go-webview2 v0.0.0-20260205173254-56598839c808
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/sys v0.49.0
+	modernc.org/sqlite v1.61.1
 )

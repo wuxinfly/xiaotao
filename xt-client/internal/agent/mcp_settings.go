@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -15,9 +16,34 @@ type MCPSettings struct {
 	Source  string               `json:"source,omitempty"`
 }
 
+const browserMCPName = "chrome-devtools"
+
+// Persisted settings cannot remove or override the built-in browser.
+var builtinBrowserMCP = func() MCPServer {
+	command := "npx"
+	if runtime.GOOS == "windows" {
+		command = "npx.cmd"
+	}
+	return MCPServer{Command: command, Args: []string{"-y", "chrome-devtools-mcp@latest"}}
+}
+
+func withBuiltinMCP(settings MCPSettings) MCPSettings {
+	servers := make(map[string]MCPServer, len(settings.Servers)+1)
+	for name, server := range settings.Servers {
+		servers[name] = server
+	}
+	servers[browserMCPName] = builtinBrowserMCP()
+	settings.Servers = servers
+	return settings
+}
+
 func validateMCP(settings MCPSettings) error {
-	if len(settings.Servers) > 32 {
-		return fmt.Errorf("最多配置 32 个 MCP 服务")
+	count := len(settings.Servers)
+	if _, builtin := settings.Servers[browserMCPName]; builtin {
+		count--
+	}
+	if count > 32 {
+		return fmt.Errorf("最多配置 32 个自定义 MCP 服务")
 	}
 	for name, server := range settings.Servers {
 		if strings.TrimSpace(name) != name || name == "" || len(name) > 100 {
@@ -47,7 +73,7 @@ func (s *Service) MCPSettings() (MCPSettings, error) {
 	if os.IsNotExist(err) {
 		path = os.Getenv("XIAOTAO_MCP_CONFIG")
 		if path == "" {
-			return MCPSettings{Servers: map[string]MCPServer{}, Source: "empty"}, nil
+			return withBuiltinMCP(MCPSettings{Source: "empty"}), nil
 		}
 		source = "environment"
 		data, err = os.ReadFile(path)
@@ -62,6 +88,7 @@ func (s *Service) MCPSettings() (MCPSettings, error) {
 	if err = json.Unmarshal(data, &settings); err != nil {
 		return MCPSettings{}, fmt.Errorf("MCP 配置格式无效: %w", err)
 	}
+	settings = withBuiltinMCP(settings)
 	if err = validateMCP(settings); err != nil {
 		return MCPSettings{}, err
 	}
@@ -73,6 +100,7 @@ func (s *Service) MCPSettings() (MCPSettings, error) {
 }
 
 func (s *Service) SaveMCPSettings(settings MCPSettings) error {
+	settings = withBuiltinMCP(settings)
 	if err := validateMCP(settings); err != nil {
 		return err
 	}

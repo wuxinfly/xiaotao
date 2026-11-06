@@ -287,8 +287,15 @@ export interface ModelCatalog {
 
 export interface MCPServer { command: string; args: string[]; disabled?: boolean }
 export interface MCPSettings { mcpServers: Record<string, MCPServer>; source?: 'local' | 'environment' | 'empty' }
+export interface SkillDirectory {path: string; disabled?: boolean}
+export interface SkillsSettings {directories: SkillDirectory[]; disabledSkills: string[]}
+export interface LocalSkill {id: string; name: string; description: string; path: string; directory: string; enabled: boolean; error?: string}
+export interface SkillsCatalog {settings: SkillsSettings; skills: LocalSkill[]; issues: {path: string; message: string}[]; issuesOmitted?: number}
 
 export const api = {
+  agentSkills: (signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills', {signal}),
+  scanAgentSkills: (settings: SkillsSettings, signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills/scan', {method:'POST', body:JSON.stringify(settings), signal}),
+  saveAgentSkills: (settings: SkillsSettings, signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills', {method:'PUT', body:JSON.stringify(settings), signal}),
   agentMCP: (signal?: AbortSignal) => request<MCPSettings>('/api/agent/mcp', {signal}),
   saveAgentMCP: (settings: MCPSettings) => request<{ok: boolean}>('/api/agent/mcp', {method:'PUT', body:JSON.stringify(settings)}),
   testAgentMCP: (server: MCPServer, signal?: AbortSignal) => request<{tools: string[]}>('/api/agent/mcp/test', {method:'POST', body:JSON.stringify(server), signal}),

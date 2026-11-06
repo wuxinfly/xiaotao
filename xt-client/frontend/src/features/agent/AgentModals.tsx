@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
 import {MCPSettings} from './MCPSettings';
+import {SkillsSettings} from './SkillsSettings';
 import {ModalFrame} from '../../components/modal/ModalFrame';
 import {Check, ChevronDown, FolderOpen, Search, X} from 'lucide-react';
 import {api, type AgentConversationReference, type AgentModelOption} from '../../lib/api';
@@ -53,8 +54,10 @@ interface AgentSettingsModalProps {
 }
 
 export function AgentSettingsModal({models, selected, loading, error, onRetry, onAccounts, onSave, onClose}: AgentSettingsModalProps) {
-  const [tab, setTab] = useState<'models' | 'mcp'>('models');
+  const [tab, setTab] = useState<'models' | 'mcp' | 'skills'>('models');
   const [mcpBusy, setMCPBusy] = useState(false);
+  const [skillsBusy, setSkillsBusy] = useState(false);
+  const settingsBusy = mcpBusy || skillsBusy;
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState(() => new Set(selected));
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -99,10 +102,10 @@ export function AgentSettingsModal({models, selected, loading, error, onRetry, o
 
   return <ModalFrame
     title="Agent 设置"
-    description={tab === 'models' ? '只把常用模型留在输入区，选择切换会更清爽。' : '管理 Agent 可以使用的外部工具。'}
+    description={tab === 'models' ? '只把常用模型留在输入区，选择切换会更清爽。' : tab === 'mcp' ? '管理 Agent 可以使用的外部工具。' : '为小涛添加本地技能，按任务需要使用。'}
     className="agent-settings-modal"
-    onClose={() => {if (!mcpBusy) onClose();}}
-    footer={tab === 'mcp' ? <div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={mcpBusy} onClick={onClose}>关闭</button></div> : <>
+    onClose={() => {if (!settingsBusy) onClose();}}
+    footer={tab !== 'models' ? <div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={settingsBusy} onClick={onClose}>关闭</button></div> : <>
       <span className="app-modal-count">已选 {selectedCount} 个模型</span>
       <div className="app-modal-actions">
         <button type="button" className="app-modal-button secondary" onClick={onClose}>取消</button>
@@ -115,8 +118,9 @@ export function AgentSettingsModal({models, selected, loading, error, onRetry, o
       </div>
     </>}
   >
-    <div className="agent-settings-tabs" role="group" aria-label="设置分类"><button type="button" aria-pressed={tab === 'models'} disabled={mcpBusy} onClick={() => setTab('models')}>常用模型</button><button type="button" aria-pressed={tab === 'mcp'} disabled={mcpBusy} onClick={() => setTab('mcp')}>MCP 工具</button></div>
+    <div className="agent-settings-tabs" role="group" aria-label="设置分类"><button type="button" aria-pressed={tab === 'models'} disabled={settingsBusy} onClick={() => setTab('models')}>常用模型</button><button type="button" aria-pressed={tab === 'mcp'} disabled={settingsBusy} onClick={() => setTab('mcp')}>MCP 工具</button><button type="button" aria-pressed={tab === 'skills'} disabled={settingsBusy} onClick={() => setTab('skills')}>Skills 技能</button></div>
     <div hidden={tab !== 'mcp'}><MCPSettings active={tab === 'mcp'} onBusyChange={setMCPBusy}/></div>
+    <div hidden={tab !== 'skills'}><SkillsSettings active={tab === 'skills'} onBusyChange={setSkillsBusy}/></div>
     <div hidden={tab !== 'models'}>
     <div className="agent-model-refresh"><span>模型列表已缓存，账号或模型变化后可手动刷新。</span><button type="button" className="app-modal-button secondary" disabled={loading} onClick={onRetry}>{loading ? '刷新中…' : '刷新模型列表'}</button></div>
     <label className="agent-model-search">

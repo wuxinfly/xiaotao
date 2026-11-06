@@ -309,6 +309,10 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 	if err != nil {
 		return fmt.Errorf("准备小涛 Core: %w", err)
 	}
+	skillInstructions, err := s.localSkillsInstructions()
+	if err != nil {
+		return fmt.Errorf("准备本地 Skills: %w", err)
+	}
 	if selected := strings.TrimSpace(model); selected != "" {
 		history.Model = selected
 	}
@@ -337,7 +341,7 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + "\n" + instructions}}
+	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions}}
 	messages = append(messages, modelHistory(history.Messages, userMessage.ID)...)
 	client := &httpModelClient{endpoint: s.endpoint, key: s.key, client: s.client}
 	err = s.loopWithReferences(runCtx, workspace, client, history, messages, references, emit)
