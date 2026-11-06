@@ -129,7 +129,7 @@
 
 ### buddy-proxy
 
-模型目录跟进：Trae 页面刷新和 OpenAI 模型列表统一经按账号目录解析，成功使用真实目录、失败优先保留账号内存快照，无快照时静态兜底；WorkBuddy 维护 23 项静态目录；Antigravity 实时发现与已验证底表合并，动态档位路由同步到调用。聊天复用五分钟内目录，显式刷新始终请求上游。实现与验收边界见 `../plans/2026-11-01-model-catalog-followup.md`。
+模型目录跟进：Trae 页面刷新和 OpenAI 模型列表统一经按账号目录解析，成功使用真实目录、失败优先保留账号内存快照，无快照时静态兜底；WorkBuddy 从原生 www.workbuddy.cn/v3/config 获取所选聊天 Agent 的实时目录，失败仅保留同登录的上次缓存，不使用旧 CodeBuddy 底表；Antigravity 实时发现与已验证底表合并，动态档位路由同步到调用。聊天复用五分钟内目录，显式刷新始终请求上游。实现与验收边界见 `../plans/2026-11-01-model-catalog-followup.md`。
 
 参考项目位于 `E:\code_my\utils\buddy-proxy`。可参考其渠道认证、模型路由、三种模型协议转换、流式工具调用、账号冷却与切换，以及相关回归测试。
 
@@ -190,3 +190,7 @@
 2026-11-05 Qoder 排队兼容修复：QueueWait 对带内外层 403 的错误继续解析嵌套 message，仅结构化 code=10605 进入既有账号内等待重试；普通 403 不重试。重试次数、等待上限与已有事件后禁止重放的边界不变。详情见 Qoder 实施计划。
 
 2026-11-05 模型计费元数据：ModelInfo 增加可空 priceFactor / isFree，Qoder 从实时模型目录映射，Trae CN 从 display_contact_config.consumption_rate.data.rate 映射。未知或无效数据省略，不合并不同账号价格；账号目录、Agent 目录与 /v1/models 透传（公开接口为 snake_case）。Agent 聚合按账号顺序保留首条，与现有模型聚合口径一致。其他渠道当前无明确来源，保持未知；不改变实际结算和统计。实施与验证见 docs/plans/2026-11-05-model-pricing.md。
+
+WorkBuddy 国内原生登录与凭据隔离见 `../plans/2026-11-06-workbuddy-native.md`；旧 CodeBuddy 渠道凭据需重新登录。
+
+Qoder 活动签到通过区域 OpenAPI campaigns 接口接入账号服务，复用原有状态和打卡入口；仅按明确可领取的积分活动操作，不使用聊天签名或旧 daily-check-in 领取端点。见 `../plans/2026-11-06-qoder-checkin.md`。

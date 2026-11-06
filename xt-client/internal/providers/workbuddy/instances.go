@@ -15,13 +15,16 @@ func FetchPackageExpiry(ctx context.Context, baseURL string, cred *providers.Cre
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	out := map[string]int64{}
 	allEnds := map[string][]int64{}
 	offset := 0
 	for range 10 {
-		raw, err := post(ctx, baseURL+"/billing/meter/get-user-resource", map[string]any{"Offset": offset, "Limit": 100}, headersFor(cred))
+		raw, err := post(ctx, baseURL+"/billing/meter/get-user-resource", map[string]any{"Offset": offset, "Limit": 100}, billingHeaders(cred))
 		if err != nil {
 			return nil, err
 		}

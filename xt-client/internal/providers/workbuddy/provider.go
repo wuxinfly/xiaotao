@@ -18,5 +18,5 @@ func (Provider) Info() providers.Info {
 
 func (Provider) ListModels(region string) []providers.ModelInfo {
 	_ = region
-	return Models
+	return nil
 }

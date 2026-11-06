@@ -392,7 +392,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
-		res := accountSvc.ClaimAllSupported()
+		res := accountSvc.ClaimSupportedProvider(r.URL.Query().Get("provider"))
 		send(w, map[string]any{"results": res})
 	})
 	mux.HandleFunc("POST /api/auth/trae", func(w http.ResponseWriter, r *http.Request) {

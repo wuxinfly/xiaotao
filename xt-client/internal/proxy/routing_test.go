@@ -17,7 +17,7 @@ func TestSelectAccountRoutesByModelPrefix(t *testing.T) {
 		storage.Account{ID: "wb-1", Provider: "workbuddy", Enabled: true},
 		storage.Account{ID: "trae-1", Provider: "trae", Enabled: true},
 	)
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	acct, model, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
 	if !ok || acct.ID != "wb-1" || model != "glm-5.3-flash" {
@@ -34,7 +34,7 @@ func TestSelectAccountUsesStoreOrder(t *testing.T) {
 		storage.Account{ID: "wb-first", Provider: "workbuddy", Enabled: true},
 		storage.Account{ID: "wb-second", Provider: "workbuddy", Enabled: true},
 	)
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	acct, _, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
 	if !ok || acct.ID != "wb-first" {
@@ -50,7 +50,7 @@ func TestSelectAccountUsesManualOrder(t *testing.T) {
 	if err := store.ReorderAccounts("workbuddy", []string{"wb-second", "wb-first"}); err != nil {
 		t.Fatal(err)
 	}
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	acct, _, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
 	if !ok || acct.ID != "wb-second" {
@@ -70,7 +70,7 @@ func TestSelectAccountSkipsExhaustedQuota(t *testing.T) {
 		},
 		storage.Account{ID: "wb-next", Provider: "workbuddy", Enabled: true},
 	)
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	acct, _, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
 	if !ok || acct.ID != "wb-next" {
@@ -90,7 +90,7 @@ func TestSelectAccountKeepsQuotaWithoutRemaining(t *testing.T) {
 		},
 		storage.Account{ID: "wb-fallback", Provider: "workbuddy", Enabled: true},
 	)
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	acct, _, ok := svc.SelectAccount("workbuddy/glm-5.3-flash")
 	if !ok || acct.ID != "wb-used-only" {
@@ -173,7 +173,7 @@ func TestSelectAccountRejectsUnknownProvider(t *testing.T) {
 	store := newRoutingStore(t,
 		storage.Account{ID: "wb-1", Provider: "workbuddy", Enabled: true},
 	)
-	svc := New(store, nil, "")
+	svc := routingService(t, store)
 
 	if _, _, ok := svc.SelectAccount("qoder/gpt-4"); ok {
 		t.Fatal("expected unknown provider to have no account")
@@ -199,4 +199,23 @@ func newRoutingStore(t *testing.T, accounts ...storage.Account) *storage.Store {
 		}
 	}
 	return store
+}
+
+func routingService(t *testing.T, store *storage.Store) *Service {
+	t.Helper()
+	svc := New(store, nil, "")
+	for _, a := range store.Accounts() {
+		if a.Provider != "workbuddy" {
+			continue
+		}
+		if err := store.SaveSecret(a.ID, []byte(`{"AccessToken":"fixture"}`), func(b []byte) ([]byte, error) { return b, nil }); err != nil {
+			t.Fatal(err)
+		}
+		rev, err := store.SecretRevision(a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc.catalogs[a.ID] = catalogSnapshot{region: a.Region, revision: rev, at: time.Now(), models: []providers.ModelInfo{{ID: "glm-5.3-flash"}}}
+	}
+	return svc
 }

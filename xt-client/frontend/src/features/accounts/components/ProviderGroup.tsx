@@ -34,6 +34,7 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   onOpenDetail,
   onOpenModels,
 }) => {
+  const [checkingIn, setCheckingIn] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
   const displayName = providerInfo?.displayName || providerId.toUpperCase();
   const count = accounts.length;
   const toggleCollapsed = () => setCollapsed(value => !value);
-  const supportsCheckin = providerId.toLowerCase() === 'trae' || providerId.toLowerCase() === 'workbuddy';
+  const supportsCheckin = providerId.toLowerCase() === 'trae' || providerId.toLowerCase() === 'workbuddy' || providerId.toLowerCase() === 'qoder';
   const canReorder = count > 1 && !isReordering;
 
   const moveAccount = (accountId: string, delta: -1 | 1) => {
@@ -95,13 +96,14 @@ export const ProviderGroup: React.FC<ProviderGroupProps> = ({
             <button
               type="button"
               className="group-add-btn group-checkin-btn"
-              onClick={() => onCheckinAll(providerId)}
+              disabled={checkingIn}
+              onClick={async () => { if(checkingIn) return; setCheckingIn(true); try {await onCheckinAll(providerId);} finally {setCheckingIn(false);} }}
               title={`为当前 ${displayName} 账号一键签到打卡`}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              <span>一键打卡</span>
+              <span>{checkingIn ? '打卡中…' : '一键打卡'}</span>
             </button>
           )}
           <button

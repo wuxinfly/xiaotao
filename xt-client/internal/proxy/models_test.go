@@ -53,17 +53,10 @@ func TestAccountModelsCatalogAndFallback(t *testing.T) {
 	if otherSource != "builtin" || len(otherModels) < 2 {
 		t.Fatalf("cross-account cache leak: %s %+v", otherSource, otherModels)
 	}
-	acct.Provider = "workbuddy"
-	models = svc.AccountModels(acct)
-	if len(models) != 23 {
-		t.Fatalf("incomplete WorkBuddy catalog: %d", len(models))
+	if got := (workbuddy.Provider{}).ListModels("cn"); len(got) != 0 {
+		t.Fatal("WorkBuddy must not advertise the legacy CodeBuddy catalog")
 	}
-	for _, m := range models {
-		if m.ID == "mimo-v2.6-pro" {
-			return
-		}
-	}
-	t.Fatal("missing WorkBuddy MiMo")
+
 }
 
 // metadataProvider supplies deterministic account-specific catalogs without network calls.

@@ -37,7 +37,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
   const isTraeCN = account.provider === 'trae' && (account.region === 'cn' || !account.region);
   const isWorkbuddy = account.provider === 'workbuddy';
-  const supportsCheckin = isTraeCN || isWorkbuddy;
+  const isQoder = account.provider === 'qoder';
+  const supportsCheckin = isTraeCN || isWorkbuddy || isQoder;
   const isCheckedIn = !!account.checkin?.checkedIn;
 
   const displayName = account.alias || account.nickname || `用户 ${account.uid}`;
@@ -156,7 +157,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                 className={`card-action-btn checkin-btn ${isCheckedIn ? 'is-checked-in' : ''}`}
                 disabled={isBusy}
                 onClick={() => onCheckin(account)}
-                title={isCheckedIn ? (account.checkin?.streakDays ? `今日已签到 (连续 ${account.checkin.streakDays} 天)` : '今日已签到') : '每日签到打卡'}
+                title={isQoder && account.checkin?.message ? account.checkin.message : isCheckedIn ? (account.checkin?.streakDays ? `今日已签到 (连续 ${account.checkin.streakDays} 天)` : '今日已签到') : '每日签到打卡'}
                 aria-label="每日签到打卡"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

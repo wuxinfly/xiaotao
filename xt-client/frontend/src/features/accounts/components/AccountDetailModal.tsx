@@ -63,7 +63,8 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
 
   const isTraeCN = account.provider === 'trae' && (account.region === 'cn' || !account.region);
   const isWorkbuddy = account.provider === 'workbuddy';
-  const supportsCheckin = isTraeCN || isWorkbuddy;
+  const isQoder = account.provider === 'qoder';
+  const supportsCheckin = isTraeCN || isWorkbuddy || isQoder;
   const isCheckedIn = !!account.checkin?.checkedIn;
 
   return createPortal(
@@ -113,7 +114,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
                 {supportsCheckin && (
                   <span className={`status-capsule ${isCheckedIn ? 'auth-ok' : 'auth-warn'}`}>
                     <span className="capsule-dot" />
-                    {isCheckedIn ? (account.checkin?.streakDays ? `已签到 (连续 ${account.checkin.streakDays} 天)` : '已签到') : '今日未签到'}
+                    {isCheckedIn ? (account.checkin?.streakDays ? `已签到 (连续 ${account.checkin.streakDays} 天)` : '已签到') : (account.checkin?.active === false ? (account.checkin.message || '暂无可领取活动') : '今日未签到')}
                   </span>
                 )}
 

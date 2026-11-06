@@ -2,17 +2,20 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
 	"xiaotao/xt-client/internal/providers"
+	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
 	"xiaotao/xt-client/internal/storage"
 )
 
 type CheckinClaimResult struct {
+	Error        string  `json:"error,omitempty"`
 	OK           bool    `json:"ok"`
 	CheckedIn    bool    `json:"checkedIn"`
 	ExtraCredits float64 `json:"extraCredits"`
@@ -100,7 +103,7 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 	a.mu.Lock()
 	a.quotaAt[id] = time.Now().Unix()
 	a.mu.Unlock()
-	if a.providerID(id) == "trae" || a.providerID(id) == "workbuddy" {
+	if a.providerID(id) == "trae" || a.providerID(id) == "workbuddy" || a.providerID(id) == "qoder" {
 		go func() {
 			_, _ = a.FetchCheckin(id)
 		}()
@@ -114,7 +117,9 @@ func (a *AccountService) FetchCheckin(id string) (storage.CheckinStatus, error) 
 		return storage.CheckinStatus{}, err
 	}
 	if cred.ExpiresAt > 0 && cred.ExpiresAt-time.Now().Unix() < 300 {
-		_ = a.refreshToken(id, cred)
+		if err := a.refreshToken(id, cred); err != nil {
+			return storage.CheckinStatus{}, err
+		}
 	}
 	provider := a.providerID(id)
 	var st storage.CheckinStatus
@@ -146,6 +151,18 @@ func (a *AccountService) FetchCheckin(id string) (storage.CheckinStatus, error) 
 			Message:     res.Message,
 			FetchedAt:   time.Now().Unix(),
 		}
+	case "qoder":
+		res, err := (qoder.CheckinClient{}).Status(context.Background(), cred)
+		var upstream *providers.UpstreamError
+		if errors.As(err, &upstream) && upstream.Status == 401 {
+			if err = a.refreshToken(id, cred); err == nil {
+				res, err = (qoder.CheckinClient{}).Status(context.Background(), cred)
+			}
+		}
+		if err != nil {
+			return storage.CheckinStatus{}, err
+		}
+		st = res
 	default:
 		st = storage.CheckinStatus{
 			Supported: false,
@@ -195,11 +212,23 @@ func (a *AccountService) ClaimCheckin(id string) (CheckinClaimResult, error) {
 			StreakDays:   res.StreakDays,
 			Message:      res.Message,
 		}
+	case "qoder":
+		res, err := (qoder.CheckinClient{}).Claim(context.Background(), cred)
+		var upstream *providers.UpstreamError
+		if errors.As(err, &upstream) && upstream.Status == 401 {
+			if err = a.refreshToken(id, cred); err == nil {
+				res, err = (qoder.CheckinClient{}).Claim(context.Background(), cred)
+			}
+		}
+		if err != nil {
+			return CheckinClaimResult{Message: err.Error()}, err
+		}
+		result = CheckinClaimResult{OK: res.OK, CheckedIn: res.CheckedIn, ExtraCredits: res.ExtraCredits, Message: res.Message}
 	default:
 		return CheckinClaimResult{OK: false, Message: "该平台不支持签到"}, fmt.Errorf("provider %s does not support checkin", provider)
 	}
 
-	if result.OK {
+	if result.OK || result.CheckedIn {
 		_ = a.Store.UpdateAccount(id, func(acct *storage.Account) {
 			if acct.Checkin == nil {
 				acct.Checkin = &storage.CheckinStatus{Supported: true}
@@ -218,21 +247,28 @@ func (a *AccountService) ClaimCheckin(id string) (CheckinClaimResult, error) {
 }
 
 func (a *AccountService) ClaimAllSupported() map[string]CheckinClaimResult {
+	return a.ClaimSupportedProvider("")
+}
+
+func (a *AccountService) ClaimSupportedProvider(provider string) map[string]CheckinClaimResult {
 	results := make(map[string]CheckinClaimResult)
 	accounts := a.Store.Accounts()
 	first := true
 	for _, acct := range accounts {
-		if !acct.Enabled {
+		if !acct.Enabled || (provider != "" && acct.Provider != provider) {
 			continue
 		}
-		if acct.Provider != "trae" && acct.Provider != "workbuddy" {
+		if acct.Provider != "trae" && acct.Provider != "workbuddy" && acct.Provider != "qoder" {
 			continue
 		}
 		if !first {
 			time.Sleep(3 * time.Second)
 		}
 		first = false
-		res, _ := a.ClaimCheckin(acct.ID)
+		res, err := a.ClaimCheckin(acct.ID)
+		if err != nil {
+			res.Error = redactText(err.Error())
+		}
 		results[acct.ID] = res
 	}
 	return results

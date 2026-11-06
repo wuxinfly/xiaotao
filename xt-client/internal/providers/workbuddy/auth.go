@@ -4,21 +4,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"xiaotao/xt-client/internal/providers"
 )
 
 const (
-	DefaultBaseURL = "https://copilot.tencent.com"
+	DefaultBaseURL = "https://www.workbuddy.cn"
 	authStatePath  = "/v2/plugin/auth/state"
 	authTokenPath  = "/v2/plugin/auth/token"
-	loginAccPath   = "/v2/plugin/login/account"
 	refreshPath    = "/v2/plugin/auth/token/refresh"
 	chatPath       = "/v2/chat/completions"
 )
@@ -88,7 +89,7 @@ func StartAuth(ctx context.Context, baseURL string) (string, string, error) {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
 	}
-	payload, err := post(ctx, baseURL+authStatePath+"?platform=VSCode", map[string]any{}, baseHeaders())
+	payload, err := post(ctx, baseURL+authStatePath+"?platform=workbuddy", map[string]any{}, baseHeaders())
 	if err != nil {
 		return "", "", err
 	}
@@ -104,6 +105,7 @@ type credentialPayload struct {
 	RefreshToken string `json:"refreshToken"`
 	ExpiresAt    int64  `json:"expiresAt"`
 	Domain       string `json:"domain"`
+	EnterpriseID string `json:"enterpriseId"`
 }
 
 func parseToken(payload []byte) (credentialPayload, error) {
@@ -121,6 +123,7 @@ func parseToken(payload []byte) (credentialPayload, error) {
 	p.RefreshToken, _ = obj["refreshToken"].(string)
 	p.ExpiresAt = msToSeconds(number(obj["expiresAt"]))
 	p.Domain, _ = obj["domain"].(string)
+	p.EnterpriseID, _ = obj["enterpriseId"].(string)
 	if p.AccessToken == "" {
 		return credentialPayload{}, fmt.Errorf("token response missing accessToken")
 	}
@@ -146,6 +149,7 @@ func WaitForToken(ctx context.Context, baseURL, state string) (*providers.Creden
 					ExpiresAt:    token.ExpiresAt,
 					Region:       "cn",
 					Domain:       token.Domain,
+					EnterpriseID: token.EnterpriseID,
 				}, nil
 			}
 		}
@@ -163,87 +167,14 @@ func WaitForToken(ctx context.Context, baseURL, state string) (*providers.Creden
 	}
 }
 
-func WaitForAccount(ctx context.Context, baseURL, state, accessToken string) (string, string, string, string, error) {
-	if testBaseURL != "" {
-		baseURL = testBaseURL
-	}
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	deadline := time.Now().Add(time.Minute)
-	if accessToken == "" {
-		return "", "", "", "", fmt.Errorf("missing access token")
-	}
-	authHeaders := baseHeaders()
-	authHeaders["Authorization"] = "Bearer " + accessToken
-	if domain := tokenDomain(ctx, baseURL, state, accessToken); domain != "" {
-		authHeaders["X-Domain"] = domain
-	}
-	authHeaders["X-No-User-Id"] = "true"
-	authHeaders["X-No-Enterprise-Id"] = "true"
-	authHeaders["X-No-Department-Info"] = "true"
-	for {
-		payload, err := get(ctx, baseURL+loginAccPath+"?state="+url.QueryEscape(state), authHeaders)
-		if err == nil {
-			uid, nickname, enterprise, department, parseErr := parseAccount(payload)
-			if parseErr == nil && uid != "" {
-				return uid, nickname, enterprise, department, nil
-			}
-		}
-		if time.Now().After(deadline) {
-			return "", "", "", "", fmt.Errorf("account information timed out")
-		}
-		select {
-		case <-ctx.Done():
-			return "", "", "", "", ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-}
-
-func tokenDomain(ctx context.Context, baseURL, state, accessToken string) string {
-	headers := baseHeaders()
-	headers["Authorization"] = "Bearer " + accessToken
-	payload, err := get(ctx, baseURL+authTokenPath+"?state="+url.QueryEscape(state), headers)
-	if err != nil {
-		return ""
-	}
-	token, err := parseToken(payload)
-	if err != nil {
-		return ""
-	}
-	return token.Domain
-}
-
 func baseHeaders() map[string]string {
 	return map[string]string{
-		"User-Agent":     "Mozilla/5.0 (compatible; Genie-IDE/1.0)",
-		"X-Product-Code": "codebuddy",
+		"User-Agent":       "WorkBuddy/5.8.3 WorkBuddy/5.8.3 CLI/2.161.0",
+		"X-Product":        "SaaS",
+		"X-Requested-With": "XMLHttpRequest",
+		"Origin":           DefaultBaseURL,
+		"Referer":          DefaultBaseURL + "/",
 	}
-}
-
-func parseAccount(payload []byte) (string, string, string, string, error) {
-	var raw map[string]any
-	if err := json.Unmarshal(payload, &raw); err != nil {
-		return "", "", "", "", fmt.Errorf("invalid account response")
-	}
-	obj, _ := unwrapData(raw).(map[string]any)
-	if obj == nil {
-		return "", "", "", "", fmt.Errorf("account response missing uid")
-	}
-	uid, _ := obj["uid"].(string)
-	if uid == "" {
-		if n := number(obj["uid"]); n != 0 {
-			uid = fmt.Sprintf("%d", n)
-		}
-	}
-	nickname, _ := obj["nickname"].(string)
-	enterprise, _ := obj["enterpriseId"].(string)
-	department, _ := obj["departmentInfo"].(string)
-	if uid == "" {
-		return "", "", "", "", fmt.Errorf("account response missing uid")
-	}
-	return uid, nickname, enterprise, department, nil
 }
 
 func Refresh(ctx context.Context, baseURL string, cred *providers.Credential) (*providers.Credential, error) {
@@ -255,6 +186,11 @@ func Refresh(ctx context.Context, baseURL string, cred *providers.Credential) (*
 	}
 	if cred == nil || cred.RefreshToken == "" {
 		return nil, fmt.Errorf("missing refresh token")
+	}
+	if testBaseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 	}
 	headers := headersFor(cred)
 	delete(headers, "Authorization")
@@ -271,7 +207,7 @@ func Refresh(ctx context.Context, baseURL string, cred *providers.Credential) (*
 	if token.RefreshToken == "" {
 		token.RefreshToken = cred.RefreshToken
 	}
-	return &providers.Credential{
+	next := &providers.Credential{
 		AccessToken:    token.AccessToken,
 		RefreshToken:   token.RefreshToken,
 		ExpiresAt:      token.ExpiresAt,
@@ -282,7 +218,19 @@ func Refresh(ctx context.Context, baseURL string, cred *providers.Credential) (*
 		Domain:         token.Domain,
 		EnterpriseID:   cred.EnterpriseID,
 		DepartmentInfo: cred.DepartmentInfo,
-	}, nil
+	}
+	if next.Domain == "" {
+		next.Domain = cred.Domain
+	}
+	if testBaseURL == "" {
+		if err := NativeAccount(next); err != nil {
+			return nil, err
+		}
+		if next.UID != cred.UID {
+			return nil, fmt.Errorf("WorkBuddy refresh changed account identity")
+		}
+	}
+	return next, nil
 }
 
 func headersFor(cred *providers.Credential) map[string]string {
@@ -291,13 +239,21 @@ func headersFor(cred *providers.Credential) map[string]string {
 		machineID = stableMachineID()
 	}
 	headers := map[string]string{
-		"User-Agent":        "Mozilla/5.0 (compatible; Genie-IDE/1.0)",
-		"X-Product-Code":    "codebuddy",
-		"X-IDE-Type":        "vscode",
-		"X-IDE-Name":        "Visual Studio Code",
-		"X-IDE-Version":     "1.70.2",
-		"X-Product-Version": "4.10.33259736",
-		"X-Machine-Id":      machineID,
+		"User-Agent":          "WorkBuddy/5.8.3 WorkBuddy/5.8.3 CLI/2.161.0",
+		"X-Requested-With":    "XMLHttpRequest",
+		"X-IDE-Type":          "WorkBuddy",
+		"X-IDE-Name":          "WorkBuddy",
+		"X-IDE-Version":       "5.8.3",
+		"X-Product":           "SaaS",
+		"X-Agent-Intent":      "craft",
+		"X-Agent-Purpose":     "conversation",
+		"X-Agent-Type":        "main",
+		"X-Request-ID":        stableMachineID(),
+		"Origin":              DefaultBaseURL,
+		"Referer":             DefaultBaseURL + "/",
+		"X-CodeBuddy-Request": "1",
+		"Accept-Language":     "zh-CN",
+		"X-Machine-Id":        machineID,
 	}
 	if cred.UID != "" {
 		headers["X-User-Id"] = cred.UID
@@ -345,6 +301,9 @@ func number(v any) int64 {
 }
 
 func msToSeconds(ms int64) int64 {
+	if ms > 0 && ms < 100000000000 {
+		return ms
+	}
 	if ms <= 0 {
 		return 0
 	}
@@ -400,6 +359,12 @@ func do(req *http.Request) ([]byte, error) {
 	if resp.StatusCode >= 400 {
 		return nil, statusError(resp.StatusCode, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(string(raw), 200)))
 	}
+	var envelope map[string]any
+	if json.Unmarshal(raw, &envelope) == nil {
+		if code := number(envelope["code"]); code != 0 {
+			return nil, fmt.Errorf("WorkBuddy upstream code %d", code)
+		}
+	}
 	return raw, nil
 }
 
@@ -408,4 +373,72 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// NativeAccount reads metadata only; the upstream verifies the JWT signature.
+func NativeAccount(cred *providers.Credential) error {
+	parts := strings.Split(cred.AccessToken, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("WorkBuddy token 缺少账号身份")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid WorkBuddy token metadata")
+	}
+	var claims struct {
+		Sub      string `json:"sub"`
+		Exp      int64  `json:"exp"`
+		Nickname string `json:"nickname"`
+	}
+	if json.Unmarshal(raw, &claims) != nil || claims.Sub == "" {
+		return fmt.Errorf("WorkBuddy token 缺少账号身份")
+	}
+	cred.UID = claims.Sub
+	if cred.Nickname == "" {
+		cred.Nickname = claims.Nickname
+	}
+	if cred.ExpiresAt == 0 {
+		cred.ExpiresAt = claims.Exp
+	}
+	if cred.Domain == "" {
+		cred.Domain = "www.workbuddy.cn"
+	}
+	return ValidateCredential(cred)
+}
+
+func ValidateCredential(cred *providers.Credential) error {
+	if cred == nil || cred.AccessToken == "" {
+		return fmt.Errorf("missing WorkBuddy access token")
+	}
+	if cred.Domain != "www.workbuddy.cn" {
+		return fmt.Errorf("此账号不是 WorkBuddy 国内原生登录，请在账号页重新登录 WorkBuddy")
+	}
+	return nil
+}
+
+func billingHeaders(cred *providers.Credential) map[string]string {
+	h := headersFor(cred)
+	for _, key := range []string{"X-IDE-Type", "X-IDE-Name", "X-IDE-Version", "X-Agent-Intent", "X-Agent-Type", "X-Agent-Purpose", "X-Machine-Id"} {
+		delete(h, key)
+	}
+	h["User-Agent"] = "WorkBuddy/5.8.3"
+	h["Accept-Language"] = "zh"
+	return h
+}
+
+func chatHeaders(cred *providers.Credential) map[string]string {
+	h := headersFor(cred)
+	h["X-Stainless-Lang"] = "js"
+	h["X-Stainless-Package-Version"] = "6.25.0"
+	h["X-Stainless-OS"] = "Windows"
+	h["X-Stainless-Arch"] = "x64"
+	h["X-Stainless-Runtime"] = "node"
+	h["X-Stainless-Runtime-Version"] = "v22.21.1"
+	h["X-Stainless-Retry-Count"] = "0"
+	h["X-Stainless-Timeout"] = "600"
+	if cred.EnterpriseID != "" {
+		raw, _ := json.Marshal(map[string]string{"uin": cred.UID, "owner_uin": cred.EnterpriseID})
+		h["X-Userinfo"] = base64.StdEncoding.EncodeToString(raw)
+	}
+	return h
 }

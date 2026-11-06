@@ -33,6 +33,7 @@ export function AccountsPage() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedModelProvider, setSelectedModelProvider] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showQoderRegionModal, setShowQoderRegionModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
   const [importing, setImporting] = useState(false);
@@ -46,6 +47,14 @@ export function AccountsPage() {
         api.providers().catch(() => ({ providers: [] })),
       ]);
       setAccounts(acctData.accounts ?? []);
+      const statuses = await Promise.all((acctData.accounts ?? []).filter(a => a.provider === 'qoder').map(async a => {
+        try { return {id:a.id, status:await api.getCheckinStatus(a.id)}; }
+        catch { return {id:a.id, status:{supported:true,active:false,checkedIn:false,dailyCredit:0,streakDays:0,fetchedAt:0,message:'签到状态查询失败，点击打卡重试'}}; }
+      }));
+      if (statuses.length) setAccounts(current => current.map(a => {
+        const fresh = statuses.find(s => s.id === a.id);
+        return fresh ? {...a,checkin:fresh.status} : a;
+      }));
       if (provData.providers) {
         setProviders(provData.providers);
       }
@@ -92,6 +101,7 @@ export function AccountsPage() {
 
   const startLogin = async (providerId = "trae", region = "cn") => {
     setShowAddModal(false);
+    setShowQoderRegionModal(false);
     setFlow("waiting");
     try {
       setLoginProvider(providerId);
@@ -238,8 +248,9 @@ export function AccountsPage() {
   const handleCheckinAll = async (providerId?: string) => {
     try {
       toast.info("正在执行签到打卡...");
-      const { results } = await api.claimAllCheckin();
+      const { results } = await api.claimAllCheckin(providerId);
       let successCount = 0;
+      let failedCount = 0;
       let totalPoints = 0;
       for (const [id, r] of Object.entries(results)) {
         if (providerId) {
@@ -248,6 +259,7 @@ export function AccountsPage() {
             continue;
           }
         }
+        if (r.error) failedCount++;
         if (r.ok) {
           successCount++;
           if (r.extraCredits) totalPoints += r.extraCredits;
@@ -256,9 +268,10 @@ export function AccountsPage() {
       if (successCount > 0) {
         const bonus = totalPoints > 0 ? `，共获得 +${totalPoints} 积分` : '';
         toast.success(`已完成 ${successCount} 个账号签到${bonus}`);
-      } else {
+      } else if (!failedCount) {
         toast.info("今日没有需要签到的账号或已全部签过");
       }
+      if (failedCount) toast.error(`${failedCount} 个账号签到失败，请单独打卡查看原因`);
       await load();
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
@@ -474,7 +487,13 @@ export function AccountsPage() {
             accounts={groupedAccounts[pKey]}
             busyId={busyId}
             isReordering={reorderingProvider === pKey}
-            onAddAccount={() => setShowAddModal(true)}
+            onAddAccount={providerId => {
+              if (providerId === 'qoder') {
+                setShowQoderRegionModal(true);
+              } else {
+                void startLogin(providerId);
+              }
+            }}
             onToggleEnable={handleToggleEnable}
             onRefreshQuota={handleRefreshQuota}
             onCheckin={handleCheckin}
@@ -507,6 +526,15 @@ export function AccountsPage() {
           onCheckin={handleCheckin}
           onDeleteAccount={handleDeleteAccount}
           onRelogin={acct => { setSelectedAccountId(null); void startLogin(acct.provider, acct.region); }}
+        />
+      )}
+
+      {showQoderRegionModal && (
+        <AddAccountModal
+          providers={providers.filter(provider => provider.id === 'qoder')}
+          title="选择 Qoder 登录区域"
+          onSelectProvider={(pId, region) => startLogin(pId, region)}
+          onClose={() => setShowQoderRegionModal(false)}
         />
       )}
 

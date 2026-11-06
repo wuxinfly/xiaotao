@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "record_type": "agent-rule-decision",
+  "decision_id": "workbuddy-native-channel",
+  "candidate_id": "workbuddy-native-channel",
+  "action": "update",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.workbuddy-login-sync-flow",
+  "kind": "fact",
+  "outcome": "approved",
+  "decided_at": "2026-11-06T11:52:50.240Z",
+  "decided_by": "user-confirmed",
+  "reason": "用户确认权益不通用并授权独立接入；开源实现及真实授权接口返回 WorkBuddy 登录域名印证渠道差异。",
+  "source_refs": [
+    "docs/plans/2026-11-06-workbuddy-native.md",
+    "xt-client/internal/providers/workbuddy/auth.go",
+    "xt-client/internal/providers/workbuddy/auth_test.go"
+  ],
+  "before": {
+    "id": "development-conventions.workbuddy-login-sync-flow",
+    "kind": "fact",
+    "text": "WorkBuddy 登录流程必须先请求 /v2/plugin/auth/state 获取 authUrl，拿到链接后再返回登录会话并打开浏览器；获取账号信息的 /v2/plugin/login/account 轮询必须携带刚获取的 Authorization Bearer access token、X-Domain 和 X-Product-Code: codebuddy 插件标识。",
+    "source_refs": [
+      "xt-client/internal/authsessions/sessions.go",
+      "xt-client/internal/providers/workbuddy/auth.go",
+      "xt-client/internal/providers/workbuddy/auth_test.go"
+    ]
+  },
+  "after": {
+    "id": "development-conventions.workbuddy-login-sync-flow",
+    "kind": "fact",
+    "text": "WorkBuddy 国内原生渠道使用 www.workbuddy.cn 与 platform=workbuddy；先获取 authUrl 再返回登录会话并打开浏览器，账号身份从 token 元数据读取，模型来自 /v3/config。不得将 CodeBuddy VSCode 插件凭据视为 WorkBuddy 原生凭据；旧渠道账号需重新登录。",
+    "source_refs": [
+      "docs/plans/2026-11-06-workbuddy-native.md",
+      "xt-client/internal/providers/workbuddy/auth.go",
+      "xt-client/internal/providers/workbuddy/auth_test.go"
+    ]
+  }
+}

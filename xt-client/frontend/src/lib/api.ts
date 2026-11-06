@@ -25,6 +25,7 @@ export interface CheckinStatus {
 }
 
 export interface CheckinClaimResult {
+  error?: string;
   ok: boolean;
   checkedIn: boolean;
   extraCredits?: number;
@@ -313,7 +314,7 @@ export const api = {
   refreshQuota: (id: string) => request<QuotaSnapshot>(`/api/accounts/${id}/quota`, { method: 'POST' }),
   getCheckinStatus: (id: string) => request<CheckinStatus>(`/api/accounts/${id}/checkin`),
   claimCheckin: (id: string) => request<CheckinClaimResult>(`/api/accounts/${id}/checkin`, { method: 'POST' }),
-  claimAllCheckin: () => request<{ results: Record<string, CheckinClaimResult> }>('/api/checkin/claim-all', { method: 'POST' }),
+  claimAllCheckin: (provider?: string) => request<{ results: Record<string, CheckinClaimResult> }>(`/api/checkin/claim-all${provider ? '?provider=' + encodeURIComponent(provider) : ''}`, { method: 'POST' }),
   proxyKey: () => request<{ key: string }>('/api/proxy/key'),
   rotateProxyKey: () => request<{ key: string }>('/api/proxy/key', { method: 'POST' }),
   dashboard: dashboardRequest,

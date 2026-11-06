@@ -338,6 +338,9 @@ func postChat(ctx context.Context, baseURL string, cred *providers.Credential, b
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	raw, err := json.Marshal(body)
@@ -348,7 +351,7 @@ func postChat(ctx context.Context, baseURL string, cred *providers.Credential, b
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range headersFor(cred) {
+	for k, v := range chatHeaders(cred) {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -369,6 +372,9 @@ func streamChat(ctx context.Context, baseURL string, cred *providers.Credential,
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	raw, err := json.Marshal(body)
@@ -379,7 +385,7 @@ func streamChat(ctx context.Context, baseURL string, cred *providers.Credential,
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range headersFor(cred) {
+	for k, v := range chatHeaders(cred) {
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Content-Type", "application/json")

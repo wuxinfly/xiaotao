@@ -37,6 +37,9 @@ func FetchCheckinStatus(ctx context.Context, baseURL string, cred *providers.Cre
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	if cred == nil || cred.AccessToken == "" {
@@ -97,6 +100,9 @@ func ClaimCheckin(ctx context.Context, baseURL string, cred *providers.Credentia
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	if cred == nil || cred.AccessToken == "" {

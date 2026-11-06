@@ -33,7 +33,7 @@ export function formatUnitValue(value: number, unit: string): string {
 export function getSummaryItem(items: QuotaItem[]): QuotaItem | null {
   if (!items || items.length === 0) return null;
   const totalItem = items.find(it => it.label === '总额度' || it.label.includes('总额'));
-  if (!totalItem && items.every(it => it.unit === 'credit') && items.some(it => it.label === '订阅额度' || it.label === '加购包')) {
+  if (!totalItem && items.every(it => it.unit === 'credit') && items.some(it => ['订阅额度', '加购包', '订阅套餐', '资源包'].includes(it.label))) {
     const sum = (key: 'used' | 'total' | 'remaining') => items.every(it => it[key] != null) ? items.reduce((n, it) => n + (it[key] ?? 0), 0) : null;
     return { label: '合计', unit: 'credit', used: sum('used'), total: sum('total'), remaining: sum('remaining') };
   }

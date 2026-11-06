@@ -1,3 +1,5 @@
+> 2026-11-06：本文为旧 CodeBuddy 插件渠道记录，登录、身份头与静态目录已由 [WorkBuddy 原生渠道](2026-11-06-workbuddy-native.md) 取代。
+
 # WorkBuddy 反代接入计划（2026-11-01）
 
 ## 范围

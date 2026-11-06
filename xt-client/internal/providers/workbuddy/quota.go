@@ -37,12 +37,15 @@ func FetchQuota(ctx context.Context, baseURL string, cred *providers.Credential)
 		baseURL = testBaseURL
 	}
 	if baseURL == "" {
+		if err := ValidateCredential(cred); err != nil {
+			return nil, err
+		}
 		baseURL = DefaultBaseURL
 	}
 	if cred == nil || cred.AccessToken == "" {
 		return nil, fmt.Errorf("missing access token")
 	}
-	raw, err := post(ctx, baseURL+"/billing/meter/get-user-resource-summary", map[string]any{}, headersFor(cred))
+	raw, err := post(ctx, baseURL+"/billing/meter/get-user-resource-summary", map[string]any{}, billingHeaders(cred))
 	if err != nil {
 		return nil, err
 	}

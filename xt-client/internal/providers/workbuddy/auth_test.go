@@ -2,18 +2,17 @@ package workbuddy
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
 	"xiaotao/xt-client/internal/providers"
 )
 
 func TestStartAuthUnwrapsNestedPayload(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != authStatePath || r.URL.Query().Get("platform") != "VSCode" {
+		if r.URL.Path != authStatePath || r.URL.Query().Get("platform") != "workbuddy" {
 			http.NotFound(w, r)
 			return
 		}
@@ -55,55 +54,6 @@ func TestWaitForTokenConvertsMillisecondsAndKeepsDomain(t *testing.T) {
 	}
 }
 
-func TestWaitForAccountRequiresUID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == authTokenPath {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"accessToken":"at-1","expiresAt":1893456000000,"domain":"copilot.tencent.com"}}`))
-			return
-		}
-		if r.URL.Path == loginAccPath {
-			if r.Header.Get("Authorization") != "Bearer at-1" || r.Header.Get("X-Domain") != "copilot.tencent.com" ||
-				r.Header.Get("X-Product-Code") != "codebuddy" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"uid":"42","nickname":"小涛","enterpriseId":"ent-1"}}`))
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer server.Close()
-	restore := SetBaseURL(server.URL)
-	defer restore()
-
-	uid, nickname, enterprise, department, err := WaitForAccount(context.Background(), "", "st-1", "at-1")
-	if err != nil {
-		t.Fatalf("WaitForAccount failed: %v", err)
-	}
-	if uid != "42" || nickname != "小涛" || enterprise != "ent-1" || department != "" {
-		t.Fatalf("unexpected account: %q %q %q %q", uid, nickname, enterprise, department)
-	}
-}
-
-func TestWaitForAccountTimesOutWithoutUID(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"nickname":"小涛","enterpriseId":"ent-1"}}`))
-	}))
-	defer server.Close()
-	restore := SetBaseURL(server.URL)
-	defer restore()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-	_, _, _, _, err := WaitForAccount(ctx, "", "st-1", "at-1")
-	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
-		t.Fatalf("expected timeout, got %v", err)
-	}
-}
-
 func TestRefreshKeepsIdentityAndFallsBackToOldRefreshToken(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Refresh-Token") != "rt-old" || r.Header.Get("X-Auth-Refresh-Source") != "plugin" {
@@ -129,5 +79,46 @@ func TestRefreshKeepsIdentityAndFallsBackToOldRefreshToken(t *testing.T) {
 	}
 	if next.AccessToken != "at-2" || next.RefreshToken != "rt-old" || next.UID != "42" || next.Domain != "new.example" || next.EnterpriseID != "ent-1" {
 		t.Fatalf("unexpected refreshed credential: %+v", next)
+	}
+}
+
+func TestNativeAccountAndLegacyRejection(t *testing.T) {
+	token := "header." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"native-42","exp":1893456000}`)) + ".signature"
+	c := &providers.Credential{AccessToken: token}
+	if err := NativeAccount(c); err != nil {
+		t.Fatal(err)
+	}
+	if c.UID != "native-42" || c.Domain != "www.workbuddy.cn" || c.ExpiresAt != 1893456000 {
+		t.Fatalf("wrong metadata: %+v", c)
+	}
+	for _, domain := range []string{"copilot.tencent.com", "www.codebuddy.cn", "www.workbuddy.ai", ""} {
+		if ValidateCredential(&providers.Credential{AccessToken: token, Domain: domain}) == nil {
+			t.Fatalf("accepted wrong channel %q", domain)
+		}
+	}
+	h := headersFor(c)
+	if h["X-IDE-Type"] != "WorkBuddy" || h["X-Product-Code"] != "" || h["X-Product"] != "SaaS" {
+		t.Fatalf("wrong native identity: %+v", h)
+	}
+}
+
+func TestNativeModelCatalog(t *testing.T) {
+	payload := `{"code":0,"data":{"models":[{"id":"native","name":"Native","supportsImages":true},{"id":"hidden"},{"id":"image","tags":["text-to-image"]}],"agents":[{"name":"other","models":["hidden"]},{"name":"cli","tags":["default"],"models":["native","native","image"]}]}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v3/config" || r.Header.Get("X-IDE-Name") != "WorkBuddy" {
+			t.Errorf("wrong catalog request: %s", r.URL.Path)
+		}
+		w.Write([]byte(payload))
+	}))
+	defer server.Close()
+	restore := SetBaseURL(server.URL)
+	defer restore()
+	models, err := (Provider{}).FetchModels(context.Background(), &providers.Credential{AccessToken: "test"})
+	if err != nil || len(models) != 1 || models[0].ID != "native" || !models[0].Multimodal {
+		t.Fatalf("unexpected catalog: %+v %v", models, err)
+	}
+	payload = `{"code":0,"data":{"models":[{"id":"hidden"}]}}`
+	if _, err = (Provider{}).FetchModels(context.Background(), &providers.Credential{AccessToken: "test"}); err == nil {
+		t.Fatal("accepted missing client catalog")
 	}
 }

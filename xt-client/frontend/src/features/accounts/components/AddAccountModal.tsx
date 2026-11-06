@@ -4,6 +4,7 @@ import type { ProviderInfo } from '../../../lib/api';
 import { ProviderIcon } from './ProviderIcon';
 
 interface AddAccountModalProps {
+  title?: string;
   providers: ProviderInfo[];
   onSelectProvider: (providerId: string, region?: string) => void;
   onClose: () => void;
@@ -11,6 +12,7 @@ interface AddAccountModalProps {
 
 export const AddAccountModal: React.FC<AddAccountModalProps & { onImportCodex?: () => void }> = ({
   providers,
+  title = '选择反代接入来源',
   onSelectProvider,
   onImportCodex,
   onClose,
@@ -54,7 +56,7 @@ export const AddAccountModal: React.FC<AddAccountModalProps & { onImportCodex?: 
     >
       <div className="add-account-dialog" ref={dialogRef}>
         <div className="dialog-header">
-          <h3 id="modal-add-title" className="dialog-title">选择反代接入来源</h3>
+          <h3 id="modal-add-title" className="dialog-title">{title}</h3>
           <button
             type="button"
             className="dialog-close-btn"

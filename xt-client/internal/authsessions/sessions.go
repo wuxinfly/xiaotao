@@ -1,4 +1,4 @@
-﻿package authsessions
+package authsessions
 
 import (
 	"context"
@@ -148,15 +148,11 @@ func (s *Service) runWorkBuddyLogin(sess *Session, ctx context.Context, cancel c
 		s.finishWorkBuddyLogin(sess, "", nil, err)
 		return
 	}
-	uid, nickname, enterprise, department, err := workbuddy.WaitForAccount(ctx, "", upstreamState, cred.AccessToken)
-	if err != nil {
+	if err := workbuddy.NativeAccount(cred); err != nil {
 		s.finishWorkBuddyLogin(sess, "", nil, err)
 		return
 	}
-	cred.UID = uid
-	cred.Nickname = nickname
-	cred.EnterpriseID = enterprise
-	cred.DepartmentInfo = department
+	uid := cred.UID
 	if cred.MachineID == "" {
 		cred.MachineID = newUUID()
 	}
