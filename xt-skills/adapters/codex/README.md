@@ -108,7 +108,15 @@ Packet 必须声明 `host_adapter.id: codex`、`status: degraded`，且
 
 需要 Node.js 20.19+。在你的 XiaoTao 仓库根目录运行，例如 `D:\code\xiaotao`。
 
-新项目可以通过 CLI 安装项目级 Core 并生成 XiaoTao 元数据；已有的跨宿主 XiaoTao 项目可直接执行 `doctor`：
+新项目可以直接通过 npm 包安装 Codex Skill 与插件来源：
+
+```powershell
+npx @wxfly/xiaotao@latest codex
+```
+
+它会安装用户级通用 Skill、生成项目 `.xiaotao/installation.json`、准备独立的 CLI marketplace 根目录，并在 Codex CLI 可用时安装 `xiaotao-codex@xiaotao`。`--prepare` 只准备来源，不调用 CLI；`--json` 输出结构化结果。CLI 安装不会代替 Hook 信任审查。
+
+从源码开发时，仍可分别安装项目级 Core 并生成 XiaoTao 元数据；已有的跨宿主 XiaoTao 项目可直接执行 `doctor`：
 
 ```powershell
 node .\bin\xiaotao.js init "D:\code\your-project" --tools codex

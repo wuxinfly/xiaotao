@@ -18,6 +18,9 @@ const FILES = [
   'scripts/worker-snapshot-contract.mjs',
 ];
 const ENTRY_PATH = `./.codex/plugins/${NAME}`;
+const CLI_MARKETPLACE = '.xiaotao/plugins/codex-marketplace';
+const CLI_ENTRY_PATH = `./plugins/${NAME}`;
+const CLI_MARKETPLACE_NAME = 'xiaotao';
 const MARKER = '.xiaotao-source.json';
 
 async function optionalText(file) {
@@ -113,6 +116,37 @@ export async function installLocal({ homeDir = homedir(), sourceDir = SOURCE } =
     await lock.close();
     await unlink(lockPath);
   }
+}
+
+// Codex CLI accepts a marketplace root containing .agents/plugins/marketplace.json.
+// Keep this source separate from the personal marketplace used by the desktop app.
+export async function installCliMarketplace({ homeDir = homedir(), sourceDir = SOURCE } = {}) {
+  const root = path.join(homeDir, CLI_MARKETPLACE);
+  const pluginDir = path.join(root, 'plugins', NAME);
+  const sourceFiles = await Promise.all(FILES.map(file => readFile(path.join(sourceDir, file), 'utf8')));
+  const manifest = JSON.parse(sourceFiles[0]);
+  if (manifest.name !== NAME) throw new Error('Unexpected plugin identity');
+  const digest = createHash('sha256').update(JSON.stringify(sourceFiles)).digest('hex').slice(0, 16);
+  manifest.version = `${manifest.version.split('+')[0]}+codex.${digest}`;
+  sourceFiles[0] = `${JSON.stringify(manifest, null, 2)}\n`;
+
+  await directory(root);
+  await directory(path.join(root, '.agents', 'plugins'));
+  await directory(path.join(root, 'plugins'));
+  await directory(pluginDir);
+  for (const dir of ['.codex-plugin', 'hooks', 'scripts']) await directory(path.join(pluginDir, dir));
+  for (let i = 0; i < FILES.length; i++) await atomicText(path.join(pluginDir, FILES[i]), sourceFiles[i]);
+  await atomicText(path.join(pluginDir, MARKER), `${JSON.stringify({ owner: OWNER })}\n`);
+  const catalog = {
+    name: CLI_MARKETPLACE_NAME,
+    interface: { displayName: 'Personal' },
+    plugins: [{
+      name: NAME, source: { source: 'local', path: CLI_ENTRY_PATH },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity',
+    }],
+  };
+  await atomicText(path.join(root, '.agents', 'plugins', 'marketplace.json'), `${JSON.stringify(catalog, null, 2)}\n`);
+  return { root, pluginDir, marketplace: path.join(root, '.agents', 'plugins', 'marketplace.json'), version: manifest.version };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

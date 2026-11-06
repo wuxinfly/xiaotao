@@ -33,6 +33,7 @@ type Service struct {
 	cooldowns map[string]time.Time
 	collect   func(context.Context, *providers.Credential, string, map[string]any) (map[string]any, error)
 	stream    func(context.Context, *providers.Credential, string, map[string]any, *providers.ChatEvents) error
+	traeUsage func(context.Context, *providers.Credential, string) (map[string]any, error)
 }
 
 type catalogSnapshot struct {
@@ -46,6 +47,7 @@ func New(store *storage.Store, secret func(id string) ([]byte, error), apiKey st
 	return &Service{
 		store: store, secret: secret, key: apiKey,
 		catalogs: map[string]catalogSnapshot{}, cooldowns: map[string]time.Time{},
+		traeUsage: trae.SessionUsage,
 	}
 }
 
@@ -319,6 +321,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var upstream map[string]any
+	sessionID := ""
 	if acct.Provider == "trae" || acct.Provider == "antigravity" {
 		cred.ModelRoutes = s.chatModelRoutes(acct)
 		if acct.Provider == "trae" {
@@ -338,8 +341,9 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 			upstream["tools"] = tools
 		}
 	} else {
+		sessionID = randHex()
 		upstream = map[string]any{
-			"function": "chat_v3", "request_id": randHex(), "session_id": randHex(),
+			"function": "chat_v3", "request_id": sessionID, "session_id": sessionID,
 		}
 		upstream["messages"] = trae.NativeMessages(msgs)
 		if len(body.Tools) > 0 {
@@ -350,7 +354,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		upstream["reasoning_effort"] = body.ReasoningEffort
 	}
 	if body.Stream {
-		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream)
+		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream, sessionID)
 		return
 	}
 	if collector, ok := providerCollector(acct.Provider); ok {
@@ -386,6 +390,9 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, 502, "upstream_error", redact(err.Error()))
 		return
+	}
+	if acct.Provider == "trae" && result.Usage != nil {
+		result.Usage = s.enrichTraeUsage(ctx, &cred, traeUsageSessionID(result.SessionID, sessionID), result.Usage)
 	}
 	if reqTracker != nil {
 		if result.FirstTokenAt != nil {
@@ -469,7 +476,7 @@ func (s *Service) recordUsage(reqTracker *usage.ActiveRequest, acct storage.Acco
 // streamLive proxies the upstream SSE stream incrementally: each upstream
 // delta is converted to an OpenAI chunk and flushed immediately, so
 // downstream clients see tokens as they are generated.
-func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveRequest, w http.ResponseWriter, id string, created int64, model string, cred *providers.Credential, acct storage.Account, machineID, deviceID, modelID string, upstream map[string]any) {
+func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveRequest, w http.ResponseWriter, id string, created int64, model string, cred *providers.Credential, acct storage.Account, machineID, deviceID, modelID string, upstream map[string]any, upstreamSessionID string) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	flusher, _ := w.(http.Flusher)
@@ -621,6 +628,9 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 				msg  string
 			}{code, msg})
 		},
+		OnSessionID: func(id string) {
+			upstreamSessionID = id
+		},
 		OnUsage: func(u map[string]any) {
 			prev, _ := usage.Load().(map[string]any)
 			next := map[string]any{}
@@ -665,10 +675,6 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 		if reqTracker != nil {
 			reqTracker.OnError(v.msg)
 		}
-	} else {
-		if reqTracker != nil {
-			reqTracker.OnCompleted()
-		}
 	}
 	if v, ok := upstreamErr.Load().(struct {
 		code any
@@ -677,6 +683,33 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 		chunk(map[string]any{"content": "\n\n[" + redact(v.msg) + "]"}, nil)
 	}
 	final, _ := usage.Load().(map[string]any)
+	if acct.Provider == "trae" && len(final) > 0 {
+		final = s.enrichTraeUsage(ctx, cred, upstreamSessionID, final)
+		usage.Store(final)
+		if reqTracker != nil {
+			var pPtr, cPtr, caPtr *int64
+			if p, ok := final["prompt_tokens"].(int64); ok {
+				pPtr = &p
+			}
+			if c, ok := final["completion_tokens"].(int64); ok {
+				cPtr = &c
+			}
+			if ca, ok := final["cached_tokens"].(int64); ok {
+				caPtr = &ca
+			}
+			reqTracker.OnUsage(pPtr, cPtr, caPtr)
+		}
+	}
+	if err == nil {
+		if v, ok := upstreamErr.Load().(struct {
+			code any
+			msg  string
+		}); !ok || v.msg == "" {
+			if reqTracker != nil {
+				reqTracker.OnCompleted()
+			}
+		}
+	}
 	chunk(map[string]any{}, "stop")
 	if len(final) > 0 {
 		writeChunk(map[string]any{

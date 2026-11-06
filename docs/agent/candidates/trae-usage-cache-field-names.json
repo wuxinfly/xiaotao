@@ -6,8 +6,13 @@
   "kind": "fact",
   "section_id": "development-conventions",
   "rule_id": "development-conventions.trae-usage-cache-field-names",
-  "text": "Trae 上游 llm_utils_chat 的 token_usage 事件用 Anthropic 风格字段名报缓存（cache_read_input_tokens、cache_creation_input_tokens），没有 OpenAI 的 cached_tokens 或 prompt_tokens_details；按 OpenAI 字段名解析会静默丢掉缓存数据。实测同账号、同 session、39k 相同前缀连续请求仍返回 cache_read_input_tokens=0，即该通道不做隐式前缀缓存，Trae 缓存命中为零是上游行为。",
-  "rationale": "仪表盘 Trae 模型缓存命中长期为空，request_records 中 173 条 Trae 记录 cached_tokens 全为 NULL。用只读探针抓取真实上游 SSE，确认 token_usage 事件字段为 cache_read_input_tokens/cache_creation_input_tokens，现有解析只认 cached_tokens、prompt_tokens_details.cached_tokens、prompt_cache_hit_tokens、cache_tokens，全部落空；归一化后同一探针三次请求均如实上报 0。",
-  "observations": 3,
-  "source_refs": ["xt-client/internal/providers/trae/chat.go", "xt-client/internal/providers/trae/chat_usage_test.go", "xt-client/README.md"]
+  "text": "Trae 上游 llm_utils_chat 的 token_usage 事件用 Anthropic 风格字段名报缓存（cache_read_input_tokens、cache_creation_input_tokens），没有 OpenAI 的 cached_tokens 或 prompt_tokens_details；按 OpenAI 字段名解析会静默丢掉缓存数据。小涛已正确映射这些字段，记录中的 0 表示 SSE 明确上报 0，不等于真实未命中：2026-10-27 后多个公开实现观察到固定前缀、同账号和显式会话标识仍报 0，而同一轮商业账单可能报告非零缓存读取。小涛尚未保存上游会话标识或接入商业账单补查，因此 Trae 缓存统计可能偏低。",
+  "rationale": "仪表盘 Trae 模型缓存命中长期为零，本机最新记录能证明 SSE 明确返回 cache_read_input_tokens=0，且小涛已正确归一化该字段。后续核对发现 2026-10-26 的公开实测仍能命中，10-27 后多个项目全量归零；另有项目通过 /api/v1/commercial/get_session_usage 在输入、输出精确匹配时补回真实缓存读取。因此原候选把“SSE 报 0”直接推成“实际未命中”证据不足，应保留“SSE 不可靠、当前统计可能偏低”的结论。",
+  "observations": 4,
+  "source_refs": [
+    "docs/plans/2026-11-06-trae-cache-accounting.md",
+    "xt-client/internal/providers/trae/chat.go",
+    "xt-client/internal/providers/trae/chat_usage_test.go",
+    "xt-client/README.md"
+  ]
 }

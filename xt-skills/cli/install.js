@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { resolveUserHome, SCENES } from './scenes.js';
+import { installCliMarketplace } from '../adapters/codex/install-local.mjs';
 
 const execFileAsync = promisify(execFile);
 const CONFIG_PATH = '.xiaotao/installation.json';
@@ -105,6 +106,54 @@ export async function installZcode({ packageRoot, target, skillSource, version }
   await writeFile(manifestPath, JSON.stringify({ ...manifest, version }, null, 2) + '\n');
   await writeFile(path.join(target.path, 'marketplace.json'), JSON.stringify({ name: 'xiaotao-local', plugins: [{ name: 'xiaotao-zcode', source: './plugins/xiaotao-zcode', version }] }, null, 2) + '\n');
   await writeFile(path.join(target.path, MARKER_NAME), JSON.stringify({ package: MANAGED_PACKAGE, scene: 'zcode', version }) + '\n');
+}
+
+export async function installCodex({ projectRoot, packageRoot, environment = process.env, prepare = false, command = execFileAsync }) {
+  const resolvedPackage = path.resolve(packageRoot);
+  const { version, skillSource } = await packageInfo(resolvedPackage);
+  const skillsTarget = SCENES.skills.resolveTarget(environment);
+  if ((await isNonEmpty(skillsTarget.path)) && !(await isManaged(skillsTarget.path))) {
+    throw new Error(`Destination is not managed by XiaoTao: ${skillsTarget.path}. Run xiaotao init with --force to adopt it.`);
+  }
+  await mkdir(skillsTarget.path, { recursive: true });
+  await cp(skillSource, skillsTarget.path, { recursive: true, force: true });
+  await writeFile(path.join(skillsTarget.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'skills', version }, null, 2)}\n`);
+
+  const now = new Date().toISOString();
+  let previous = null;
+  try { previous = await readInstallation(projectRoot); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const scenes = [...new Set([...(previous?.scenes ?? []), 'skills'])];
+  const targets = { ...(previous?.targets ?? {}), skills: skillsTarget };
+  const metadata = { schema_version: 2, package: MANAGED_PACKAGE, package_version: version, scenes, targets, installed_at: previous?.installed_at ?? now, updated_at: now };
+  await mkdir(path.dirname(projectConfig(projectRoot)), { recursive: true });
+  await writeFile(projectConfig(projectRoot), `${JSON.stringify(metadata, null, 2)}\n`);
+  const previousGlobal = await readGlobalInstallation(environment);
+  const globalScenes = [...new Set([...(previousGlobal?.scenes ?? []), ...scenes])];
+  const global = { schema_version: 1, package: MANAGED_PACKAGE, package_version: version, scenes: globalScenes, targets: { ...(previousGlobal?.targets ?? {}), ...targets }, updated_at: now };
+  await mkdir(path.dirname(globalConfig(environment)), { recursive: true });
+  await writeFile(globalConfig(environment), `${JSON.stringify(global, null, 2)}\n`);
+
+  const marketplace = await installCliMarketplace({ homeDir: resolveUserHome(environment) });
+  const checks = (await doctorInstallation(projectRoot, environment, command)).checks;
+  let installed = false;
+  let pluginId = 'xiaotao-codex@xiaotao';
+  let installError;
+  if (!prepare) {
+    try {
+      await command('codex', ['plugin', 'marketplace', 'add', marketplace.root, '--json'], { cwd: resolvedPackage, env: environment, windowsHide: true });
+      const output = await command('codex', ['plugin', 'add', pluginId, '--json'], { cwd: resolvedPackage, env: environment, windowsHide: true });
+      installed = true;
+      if (output.stdout) {
+        try { pluginId = JSON.parse(output.stdout).pluginId ?? pluginId; } catch {}
+      }
+    } catch (error) {
+      installError = error.code === 'ENOENT' ? '未找到 codex CLI；已准备来源，请在 Codex 桌面端安装。' : `Codex CLI 安装失败：${error.message}`;
+    }
+  }
+  return {
+    ok: checks.every((check) => check.ok) && (prepare || installed), installed, pluginId, version, marketplace: marketplace.marketplace,
+    marketplaceRoot: marketplace.root, installError, checks,
+  };
 }
 
 export async function installScenes({ projectRoot, packageRoot, sceneIds, force = false, environment = process.env, command = execFileAsync }) {

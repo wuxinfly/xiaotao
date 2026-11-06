@@ -184,6 +184,8 @@ test('installLocal successfully writes Antigravity plugin and Core Skill', async
 
   const marker = JSON.parse(await readFile(path.join(res.targetDir, '.xiaotao-source.json'), 'utf8'));
   assert.equal(marker.owner, 'xiaotao-ai-workflow/antigravity-adapter');
+  const managed = JSON.parse(await readFile(path.join(res.targetDir, '.xiaotao-managed.json'), 'utf8'));
+  assert.equal(managed.version, JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version);
 
   const skillContent = await readFile(path.join(res.targetDir, 'skills/xiaotao/SKILL.md'), 'utf8');
   assert.match(skillContent, /name: xiaotao/);

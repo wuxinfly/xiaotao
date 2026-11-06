@@ -15,13 +15,14 @@ import (
 )
 
 type ChatResult struct {
-	Content string
-	Reason  string
-	Tools   []map[string]any
-	Usage   map[string]any
-	ErrCode any
-	ErrMsg  string
-	EOF     bool
+	Content      string
+	Reason       string
+	Tools        []map[string]any
+	Usage        map[string]any
+	SessionID    string
+	ErrCode      any
+	ErrMsg       string
+	EOF          bool
 	FirstTokenAt *time.Time
 }
 
@@ -181,6 +182,10 @@ func collectChat(ctx context.Context, cred *providers.Credential, machineID, dev
 			}
 		case "token_usage":
 			result.Usage = normalizeTokenUsage(data)
+		case "metadata":
+			if sessionID, _ := data["session_id"].(string); sessionID != "" {
+				result.SessionID = sessionID
+			}
 		case "done":
 			result.EOF = true
 		case "notify_usage":
@@ -209,10 +214,11 @@ func collectChat(ctx context.Context, cred *providers.Credential, machineID, dev
 // pre-merged per index so consumers receive stable argument fragments.
 type StreamEvents struct {
 	OnFirstToken func(t time.Time)
-	OnDelta func(delta map[string]any)
-	OnError func(code any, msg string)
-	OnUsage func(usage map[string]any)
-	OnDone  func()
+	OnDelta      func(delta map[string]any)
+	OnError      func(code any, msg string)
+	OnUsage      func(usage map[string]any)
+	OnSessionID  func(sessionID string)
+	OnDone       func()
 }
 
 // StreamChat runs the native chat channel and pushes each upstream
@@ -280,6 +286,10 @@ func StreamChat(ctx context.Context, cred *providers.Credential, machineID, devi
 			usage := normalizeTokenUsage(data)
 			if ev.OnUsage != nil && len(usage) > 0 {
 				ev.OnUsage(usage)
+			}
+		case "metadata":
+			if sessionID, _ := data["session_id"].(string); sessionID != "" && ev.OnSessionID != nil {
+				ev.OnSessionID(sessionID)
 			}
 		case "done":
 			if ev.OnDone != nil {

@@ -63,6 +63,7 @@ type ChatEvents struct {
 	OnError      func(status int, message string)
 	OnUsage      func(usage map[string]any)
 	OnAction     func(tag, title string)
+	OnSessionID  func(sessionID string)
 }
 
 // ChatCollector aggregates a complete non-streaming provider response.

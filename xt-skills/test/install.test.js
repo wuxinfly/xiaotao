@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { doctorInstallation, globalUpdateNotice, installScenes, readGlobalInstallation, readInstallation, updateScenes } from '../cli/install.js';
+import { doctorInstallation, globalUpdateNotice, installCodex, installScenes, readGlobalInstallation, readInstallation, updateScenes } from '../cli/install.js';
 
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-install-test-'));
@@ -97,5 +97,59 @@ test('installs and verifies Antigravity plugin and skill', async (t) => {
   const target = path.join(context.environment.XIAOTAO_HOME, '.gemini/config/plugins/xiaotao-antigravity');
   assert.equal(await readFile(path.join(target, 'skills/xiaotao/SKILL.md'), 'utf8'), '# XiaoTao\n');
   assert.equal(await readFile(path.join(target, 'plugin.json'), 'utf8'), '{"name":"xiaotao-antigravity"}');
+});
+
+test('codex install writes Skill, metadata and an independent CLI marketplace', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const source = path.join(context.packageRoot, 'adapters/codex/xiaotao-codex');
+  for (const file of [
+    '.codex-plugin/plugin.json',
+    'hooks/hooks.json',
+    'scripts/session-start.mjs',
+    'scripts/progress-check.mjs',
+    'scripts/handoff-contract.mjs',
+    'scripts/subagent-start.mjs',
+    'scripts/delegation-contract.mjs',
+    'scripts/worker-snapshot-contract.mjs',
+  ]) {
+    await mkdir(path.dirname(path.join(source, file)), { recursive: true });
+    await writeFile(path.join(source, file), file.endsWith('.json') ? '{"name":"xiaotao-codex","version":"0.6.0"}' : '// fixture');
+  }
+  const result = await installCodex({ ...context, prepare: true });
+  assert.equal(result.installed, false);
+  assert.equal(result.pluginId, 'xiaotao-codex@xiaotao');
+  assert.equal((await readInstallation(context.projectRoot)).scenes.includes('skills'), true);
+  const catalog = JSON.parse(await readFile(path.join(context.environment.XIAOTAO_HOME, '.xiaotao/plugins/codex-marketplace/.agents/plugins/marketplace.json'), 'utf8'));
+  assert.equal(catalog.name, 'xiaotao');
+  assert.equal(catalog.plugins[0].source.path, './plugins/xiaotao-codex');
+});
+
+test('codex install invokes the CLI marketplace and plugin add flow', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const source = path.join(context.packageRoot, 'adapters/codex/xiaotao-codex');
+  for (const file of [
+    '.codex-plugin/plugin.json',
+    'hooks/hooks.json',
+    'scripts/session-start.mjs',
+    'scripts/progress-check.mjs',
+    'scripts/handoff-contract.mjs',
+    'scripts/subagent-start.mjs',
+    'scripts/delegation-contract.mjs',
+    'scripts/worker-snapshot-contract.mjs',
+  ]) {
+    await mkdir(path.dirname(path.join(source, file)), { recursive: true });
+    await writeFile(path.join(source, file), file.endsWith('.json') ? '{"name":"xiaotao-codex","version":"0.6.1"}' : '// fixture');
+  }
+  const calls = [];
+  const command = async (name, args) => {
+    calls.push([name, args]);
+    return { stdout: args[1] === 'add' ? JSON.stringify({ pluginId: 'xiaotao-codex@xiaotao' }) : '{}', stderr: '' };
+  };
+  const result = await installCodex({ ...context, command });
+  assert.equal(result.installed, true);
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls.map(([name]) => name), ['codex', 'codex']);
+  assert.deepEqual(calls[0][1].slice(0, 3), ['plugin', 'marketplace', 'add']);
+  assert.deepEqual(calls[1][1], ['plugin', 'add', 'xiaotao-codex@xiaotao', '--json']);
 });
 

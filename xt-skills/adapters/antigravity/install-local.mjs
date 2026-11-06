@@ -8,6 +8,12 @@ const CORE_SOURCE = fileURLToPath(new URL('../../xiaotao/', import.meta.url));
 const PLUGIN_NAME = 'xiaotao-antigravity';
 const OWNER = 'xiaotao-ai-workflow/antigravity-adapter';
 const MARKER = '.xiaotao-source.json';
+const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+async function packageVersion() {
+  const manifest = JSON.parse(await readFile(path.join(PACKAGE_ROOT, 'package.json'), 'utf8'));
+  return manifest.version;
+}
 
 async function optionalStat(target) {
   try {
@@ -70,7 +76,7 @@ export async function installLocal({
   );
   await writeFile(
     path.join(targetDir, '.xiaotao-managed.json'),
-    `${JSON.stringify({ package: 'xiaotao-ai-workflow', scene: 'antigravity', version: '0.5.0' }, null, 2)}\n`
+    `${JSON.stringify({ package: 'xiaotao-ai-workflow', scene: 'antigravity', version: await packageVersion() }, null, 2)}\n`
   );
 
   return { targetDir, pluginName: PLUGIN_NAME };

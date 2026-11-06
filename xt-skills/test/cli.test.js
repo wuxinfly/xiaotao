@@ -35,6 +35,17 @@ test('rejects JSON for commands that do not produce JSON', async () => {
   assert.match(io.stderr, /--json is only valid/);
 });
 
+test('codex prepares the personal marketplace without requiring Codex CLI', async (t) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-cli-test-')); const home = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-home-test-'));
+  t.after(() => Promise.all([rm(projectRoot, { recursive: true, force: true }), rm(home, { recursive: true, force: true })]));
+  const io = terminal();
+  assert.equal(await run(['codex', projectRoot, '--prepare'], { ...io, environment: { XIAOTAO_HOME: home } }), 0);
+  assert.match(io.stdout, /Codex 插件来源/);
+  assert.match(await readFile(path.join(home, '.agents/skills/xiaotao/SKILL.md'), 'utf8'), /name: xiaotao/);
+  const catalog = JSON.parse(await readFile(path.join(home, '.xiaotao/plugins/codex-marketplace/.agents/plugins/marketplace.json'), 'utf8'));
+  assert.equal(catalog.plugins[0].name, 'xiaotao-codex');
+});
+
 test('update accepts --yes without a TTY and checks old metadata before prompting', async (t) => {
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-cli-test-')); const home = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-home-test-'));
   t.after(() => Promise.all([rm(projectRoot, { recursive: true, force: true }), rm(home, { recursive: true, force: true })]));

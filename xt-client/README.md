@@ -163,7 +163,7 @@ build.ps1 构建成功后会在当前用户桌面创建或更新“小涛”快�
 - **统计口径**：
   - 统计开始日期：首次启动时在 `usage_meta` 表记录 `tracking_started_date`，用于在年度热力图中区分“未开启统计的历史”与“当天零用量”。
   - Token 计算：总 Token = 输入 Token + 输出 Token。缓存命中包含在输入 Token 中，不重复累加。
-  - 缓存字段归一化：各上游缓存字段名不统一，Provider 层统一映射为 `cached_tokens` 并回填 `prompt_tokens_details`（Trae 用 Anthropic 风格的 `cache_read_input_tokens`/`cache_creation_input_tokens`，WorkBuddy 与 Qoder 用 `prompt_tokens_details.cached_tokens`，Codex 用 Responses 的 `input_tokens_details.cached_tokens`，Antigravity 用 `cachedContentTokenCount`）。上游明确报 0 时记 0，未报任何缓存字段时保留空值。
+  - 缓存字段归一化：各上游缓存字段名不统一，Provider 层统一映射为 `cached_tokens` 并回填 `prompt_tokens_details`（Trae 用 Anthropic 风格的 `cache_read_input_tokens`/`cache_creation_input_tokens`，WorkBuddy 与 Qoder 用 `prompt_tokens_details.cached_tokens`，Codex 用 Responses 的 `input_tokens_details.cached_tokens`，Antigravity 用 `cachedContentTokenCount`）。上游明确报 0 时记 0，未报任何缓存字段时保留空值。Trae 自 2026-10-27 起可能在真实命中时仍通过 SSE 报 0；当 SSE 缓存明细缺失或为 0 时，客户端会短时查询本次上游会话的商业账单，仅在输入与输出 token 精确匹配时补回缓存读取和写入数，否则保留原值。查询失败、超时、账单尚未落库或 token 不匹配时不会猜测缓存命中。
   - 缺失与未知：上游未提供或无法解析的指标以空值（—）展示，不伪装或估算为零；缺失情况在每日汇总中单独计数。
   - 日界线：固定采用 `Asia/Shanghai` 时区。请求数归入发起时的开始日期，用量增量归入收到上游确认数据时的日期（跨午夜请求按此规则精确切分）。
   - 输出速率：已确认输出 token ÷ 首输出后经过时间的平均值（tok/s），流结束后冻结；不足 50ms 或无输出 token 时显示“—”。

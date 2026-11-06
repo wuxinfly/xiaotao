@@ -46,11 +46,16 @@ npx @wxfly/xiaotao@latest update
 
 # 检查安装是否正常，不修改任何文件
 npx @wxfly/xiaotao@latest doctor
+
+# 安装 Codex Skill 与增强插件
+npx @wxfly/xiaotao@latest codex
 ```
 
 `update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
 
-当前本地验证阶段，`init` 必须在交互式终端中运行，不提供 `--tools` 或 CI 批量初始化参数。`--json` 仅支持 `doctor`。
+`codex` 会安装通用 Codex Skill、准备独立 marketplace，并在本机找到 Codex CLI 时执行 `codex plugin add xiaotao-codex@xiaotao`。如果 CLI 不可用，可加 `--prepare` 只准备来源，再到桌面端 Plugins 中安装。安装或启用插件不会自动信任 Hooks，首次使用前仍需在 Codex 中审查。
+
+当前本地验证阶段，`init` 必须在交互式终端中运行，不提供 `--tools` 或 CI 批量初始化参数。`--json` 支持 `doctor` 和 `codex`。
 
 ## 安装位置
 

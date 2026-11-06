@@ -28,6 +28,7 @@ type StreamProvider struct{}
 func (StreamProvider) Stream(ctx context.Context, cred *providers.Credential, model string, body map[string]any, ev *providers.ChatEvents) error {
 	firstTokenFired := false
 	var upstreamErrMsg string
+	var sessionID string
 	err := StreamChat(ctx, cred, cred.MachineID, cred.DeviceID, model, body, &StreamEvents{
 		OnFirstToken: func(time.Time) {
 			if !firstTokenFired && ev.OnFirstToken != nil {
@@ -48,12 +49,18 @@ func (StreamProvider) Stream(ctx context.Context, cred *providers.Credential, mo
 				ev.OnUsage(usage)
 			}
 		},
+		OnSessionID: func(id string) {
+			sessionID = id
+		},
 	})
 	if err != nil {
 		return err
 	}
 	if upstreamErrMsg != "" {
 		return &providers.UpstreamError{Status: 502, Message: upstreamErrMsg}
+	}
+	if sessionID != "" && ev.OnSessionID != nil {
+		ev.OnSessionID(sessionID)
 	}
 	return nil
 }

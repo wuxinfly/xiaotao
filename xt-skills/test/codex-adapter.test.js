@@ -13,7 +13,7 @@ import {
   recoveryContext,
   run,
 } from '../adapters/codex/xiaotao-codex/scripts/session-start.mjs';
-import { installLocal } from '../adapters/codex/install-local.mjs';
+import { installCliMarketplace, installLocal } from '../adapters/codex/install-local.mjs';
 import { isValidHandoffShape } from '../adapters/codex/xiaotao-codex/scripts/handoff-contract.mjs';
 import { subagentContext } from '../adapters/codex/xiaotao-codex/scripts/subagent-start.mjs';
 
@@ -528,6 +528,16 @@ test('local installer preserves invalid marketplace contents and refuses an occu
   await put(homeDir, '.agents/plugins/.xiaotao-codex-install.lock', 'another installer');
   await assert.rejects(installLocal({ homeDir }), { code: 'EEXIST' });
   assert.equal(await readFile(path.join(homeDir, '.agents/plugins/.xiaotao-codex-install.lock'), 'utf8'), 'another installer');
+});
+
+test('Codex CLI marketplace has a supported root manifest and relative plugin path', async t => {
+  const homeDir = await fixture(t);
+  const result = await installCliMarketplace({ homeDir });
+  const catalog = JSON.parse(await readFile(result.marketplace, 'utf8'));
+  assert.equal(catalog.name, 'xiaotao');
+  assert.equal(catalog.plugins[0].source.path, './plugins/xiaotao-codex');
+  assert.ok(result.pluginDir.startsWith(result.root));
+  assert.ok(result.marketplace.startsWith(result.root));
 });
 
 test('Codex injects bounded live Runtime Context when active Task, Temporary, or follow-up exist', async t => {

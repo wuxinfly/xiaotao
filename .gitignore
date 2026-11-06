@@ -8,6 +8,7 @@
 !/.xiaotao/memory/knowledge/entries/
 /.xiaotao/memory/knowledge/entries/*
 !/.xiaotao/memory/knowledge/entries/project.overview.md
+/.xiaotao/secrets/
 .dsh/
 .agents/.local/
 node_modules/

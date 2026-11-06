@@ -41,8 +41,14 @@ if (!hasDependencies) {
 run('npm', ['run', 'build', '--silent'])
 
 const packed = run('npm', ['pack', '--silent', '--no-dry-run', '--ignore-scripts', '--pack-destination', outputDir], { capture: true })
-const archiveName = packed.stdout.split(/\r?\n/).map((line) => line.trim())
-  .findLast((line) => line.endsWith('.tgz'))
+let archiveName
+try {
+  const manifest = JSON.parse(packed.stdout)
+  archiveName = Array.isArray(manifest) ? manifest[0]?.filename : undefined
+} catch {
+  archiveName = packed.stdout.split(/\r?\n/).map((line) => line.trim())
+    .findLast((line) => line.endsWith('.tgz'))
+}
 if (!archiveName) throw new Error(`npm pack did not return an archive name:\n${packed.stdout}`)
 
 await rename(path.join(outputDir, archiveName), outputArchive)
