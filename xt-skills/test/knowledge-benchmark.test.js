@@ -152,6 +152,8 @@ test('shipped project overview is indexed from the project memory directory', as
     'xt-skills/xiaotao/SKILL.md',
     'xt-skills/bin/xiaotao.js',
     '.xiaotao/memory/knowledge/entries/project.overview.md',
+    'docs/architecture/xt-client-overview.md',
+    'xt-skills/xiaotao/references/evolution.md',
   ]) {
     const source = path.join(repositoryRoot, '..', ...relativePath.split('/'));
     const destination = path.join(projectRoot, ...relativePath.split('/'));

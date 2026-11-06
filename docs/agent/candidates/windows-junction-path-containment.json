@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "windows-junction-path-containment",
+  "created_at": "2026-11-06T13:02:06Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.windows-junction-path-containment",
+  "text": "Windows 目录联接（junction）可能不被 Python Path.is_symlink() 识别，单凭该检查不能证明项目路径未逃逸；evolution.py 已增加创建目录前的解析路径包含检查及 junction 拒绝测试，daily_memory.safe() 的其他调用仍需单独审查。",
+  "rationale": "本次原生 Windows junction 测试先复现建议箱可写入项目外，再在新增边界检查后验证项目外目录为空；这一可复现事实可用于审查其他项目相对路径入口，不自动扩大本次修改范围或应用新规则。",
+  "observations": 1,
+  "source_refs": [
+    "xt-skills/xiaotao/scripts/evolution.py",
+    "xt-skills/xiaotao/scripts/daily_memory.py",
+    "xt-skills/test/evolution.test.js",
+    "docs/plans/2026-11-06-skill-evolution.md"
+  ]
+}

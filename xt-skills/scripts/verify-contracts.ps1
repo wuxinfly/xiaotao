@@ -902,6 +902,43 @@ try {
         }
     }
 
+    # Validate a real script-produced record, then a resolved decision missing proof.
+    $evolutionRoot = Join-Path ([IO.Path]::GetTempPath()) ("xiaotao-evolution-contract-" + [guid]::NewGuid().ToString("N"))
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $evolutionRoot ".xiaotao") -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $evolutionRoot "evidence.md") -Value "已脱敏的实际观察" -Encoding utf8
+        $observation = Get-Content -Raw -Encoding utf8 "xiaotao/references/scenarios/evolution-observation.json" | ConvertFrom-Json
+        $observation.source_refs = @("evidence.md")
+        $observation | ConvertTo-Json -Depth 20 | & python "xiaotao/scripts/evolution.py" --project-root $evolutionRoot record
+        if ($LASTEXITCODE -ne 0) { throw "Evolution record failed" }
+        $evolutionRecord = Join-Path $evolutionRoot ".xiaotao/evolution/suggestions/handoff-missing-validation.json"
+        Invoke-AjvCase "xiaotao/references/schemas/evolution-record.schema.json" @($evolutionRecord) 0
+        $resolved = @{
+            issue_key = $observation.issue_key; decision_id = "review-1"; status = "resolved"
+            actor = "designer"; reason = "源码改动已验证"; change_ref = "commit:example"; validation = "场景检查通过"
+        }
+        $resolved | ConvertTo-Json | & python "xiaotao/scripts/evolution.py" --project-root $evolutionRoot decide
+        if ($LASTEXITCODE -ne 0) { throw "Evolution decision failed" }
+        Invoke-AjvCase "xiaotao/references/schemas/evolution-record.schema.json" @($evolutionRecord) 0
+        $invalid = Get-Content -Raw -Encoding utf8 $evolutionRecord | ConvertFrom-Json
+        $invalid.decisions[0].PSObject.Properties.Remove("validation")
+        $invalidPath = Join-Path $evolutionRoot "invalid.json"
+        $invalid | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $invalidPath -Encoding utf8
+        Invoke-AjvCase "xiaotao/references/schemas/evolution-record.schema.json" @($invalidPath) 1
+    }
+    finally {
+        # The absolute target was created above under the OS temp directory, never the workspace.
+        if ($evolutionRoot -and (Test-Path -LiteralPath $evolutionRoot)) {
+            $resolvedEvolutionRoot = [IO.Path]::GetFullPath($evolutionRoot)
+            $tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+            if (-not $resolvedEvolutionRoot.StartsWith($tempBase, [StringComparison]::OrdinalIgnoreCase) -or
+                -not ([IO.Path]::GetFileName($resolvedEvolutionRoot)).StartsWith("xiaotao-evolution-contract-")) {
+                throw "Unexpected evolution fixture cleanup path"
+            }
+            Remove-Item -LiteralPath $resolvedEvolutionRoot -Recurse -Force
+        }
+    }
+
     Write-Output "All XiaoTao contract checks passed."
 }
 finally {

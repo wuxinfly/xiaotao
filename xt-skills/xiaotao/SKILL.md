@@ -48,6 +48,7 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
 | 解析、组合、生成、委派或恢复 Worker | [workers.md](references/workers.md) 和 [coordination.md](references/coordination.md) |
 | 记录或使用 Detailed Result、Current State 或 Handoff | [handoffs.md](references/handoffs.md) |
 | 使用或审查项目中的指定 Playbook | [playbooks.md](references/playbooks.md) |
+| 发现小涛自身协作摩擦、记录改进建议或导出给设计 AI | [evolution.md](references/evolution.md) |
 
 ## 面向用户的沟通
 
@@ -63,6 +64,8 @@ XiaoTao 启动或新 Session 开始时，小涛按以下路径进入工作状态
   完整证据、历史背景、内部路径和 Worker 细节留在记录中，用户要求时再展开。没有内容的类别不要硬写。
 
 ## 核心约束
+
+- 自身改进：阶段收尾、用户明确纠正或同类做法反复失败时，轻量检查小涛的规则、工具和协作是否存在可复用摩擦。有实际证据才按 [evolution.md](references/evolution.md) 写入项目本地 `.xiaotao/evolution/`，同问题合并、独立观察累计，重试不重复记数；没有问题不凑建议，不逐轮扫描历史。用户要求不保存时跳过。由用户手动导出交给维护 GitHub 源码的设计 AI；建议不自动生效，不修改已安装 Skill、不自动提交或发布，不改变 Memory/Playbook 审批规则。记录失败如实说明，不阻塞业务交付。
 
 - 阶段进度保存：已启用 XiaoTao 的项目中，在一个阶段结束、交付结果前合并保存值得接续的新事实并回读；连续修改与验证只保存一次。同日同项目同模块的小修使用 record_type=minor 和稳定 project_id/module_id/group_id 追加到同一详情；重要排查、架构变更和阶段完成独立记录。长任务在重要决策、阻塞或即将中断时补存。普通讨论与轻任务优先存当天记忆，不为保存创建 Temporary/Task；已有明确关联工作时同一次请求附上 work_path。默认只用 [progress-saving.md](references/progress-saving.md) 的统一入口，脚本处理任务进度、当天汇总、导航和回读；Codex 用 --save 同时完成回执，不手工拼存储协议。无新事实、纯寒暄或用户明确要求不保存时跳过。正常保存不逐步播报；保存失败简短说明，聊天总结不代表已落盘。
 

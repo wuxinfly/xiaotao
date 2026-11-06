@@ -107,3 +107,9 @@ Adapter 不应仅为了“让模型能访问 service”而暴露无限制 raw st
 4. Core 无宿主专有依赖，Adapter 没有复制语义决策，移除 Adapter 后 Core 仍可基本运行。
 
 后续能力由对应 Issue 跟踪；未来新增宿主本身不重新打开本架构总 Issue。
+
+## 8. Skill 自身改进（2026-11-06）
+
+Core 在阶段收尾、明确纠正和同类失败时按 [evolution.md](../../xt-skills/xiaotao/references/evolution.md) 判断是否产生产品建议。宿主无关的 `evolution.py` 负责本地建议箱的校验、幂等累计、锁、单文件原子写入、状态历史和有界导出；不依赖 Adapter 生命周期 Hook，也不调用后台模型。真实宿主自动复盘遵循情况为 `unverified`，机械脚本测试不能替代该验收。
+
+记录位于项目 `.xiaotao/evolution/`，是待验证产品反馈，独立于 Knowledge 与 Playbook。由用户手动把脱敏报告交给维护 GitHub 源码的设计 AI；不自动修改用户级 Skill、不自动发送、提交、PR 或发布。处理结论单独留痕，已解决/拒绝项有新的独立观察时重新待处理。既有权限与记忆审批语义保持不变。

@@ -12,6 +12,9 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
   config.yaml
   locks/
   transactions/
+  evolution/
+    suggestions/<issue-key>.json
+    exports/handoff.md
   activity/
     index.json
   memory/
@@ -92,6 +95,7 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 为减少 Git 冲突噪声并在分支之间同步共享知识，XiaoTao 将本地执行状态与团队共享 memory 分开：
 
 - **本地 Runtime 状态（不纳入 Git）：**
+  - `evolution/`：小涛自身改进建议、原始观察与处理历史，以及手动交接报告；不自动分享或提交。写入和导出走 [evolution.md](evolution.md) 的专用脚本；单个建议及其历史是一个原子文件，不套用通用多文件事务。`suggestions/` 为权威记录，`exports/` 可重新生成。
   - `memory/timeline/`：每日讨论与任务汇总原文默认保留在本项目本地；`details/` 必须备份，年/月/日导航可重建。不要自动把私人对话加入 Git；共享需用户明确选择内容。
   - `memory/manifest.md` 和 `memory/index.json`：由正式 Memory 来源重建的派生 awareness 目录；
   - `memory/temporary/`：Task 前探索、scratchpad 和活动 Worker 状态；
@@ -122,6 +126,7 @@ XiaoTao 状态属于目标项目，绝不能写入已安装 Skill。执行状态
 .xiaotao/transactions/
 .xiaotao/tasks/
 .xiaotao/activity/
+.xiaotao/evolution/
 
 # 跟踪团队共享 memory 与配置
 !.xiaotao/

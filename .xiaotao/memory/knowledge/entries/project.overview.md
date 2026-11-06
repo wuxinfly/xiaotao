@@ -1,6 +1,6 @@
 ---
-revision: 9
-updated_at: 2026-10-31T02:52:52Z
+revision: 10
+updated_at: 2026-11-06T13:02:06Z
 updated_by: xiao-tao/maintainer
 ---
 
@@ -11,7 +11,7 @@ updated_by: xiao-tao/maintainer
   "entry_id": "project.overview",
   "title": "XiaoTao 架构全景与模块组织概览",
   "memory_kind": "fact",
-  "content": "XiaoTao 是面向软件协作的 AI 项目。现有 Agent Skill、CLI、多宿主适配器和测试位于 xt-skills/；xt-client/ 为客户端预留目录，website/ 是独立网站，docs/ 保存共享文档。Skill 主入口为 xt-skills/xiaotao/SKILL.md，CLI 入口为 xt-skills/bin/xiaotao.js。",
+  "content": "XiaoTao 是面向软件协作的 AI 项目。现有 Agent Skill、CLI、多宿主适配器和测试位于 xt-skills/；xt-client/ 是 Go 本地服务与 WebView2 轻量客户端原型，website/ 是独立网站，docs/ 保存共享文档。Skill 主入口为 xt-skills/xiaotao/SKILL.md，CLI 入口为 xt-skills/bin/xiaotao.js。Core 支持记录自身协作改进建议，由用户手动导出交给维护 GitHub 源码的设计 AI，不自动修改安装或发布。",
   "tags": [
     "architecture",
     "overview",
@@ -37,7 +37,9 @@ updated_by: xiao-tao/maintainer
   ],
   "source_refs": [
     "xt-skills/package.json",
-    "xt-skills/xiaotao/SKILL.md"
+    "xt-skills/xiaotao/SKILL.md",
+    "docs/architecture/xt-client-overview.md",
+    "xt-skills/xiaotao/references/evolution.md"
   ],
   "code_refs": [
     "xt-skills/package.json",
@@ -46,7 +48,7 @@ updated_by: xiao-tao/maintainer
   ],
   "code_fingerprints": {
     "xt-skills/package.json": "e95e20c47fb353a06ef9cbdfc19e977710a767ff9f18bb88f91e76e769147d00",
-    "xt-skills/xiaotao/SKILL.md": "d7ad076039b4e2317e40bd4a7bd5425b5c891be3e8c2c6770eaea5ff46a8f758",
+    "xt-skills/xiaotao/SKILL.md": "b1dd224e1c26911da9de62af224bc7a13cf74f5fe2bc565807847d4821674e6c",
     "xt-skills/bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb"
   },
   "status": "active"
@@ -55,7 +57,7 @@ updated_by: xiao-tao/maintainer
 
 ## 模块结构与职责
 
-- **`xt-skills/xiaotao/`**：语义 Core 与运行时规范。包含 `SKILL.md`（行为准则与角色定义）、`references/`（内存、协调、存储与 Worker 规范）、`scripts/`（Catalog 派生与校验脚本）。
+- **`xt-skills/xiaotao/`**：语义 Core 与运行时规范。包含 `SKILL.md`（行为准则与角色定义）、`references/`（记忆、协调、存储、Worker 与自身改进规范）、`scripts/`（Catalog 派生、校验与本地建议箱脚本）。
 - **`xt-skills/cli/`**：跨宿主安装与诊断工具。提供 `init`, `update`, `doctor` 命令，支持向 Antigravity、Codex 和 DSH 部署 Skill。
 - **`xt-skills/adapters/`**：多宿主运行时适配层。
   - `antigravity/`：Google Antigravity 插件与钩子适配；

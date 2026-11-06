@@ -1,0 +1,13 @@
+{
+  "issue_key": "handoff-missing-validation",
+  "observation_id": "session-example-stage-1",
+  "title": "交接遗漏验证结果",
+  "problem": "本阶段交接只写了修改内容，没有说明测试是否执行。",
+  "impact": "接手者无法判断是否还需要验证，重复执行了同一检查。",
+  "proposal": "在现有交接步骤中补充测试结论与未验证项，不新增固定工作流。",
+  "acceptance": "同类交接能清楚区分通过、失败和未执行，并保留证据路径。",
+  "evidence": "用户指出缺少验证结果后才补充；目前仅有这一次观察，根因仍需设计 AI 核对。",
+  "source_refs": [".xiaotao/tasks/archive/example/completion.md"],
+  "host": "unknown",
+  "skill_version": "unknown"
+}
