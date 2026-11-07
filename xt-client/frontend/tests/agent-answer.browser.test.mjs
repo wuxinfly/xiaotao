@@ -13,7 +13,7 @@ test('formal answer streams monotonically, survives tools, history, stop and lat
   const page=await browser.newPage({viewport:{width:1200,height:800}});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const at=n=>new Date(Date.UTC(2026,10,7,0,0,n)).toISOString();
-  const session={id:'answer',title:'回答阶段',model:'test',project:{path:'E:/fixture',name:'测试'},status:'completed',messages:[],activity:[],thoughts:[],runStats:[],createdAt:at(0),updatedAt:at(0)};
+  const session={id:'answer',title:'回答阶段',model:'test',project:{path:'E:/fixture',name:'测试'},status:'completed',messages:[],activity:[],thoughts:[],runStats:[],hasImages:false,createdAt:at(0),updatedAt:at(0)};
   const stats={runId:'r1',userMessageId:'u1',phase:'working',startedAt:at(1),filesRead:1,filesWritten:0,toolCalls:1,contextTokens:50};
   await page.addInitScript(()=>{
    localStorage.setItem('xiaotao.agent.enabledModels',JSON.stringify(['test']));
@@ -25,7 +25,7 @@ test('formal answer streams monotonically, survives tools, history, stop and lat
   });
   await page.route('**/api/**',route=>{
    const path=new URL(route.request().url()).pathname;
-   if(path==='/api/agent/sessions')return route.fulfill({json:{sessions:[session,{...session,id:'other',title:'另一个会话'}]}});
+    if(path==='/api/agent/sessions')return route.fulfill({json:{sessions:[session,{...session,id:'other',title:'另一个会话'}]}});
    if(path.endsWith('/history'))return route.fulfill({json:{session:path.includes('/other/') ? {...session,id:'other',title:'另一个会话',messages:[],runStats:[]} : session,before:''}});
    if(path==='/api/agent/models')return route.fulfill({json:{models:[{model:'test',label:'测试模型'}]}});
    if(path.endsWith('/access-mode'))return route.fulfill({json:{mode:'full'}});
@@ -60,7 +60,7 @@ test('formal answer streams monotonically, survives tools, history, stop and lat
   const summary=page.locator('.agent-final-meta');
   assert.ok((await summary.boundingBox()).y >= (await bubble.boundingBox()).y+(await bubble.boundingBox()).height);
   assert.equal(await page.locator('.agent-process-collapse').getAttribute('aria-hidden'),'true');
-  await summary.getByRole('button').click();
+  await summary.locator('xpath=..').getByRole('button',{name:'查看思考过程'}).click();
   await page.getByRole('dialog',{name:'本轮思考过程'}).getByText('阅读文件',{exact:true}).waitFor();
   await page.keyboard.press('Escape');
   for(const width of [1200,390]) {

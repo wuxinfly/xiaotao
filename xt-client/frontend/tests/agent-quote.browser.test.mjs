@@ -10,8 +10,12 @@ test('selected reply text can be quoted, removed, and sent with or without a que
   await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in')) resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
   browser=await chromium.launch(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE,headless:true} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge',headless:true});
   const page=await browser.newPage({viewport:{width:1200,height:800}});
-  const stamp='2026-01-01T00:00:00Z'; const messages=[{id:'source',role:'assistant',content:'需要先重启服务，然后检查状态。',createdAt:stamp}];
-  const session={id:'quote-test',title:'引用测试',model:'test',status:'completed',project:{path:'E:/fixture',name:'测试项目'},createdAt:stamp,updatedAt:stamp,messages,activity:[]};
+  const stamp='2026-01-01T00:00:00Z'; const turn='turn-quote-1';
+  // 真实会话里每条回复都带轮次统计，界面会把 assistant 消息折叠进 RunTimeline（.agent-run-bubble），
+  // 不再渲染 .agent-message.role-assistant。这里必须带上 runStats，否则测到的只是线上不存在的旧形状。
+  const messages=[{id:'source',role:'assistant',runId:turn,content:'需要先重启服务，然后检查状态。',createdAt:stamp}];
+  const runStats=[{runId:turn,userMessageId:'u0',startedAt:stamp,endedAt:stamp,filesRead:1,filesWritten:0,toolCalls:2,contextTokens:10,contextWindow:1000}];
+  const session={id:'quote-test',title:'引用测试',model:'test',status:'completed',project:{path:'E:/fixture',name:'测试项目'},createdAt:stamp,updatedAt:stamp,messages,activity:[],runStats};
   const sent=[];
   await page.route('**/api/**',route=>{
    const req=route.request(), path=new URL(req.url()).pathname;
@@ -27,9 +31,10 @@ test('selected reply text can be quoted, removed, and sent with or without a que
    return route.fulfill({json:{models:[],accounts:[],sessions:[]}});
   });
   await page.goto('http://127.0.0.1:5194'); await page.locator('.agent-session-select[title="引用测试"]').click();
-  await page.locator('.agent-message.role-assistant .agent-message-content').waitFor();
+  await page.locator('.agent-run-bubble-text.agent-message-content').waitFor();
+  assert.equal(await page.locator('.agent-message.role-assistant').count(), 0, '真实路径下不应再渲染旧消息行');
   async function selectQuote(start, end) {
-   await page.locator('.agent-message.role-assistant .agent-message-content p').first().evaluate((el, offsets)=>{
+   await page.locator('.agent-run-bubble-text.agent-message-content p').first().evaluate((el, offsets)=>{
     const text=el.firstChild, range=document.createRange(), selection=window.getSelection();
     range.setStart(text,offsets[0]); range.setEnd(text,offsets[1]); selection.removeAllRanges(); selection.addRange(range);
     el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));

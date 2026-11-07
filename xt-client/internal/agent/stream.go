@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // readModelStream forwards visible text as it arrives and assembles complete
@@ -31,11 +32,16 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		Error *struct {
 			Message string `json:"message"`
 		} `json:"error"`
+		Usage struct {
+			CompletionTokens int64 `json:"completion_tokens"`
+		} `json:"usage"`
 	}
 	type assembled struct{ id, name, args string }
 	var text strings.Builder
 	var reasoning strings.Builder
 	var calls []*assembled
+	var firstOutputAt *time.Time
+	var outputTokens int64
 	byIndex := map[int]*assembled{}
 	byID := map[string]*assembled{}
 	done, finished := false, false
@@ -67,15 +73,27 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 				}
 			}
 			if choice.Delta.Content != "" {
+				if firstOutputAt == nil {
+					at := time.Now()
+					firstOutputAt = &at
+				}
 				text.WriteString(choice.Delta.Content)
 				if onDelta != nil {
 					onDelta(choice.Delta.Content)
 				}
 			}
 			if choice.Delta.ReasoningContent != "" {
+				if firstOutputAt == nil {
+					at := time.Now()
+					firstOutputAt = &at
+				}
 				reasoning.WriteString(choice.Delta.ReasoningContent)
 			}
 			for _, part := range choice.Delta.ToolCalls {
+				if firstOutputAt == nil {
+					at := time.Now()
+					firstOutputAt = &at
+				}
 				var call *assembled
 				if part.Index != nil {
 					call = byIndex[*part.Index]
@@ -107,6 +125,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 				call.args += part.Function.Arguments
 			}
 		}
+		if frame.Usage.CompletionTokens > 0 {
+			outputTokens = frame.Usage.CompletionTokens
+		}
 		return nil
 	}
 	for scanner.Scan() {
@@ -135,7 +156,12 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	if !done || !finished {
 		return nil, fmt.Errorf("模型流意外中断")
 	}
-	result := &completion{Content: text.String(), Reasoning: reasoning.String()}
+	result := &completion{
+		Content:       text.String(),
+		Reasoning:     reasoning.String(),
+		OutputTokens:  outputTokens,
+		FirstOutputAt: firstOutputAt,
+	}
 	ids := map[string]bool{}
 	for _, call := range calls {
 		args := strings.TrimSpace(call.args)

@@ -395,6 +395,11 @@ func referenceModelMessage(refs []ConversationReference) map[string]any {
 // user message. Earlier turns retain their compact display text, preventing a
 // frozen 64 KiB source from being resent on every model call.
 func modelHistory(messages []Message, currentUserID string) []map[string]any {
+	out, _ := modelHistoryWith(messages, currentUserID, nil)
+	return out
+}
+
+func modelHistoryWith(messages []Message, currentUserID string, loadImages func([]ImageAttachment) ([]string, error)) ([]map[string]any, error) {
 	out := make([]map[string]any, 0, len(messages)+1)
 	pending := map[string]string{}
 	flush := func() {
@@ -421,14 +426,18 @@ func modelHistory(messages []Message, currentUserID string) []map[string]any {
 				out = append(out, block)
 			}
 		}
-		out = append(out, messageToModel(message))
+		projected, err := messageToModelWith(message, loadImages)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, projected)
 		for _, call := range message.ToolCalls {
 			function, _ := call["function"].(map[string]any)
 			pending[fmt.Sprint(call["id"])] = fmt.Sprint(function["name"])
 		}
 	}
 	flush()
-	return out
+	return out, nil
 }
 
 var referenceToolDefinition = map[string]any{

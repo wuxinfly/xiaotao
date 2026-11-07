@@ -1,3 +1,4 @@
+import {normaliseImage} from './imageNormalise';
 import {AgentDroplet, activityState, type DropletState} from './AgentDroplet';
 import {Popover} from '../../components/popover/Popover';
 import {ModalPresence} from '../../components/modal/ModalFrame';
@@ -18,6 +19,13 @@ import remarkBreaks from 'remark-breaks';
 import {
   ArrowUp,
   ArrowDown,
+  CircleStop,
+  Clock3,
+  FilePenLine,
+  FileSearch,
+  Gauge,
+  Image,
+  SendHorizontal,
   ListFilter,
   Check,
   ChevronDown,
@@ -33,10 +41,13 @@ import {
   Trash2,
   Square,
   PanelRight,
+  TriangleAlert,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
-import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought} from '../../lib/api';
+import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentImage, type AgentMessage, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought} from '../../lib/api';
 import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
 import {ConversationReference, conversationReferenceType} from './ConversationReference';
 import './agent.css';
@@ -127,7 +138,7 @@ function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
     const message = event.message;
     const existing = session.messages.find(item => item.id === message.id);
     const streamDrafts = event.type === 'message' && message.runId ? (session.streamDrafts ?? []).filter(item => item.runId !== message.runId) : session.streamDrafts;
-    return {...session, streamDrafts, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? message : item) : [...session.messages, message]};
+    return {...session, streamDrafts, hasImages: session.hasImages || !!message.images?.length, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? message : item) : [...session.messages, message]};
   }
   if (event.type === 'activity' && event.activity) {
     const activity = (session.activity ?? []).filter(item => item.id !== event.activity!.id);
@@ -164,11 +175,92 @@ function conversationMessages(messages: AgentMessage[]): AgentMessage[] {
   return messages.filter(item => item.role !== 'tool' && (item.role !== 'assistant' || ids.has(item.id)));
 }
 
+function conversationHasImages(messages: AgentMessage[], hasImages?: boolean) {
+  return !!hasImages || messages.some(item => !!item.images?.length);
+}
+
 function runDuration(stats: AgentRunStats) {
   const start = new Date(stats.startedAt).getTime();
   const end = stats.endedAt ? new Date(stats.endedAt).getTime() : Date.now();
   const seconds = Math.max(0, Math.round((end - start) / 1000));
   return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+
+function runSpeed(stats: AgentRunStats) {
+  if (!stats.outputSpeed || stats.outputSpeed <= 0) return '';
+  return `${stats.outputSpeed.toFixed(1).replace(/\.0$/, '')} tok/s`;
+}
+
+// runElapsed is the wall clock time of the run, in whole seconds.
+function runElapsed(stats: AgentRunStats, now: number) {
+  const start = new Date(stats.startedAt).getTime();
+  if (!Number.isFinite(start)) return 0;
+  const end = stats.endedAt ? new Date(stats.endedAt).getTime() : now;
+  return Math.max(0, Math.floor((end - start) / 1000));
+}
+
+function formatElapsed(seconds: number) {
+  if (seconds < 60) return `${seconds} 秒`;
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+
+// useTicker advances once per second so the live duration keeps moving even
+// when the backend has nothing new to report.
+function useTicker(active: boolean) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+// liveOutput reads the streaming values first and falls back to the values
+// reported by a finished request.
+function liveOutput(stats: AgentRunStats) {
+  const tokens = (stats.liveTokens ?? 0) > 0 ? stats.liveTokens! : (stats.outputTokens ?? 0);
+  const speed = (stats.liveSpeed ?? 0) > 0 ? stats.liveSpeed! : (stats.outputSpeed ?? 0);
+  return {tokens, speed};
+}
+
+function runSummaryItems(stats: AgentRunStats) {
+  const items = [{key: 'duration', label: `共思考 ${runDuration(stats)}`, Icon: Clock3, value: runDuration(stats)}];
+  if (stats.firstTokenMs != null && stats.firstTokenMs > 0) {
+    const value = `${(stats.firstTokenMs / 1000).toFixed(1)} 秒`;
+    items.push({key: 'firstToken', label: `首 token 延迟 ${value}`, Icon: Zap, value});
+  }
+  if (stats.filesRead > 0) items.push({key: 'read', label: `读取 ${stats.filesRead} 个文件`, Icon: FileSearch, value: String(stats.filesRead)});
+  if (stats.filesWritten > 0) items.push({key: 'write', label: `写入 ${stats.filesWritten} 个文件`, Icon: FilePenLine, value: String(stats.filesWritten)});
+  if (stats.toolCalls > 0) items.push({key: 'tools', label: `调用 ${stats.toolCalls} 次工具`, Icon: Wrench, value: String(stats.toolCalls)});
+  if ((stats.modelRequests ?? 0) > 0) items.push({key: 'requests', label: `模型请求 ${stats.modelRequests} 次`, Icon: SendHorizontal, value: String(stats.modelRequests)});
+  const speed = runSpeed(stats);
+  if (speed) items.push({key: 'speed', label: `输出速度 ${speed}`, Icon: Gauge, value: speed.replace(' tok/s', '')});
+  return items;
+}
+
+function RunSummary({stats}: {stats: AgentRunStats}) {
+  const anchor = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState('');
+  const [tipPosition, setTipPosition] = useState({left: 0, top: 0});
+  const phase = runPhase(stats);
+  const items = runSummaryItems(stats);
+  const showTip = (event: React.FocusEvent<HTMLSpanElement> | React.MouseEvent<HTMLSpanElement>, label: string) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(250, Math.max(140, label.length * 12 + 22));
+    setTip(label);
+    setTipPosition({
+      left: Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2)),
+      top: rect.top >= 44 ? rect.top - 36 : rect.bottom + 8,
+    });
+  };
+  const hideTip = () => setTip('');
+  return <div ref={anchor} className={'agent-final-meta is-' + phase}>
+    {(phase === 'failed' || phase === 'canceled') && <span className="agent-final-state" data-state={phase}>{phase === 'failed' ? <TriangleAlert aria-hidden="true"/> : <CircleStop aria-hidden="true"/>}<span>{phase === 'failed' ? '任务失败' : '任务已停止'}</span></span>}
+    {items.map(({key, label, Icon, value}) => <span key={key} className="agent-final-stat" tabIndex={0} aria-label={label} onMouseEnter={event => showTip(event, label)} onMouseLeave={hideTip} onFocus={event => showTip(event, label)} onBlur={hideTip}><Icon aria-hidden="true"/><span>{value}</span></span>)}
+    {tip && createPortal(<span className="agent-stat-tooltip" role="tooltip" style={tipPosition}>{tip}</span>, document.body)}
+  </div>;
 }
 
 function liveRunState(runId: string, thoughts: AgentThought[], activity: AgentActivity[]): DropletState {
@@ -183,6 +275,17 @@ function formatCompactTokens(value: number) {
   if (value >= 1_000_000) return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
   if (value >= 1_000) return (value / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
   return String(value);
+}
+
+// 最终回复有两种渲染形状：MessageRow 的 .agent-message.role-assistant 与 RunTimeline 的 .agent-run-bubble，
+// 两者的 data-message-id 分别落在 article 和气泡上，正文统一带 .agent-message-content。
+function quoteMessageContent(node: Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const content = element?.closest<HTMLElement>('.agent-message-content');
+  const owner = content?.closest<HTMLElement>('[data-message-id]');
+  if (!content || !owner?.dataset.messageId) return null;
+  if (owner.classList.contains('role-user')) return null;
+  return content;
 }
 
 const MessageRow = memo(function MessageRow({item, followsProcess, stats, onOpenRun}: {
@@ -202,16 +305,14 @@ const MessageRow = memo(function MessageRow({item, followsProcess, stats, onOpen
           {reference.sourceAvailable === false && <small>来源不可用</small>}
         </button>)}
       </div>}
-      {item.role === 'assistant' && completed && <div className="agent-final-meta">
-        <small>{stats.phase === 'failed' ? '任务失败 · ' : stats.phase === 'canceled' ? '任务已停止 · ' : '共思考 '}{runDuration(stats)}</small>
-        <small>读了 {stats.filesRead} 个文件</small>
-        <small>调用了 {stats.toolCalls} 个工具</small>
-        {onOpenRun && <button type="button" onClick={onOpenRun}>查看过程 <PanelRight aria-hidden="true"/></button>}
+      {item.role === 'assistant' && completed && <RunSummary stats={stats}/>}
+      {!!item.images?.length && <div className="agent-message-images">
+        {item.images.map(image => <a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="打开图片"><img src={image.url} alt="消息图片" width={image.width} height={image.height}/></a>)}
       </div>}
       <div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div>
     </div>
   </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.onOpenRun === next.onOpenRun && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references));
+}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.onOpenRun === next.onOpenRun && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
 
 function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boolean; onClose: () => void; children: React.ReactNode; maxHeight?: number}) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -252,6 +353,21 @@ function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boole
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
 }
 
+// LiveStats shows the four numbers that matter while a run is streaming:
+// elapsed time, first-token latency, produced tokens and output speed.
+function LiveStats({stats}: {stats: AgentRunStats}) {
+  const now = useTicker(!stats.endedAt);
+  const elapsed = runElapsed(stats, now);
+  const {tokens, speed} = liveOutput(stats);
+  const firstToken = stats.firstTokenMs != null && stats.firstTokenMs > 0 ? `${(stats.firstTokenMs / 1000).toFixed(1)}s` : '--';
+  return <div className="agent-live-stats" aria-live="polite" aria-label="实时执行统计">
+    <span title="已执行时长"><Clock3 aria-hidden="true"/><span>{formatElapsed(elapsed)}</span></span>
+    <span title="首 token 延迟"><Zap aria-hidden="true"/><span>首 token {firstToken}</span></span>
+    <span title="已返回 token 数"><Gauge aria-hidden="true"/><span>{formatCompactTokens(tokens)} tok</span></span>
+    <span title="实时输出速度"><span className="agent-live-speed-val">{speed > 0 ? speed.toFixed(1).replace(/\.0$/, '') : '--'}</span><span className="agent-live-speed-unit">tok/s</span></span>
+  </div>;
+}
+
 function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, busy, onOpen}: {
   runId: string; thoughts: AgentThought[]; activity: AgentActivity[];
   streamDraft?: AgentMessage; answer?: AgentMessage; stats: AgentRunStats; busy: boolean; onOpen: () => void;
@@ -277,17 +393,21 @@ function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, bus
   useLayoutEffect(() => {
     if (viewport.current) viewport.current.scrollTop = finished ? 0 : viewport.current.scrollHeight;
   }, [text, finished, height]);
-  const label = (stats.phase === 'failed' ? '任务失败 ' : stats.phase === 'canceled' ? '任务已停止 ' : '共思考 ') + runDuration(stats) + ' · 读取 ' + stats.filesRead + ' 个文件 · 写入 ' + stats.filesWritten + ' 个文件 · ' + stats.toolCalls + ' 次操作';
+  const hasEvents = rows.length > 0;
+  const hasAnswer = !!answer;
   return <div className={'agent-run-timeline' + (finished ? ' is-finished' : '')} data-run-id={runId}>
     <div className="agent-message-avatar"><AgentDroplet state={finished ? stats.phase === 'failed' ? 'error' : 'completed' : liveRunState(runId, thoughts, activity)} running={busy && !finished}/></div>
-    {(!finished || answer) && <div className={'agent-run-bubble' + (!finished && streamDraft ? ' is-streaming' : '')} data-message-id={answer?.id}>
+    {(!finished || hasAnswer) && <div className={'agent-run-bubble' + (!finished && streamDraft ? ' is-streaming' : '')} data-message-id={answer?.id}>
       <div ref={viewport} className={'agent-result-viewport' + (finished ? ' is-expanded' : '')} style={{height}}><div ref={content} className="agent-run-bubble-text agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{text}</Markdown></div></div>
     </div>}
-    <div className={'agent-process-collapse' + (finished ? ' is-collapsed' : '')} inert={finished} aria-hidden={finished}><div>
-      <div className="agent-run-scroll" aria-label="最新四条思考与操作"><ol>{rows.map(row => <li key={row.id} data-kind={row.kind}><span>{row.label}</span><p>{row.text}</p></li>)}{!rows.length && <li data-kind="thought"><span>理解</span><p>正在理解你的需求…</p></li>}</ol></div>
-      <button type="button" className="agent-run-open" onClick={onOpen}><span>查看思考过程</span><PanelRight aria-hidden="true"/></button>
+    <div className={'agent-process-collapse' + (finished || !hasEvents ? ' is-collapsed' : '')} inert={finished || !hasEvents} aria-hidden={finished || !hasEvents}><div>
+      <div className="agent-run-trace">
+        <div className="agent-run-scroll" aria-label="最新四条思考与操作"><ol>{rows.map(row => <li key={row.id} data-kind={row.kind}><span>{row.label}</span><p>{row.text}</p></li>)}</ol></div>
+        {!finished && <button type="button" className="agent-run-open" onClick={onOpen} aria-label="查看思考过程" title="查看思考过程"><PanelRight aria-hidden="true"/></button>}
+      </div>
+      {!finished && <LiveStats stats={stats}/>}
     </div></div>
-    {finished && <div className="agent-final-meta"><button type="button" onClick={onOpen} title={label}><span>{label}</span><PanelRight aria-hidden="true"/></button></div>}
+    {finished && <div className="agent-final-meta-wrap"><RunSummary stats={stats}/><button type="button" className="agent-run-open agent-final-open" onClick={onOpen} aria-label="查看思考过程" title="查看思考过程"><PanelRight aria-hidden="true"/></button></div>}
   </div>;
 }
 
@@ -497,6 +617,54 @@ function editorReferenceIds(editor: Editor): string[] {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
+type ComposerImage = {
+  id: string;
+  data: string;
+  mimeType: string;
+  name: string;
+  preview: string;
+  size: number;
+  width?: number;
+  height?: number;
+};
+
+const composerImageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+async function readImageFile(file: File): Promise<ComposerImage> {
+  if (!composerImageTypes.has(file.type)) {
+    throw new Error('仅支持 PNG、JPEG、GIF 和 WebP 图片');
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('单张图片不能超过 5 MiB');
+  }
+  // Scale and re-encode before upload: vision models price images by pixel
+  // area, and a large screenshot costs far more to send than it does to read.
+  const normalised = await normaliseImage(file);
+  if (!normalised.width || !normalised.height || normalised.width * normalised.height > 40_000_000) {
+    throw new Error('图片尺寸无效或过大');
+  }
+  return {
+    id: crypto.randomUUID(),
+    data: normalised.data,
+    mimeType: normalised.mimeType,
+    name: file.name || '粘贴的图片',
+    preview: normalised.preview,
+    size: normalised.size,
+    width: normalised.width,
+    height: normalised.height,
+  };
+}
+
+function pastedImageFiles(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const files = Array.from(data.files).filter(file => file.type.startsWith('image/'));
+  if (files.length) return files;
+  return Array.from(data.items)
+    .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+    .map(item => item.getAsFile())
+    .filter((file): file is File => !!file);
+}
+
 function referenceQueryAtCursor(state: EditorState): {from: number; query: string} | null {
   if (hasActiveNode(state, ['codeBlock'])) return null;
   const {from} = state.selection;
@@ -596,11 +764,14 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [pending, setPending] = useState(false), [loading, setLoading] = useState(true);
+  const [composerImages, setComposerImages] = useState<ComposerImage[]>([]);
+  const composerImagesRef = useRef<ComposerImage[]>([]);
+  composerImagesRef.current = composerImages;
   const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
   const runningRef = useRef(new Set<string>());
   const sessionCache = useRef(new Map<string, AgentSession>());
   const busy = pending || !!active && (runningIds.has(active.id) || active.status === 'running');
-  const drafts = useRef(new Map<string, {json: object; model: string; path: string; name: string; top: number; follow: boolean; quotes: typeof quotes}>());
+  const drafts = useRef(new Map<string, {json: object; model: string; path: string; name: string; top: number; follow: boolean; quotes: typeof quotes; images: ComposerImage[]}>());
   const [quotes, setQuotes] = useState<Array<{id: string; messageId: string; start: number; end: number; sourceText: string; text: string; reply: string}>>([]);
   const [quoteSelection, setQuoteSelection] = useState<{text: string; messageId: string; start: number; end: number; left: number; top: number} | null>(null);
   const [editingQuote, setEditingQuote] = useState<string | null>(null);
@@ -636,9 +807,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount) { setQuoteSelection(null); return; }
     const range = selection.getRangeAt(0);
-    const element = (node: Node) => node instanceof Element ? node : node.parentElement;
-    const start = element(range.startContainer)?.closest('.agent-message.role-assistant .agent-message-content');
-    const end = element(range.endContainer)?.closest('.agent-message.role-assistant .agent-message-content');
+    const start = quoteMessageContent(range.startContainer);
+    const end = quoteMessageContent(range.endContainer);
     const raw = selection.toString();
     const text = raw.trim();
     const messageId = start?.closest<HTMLElement>('[data-message-id]')?.dataset.messageId;
@@ -678,7 +848,8 @@ export function AgentPage({visible}: {visible: boolean}) {
         const bounds = host.getBoundingClientRect();
         const marks: typeof quoteMarks = [];
         for (const quote of quotes) {
-          const content = Array.from(host.querySelectorAll<HTMLElement>('.agent-message.role-assistant')).find(el => el.dataset.messageId === quote.messageId)?.querySelector('.agent-message-content');
+          const owner = host.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(quote.messageId)}"]`);
+          const content = owner && !owner.classList.contains('role-user') ? owner.querySelector<HTMLElement>('.agent-message-content') : null;
           if (!content) continue;
           const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
           let node: Node | null, position = 0, first: {node: Node; offset: number} | undefined, last: {node: Node; offset: number} | undefined;
@@ -782,6 +953,27 @@ export function AgentPage({visible}: {visible: boolean}) {
   const referenceRequest = useRef(0);
   const referenceComposerRef = useRef<HTMLDivElement>(null);
   const [referenceDetail, setReferenceDetail] = useState<AgentConversationReference | null>(null);
+  const addComposerImages = useCallback((files: File[]) => {
+    if (!files.length) return;
+    const existing = composerImagesRef.current;
+    const available = 4 - existing.length;
+    if (available <= 0) { setError('每条消息最多添加 4 张图片'); return; }
+    void Promise.all(files.slice(0, available).map(readImageFile))
+      .then(images => {
+        const current = composerImagesRef.current;
+        const ids = new Set(current.map(image => image.id));
+        const unique = images.filter(image => !ids.has(image.id));
+        const next = [...current, ...unique].slice(0, 4);
+        if (next.reduce((total, image) => total + image.size, 0) > 12 * 1024 * 1024) {
+          setError('图片合计不能超过 12 MiB');
+          return;
+        }
+        setComposerImages(next);
+        setError('');
+      })
+      .catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
+    if (files.length > available) setError('每条消息最多添加 4 张图片');
+  }, []);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({trailingNode: false}),
@@ -791,6 +983,12 @@ export function AgentPage({visible}: {visible: boolean}) {
     editorProps: {
       attributes: {'aria-label': '给小涛发消息', role: 'textbox', 'aria-multiline': 'true'},
       handlePaste: (view, event) => {
+        const imageFiles = pastedImageFiles(event.clipboardData);
+        if (imageFiles.length) {
+          event.preventDefault();
+          addComposerImages(imageFiles);
+          return true;
+        }
         if (hasActiveNode(view.state, ['codeBlock'])) return false;
         const text = event.clipboardData?.getData('text/plain').replace(/\r\n?/g, '\n');
         const match = text?.match(/^\s*(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*\s*$/i);
@@ -998,11 +1196,12 @@ export function AgentPage({visible}: {visible: boolean}) {
         messages: mergeHistory(current.messages, cached.messages), activity: mergeHistory(current.activity, cached.activity),
         thoughts: mergeHistory(current.thoughts, cached.thoughts), runStats: mergeRunStats(current.runStats, cached.runStats)} : current);
     }
-    drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes});
+    drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes, images: composerImagesRef.current});
   }
   function restoreDraft(id: string, fallbackModel: string) {
     const draft = drafts.current.get(id);
     setQuotes(draft?.quotes || []); setQuoteSelection(null); setEditingQuote(null);
+    setComposerImages(draft?.images || []);
     editor?.commands.setContent(draft?.json || {type:'doc', content:[{type:'paragraph'}]});
     setModel(draft?.model || fallbackModel);
     if (!id) { setPath(draft?.path || ''); setProjectName(draft?.name || ''); }
@@ -1012,13 +1211,14 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   async function send(contentOverride?: string) {
     const text = (contentOverride ?? promptRef.current).trim();
+    const submittedImages = composerImagesRef.current;
     const submittedQuotes = quotes;
     const quoteBlocks = submittedQuotes.map((item, index) => {
       const quoted = item.text.split('\n').map(line => '> ' + line.replace(/[\\`*_{}\[\]<>#~|]/g, '\\$&')).join('\n');
       return `引用小涛的回复 ${index + 1}：\n\n${quoted}${item.reply.trim() ? `\n\n我的回复：${item.reply.trim()}` : ''}`;
     });
     const content = [...quoteBlocks, text].filter(Boolean).join('\n\n');
-    if (!content || quotes.some(item => !item.text.trim()) || busy || !editor || (!active && !model)) return;
+    if ((!content && !submittedImages.length) || quotes.some(item => !item.text.trim()) || busy || !editor || (!active && !model)) return;
     historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
@@ -1044,13 +1244,14 @@ export function AgentPage({visible}: {visible: boolean}) {
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({content, model: model || session.model, references}),
+        body: JSON.stringify({content, model: model || session.model, references, images: submittedImages.map(image => ({data: image.data, mimeType: image.mimeType, width: image.width, height: image.height}))}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error?.message || '发送失败（' + response.status + '）');
       }
       if (editorMarkdown(editor) === submittedContent) editor.commands.clearContent();
+      setComposerImages(current => current.filter(image => !submittedImages.some(sent => sent.id === image.id)));
       if (!active) drafts.current.delete('');
       drafts.current.delete(id);
       setQuotes(current => current.filter(item => !submittedQuotes.some(sent => sent.id === item.id && sent.text === item.text && sent.reply === item.reply)));
@@ -1065,7 +1266,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         }
         if (event.type === 'approval' && event.approval) {
           const approval = event.approval;
-          void confirm({title:'确认高危操作？', description: `会话「${session?.title || id}」的小涛准备${approval.tool === 'run_command' ? '执行以下命令' : '进行以下操作'}：\n\n${approval.detail}`, confirmLabel:'允许执行'}).then(async approved => {
+          void confirm({title:'确认高危操作？', description: `会话「${session?.title || id}」的小涛准备${approval.tool === 'run_command' ? '执行以下命令' : approval.tool === 'enable_mcp_tools' ? '启用浏览器与 MCP 工具' : '进行以下操作'}：\n\n${approval.detail}`, confirmLabel:'允许执行'}).then(async approved => {
             const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/approval', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:approval.id, approved})});
             if (!response.ok) throw new Error('确认请求已失效');
           }).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
@@ -1123,15 +1324,23 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   const [sidebarProjectMenu, setSidebarProjectMenu] = useState<{path: string; name: string; key: string} | null>(null);
   const [renamingProject, setRenamingProject] = useState<{path: string; name: string} | null>(null);
+  const [savedProjects, setSavedProjects] = useState<AgentProject[]>([]);
   const sidebarProjectTrigger = useRef<HTMLElement | null>(null);
   useEffect(() => { if (!visible || busy) setSidebarProjectMenu(null); }, [visible, busy]);
+  useEffect(() => {
+    let live = true;
+    api.agentProjects()
+      .then(result => { if (live) setSavedProjects(result.projects.filter(item => item.saved)); })
+      .catch(reason => live && setError(reason instanceof Error ? reason.message : String(reason)));
+    return () => {live = false;};
+  }, []);
   const newProjectChat = useCallback(async (projectPath: string, name: string) => {
     if (pending) return;
     saveDraft();
     setPending(true);
     try {
       const resolved = await api.resolveAgentProject(projectPath);
-      resetHistory(); setActive(null); setQuotes([]); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
+      resetHistory(); setActive(null); setQuotes([]); setComposerImages([]); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
       editor?.commands.clearContent(); editor?.commands.focus();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
     finally {setPending(false);}
@@ -1149,6 +1358,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     setActive(null);
     setPath('');
     setProjectName('');
+    setComposerImages([]);
     setError('');
     setOpenActivities({});
     restoreDraft('', model);
@@ -1202,6 +1412,18 @@ export function AgentPage({visible}: {visible: boolean}) {
     finally { setDeleting(''); setExitingSession(''); }
   }
 
+  const deleteProject = useCallback(async (item: {path: string; name: string}) => {
+    if (busy) return;
+    if (!await confirm({title: '删除项目？', description: `项目“${item.name}”会从项目列表移除；里面的会话会回到“最新”，不会被删除。`, confirmLabel: '删除项目'})) return;
+    try {
+      await api.deleteAgentProject(item.path);
+      setSavedProjects(current => current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '')));
+      setError('');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }, [busy, confirm]);
+
   function saveAgentSettings(nextModels: string[]) {
     setEnabledModels(nextModels);
     localStorage.setItem(enabledModelsKey, JSON.stringify(nextModels));
@@ -1225,10 +1447,15 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, [active?.id, active?.runStats?.length]);
   const contextRun = runStats.at(-1);
   const contextTokens = contextRun?.contextTokens ?? 0;
-  const contextWindow = contextRun?.contextWindow ?? 0;
+  const currentModel = model || active?.model;
+  const contextWindow = contextRun?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
   const contextRatio = contextWindow > 0 ? Math.min(1, contextTokens / contextWindow) : 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
-  canSendRef.current = !busy && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference) && (!!active || !!model);
+  const currentModelOption = models.find(item => item.model === (model || active?.model));
+  const currentModelSupportsImages = currentModelOption?.supportsImages === true;
+  const historyHasImages = !!active && conversationHasImages(active.messages, active.hasImages);
+  const canSend = !busy && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference || composerImages.length > 0) && (!!active || !!model) && (!(composerImages.length || historyHasImages) || currentModelSupportsImages || currentModelOption === undefined);
+  canSendRef.current = canSend;
 
   const {entries} = useMemo(() => {
     type Entry = {kind: 'message'; item: AgentMessage; stats?: AgentRunStats} | {kind: 'run'; runId: string; stats: AgentRunStats; phase: 'live' | 'done'};
@@ -1270,7 +1497,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   if (model && !availablePickerModels.some(item => item.model === model)) availablePickerModels.push({model, label: models.find(item => item.model === model)?.label || model});
   if (active?.model && !availablePickerModels.some(item => item.model === active.model)) availablePickerModels.push({model: active.model, label: active.model});
 
-  const projects = useMemo(() => Array.from(new Map([...([...sessions].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt))).filter(item => item.project.path && !item.project.isDefault).map(item => item.project), ...(path ? [{path, name: activeProjectName, isDefault: false}] : [])].map(item => [item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), item])).values()).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(projectQuery.trim().toLowerCase())), [sessions, path, activeProjectName, projectQuery]);
+  const projects = useMemo(() => Array.from(new Map([...savedProjects, ...([...sessions].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt))).filter(item => item.project.path && !item.project.isDefault).map(item => item.project), ...(path ? [{path, name: activeProjectName, isDefault: false, saved: false}] : [])].map(item => [item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), item])).values()).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(projectQuery.trim().toLowerCase())), [savedProjects, sessions, path, activeProjectName, projectQuery]);
 
   return <section className="agent-workspace" aria-label="小涛 Agent">
     <aside className="agent-sidebar">
@@ -1284,7 +1511,7 @@ export function AgentPage({visible}: {visible: boolean}) {
           {(['project', 'session'] as const).map(option => <button type="button" key={option} className={view === option ? 'is-active' : ''} aria-pressed={view === option} onClick={() => {setView(option); localStorage.setItem('xiaotao.agent.historyView', option); setViewMenuOpen(false); viewButtonRef.current?.focus();}}><span>{option === 'project' ? '按项目查看' : '按会话查看'}</span>{view === option && <Check aria-hidden="true"/>}</button>)}
         </Popover>
       </div>
-      <SessionList runningIds={runningIds} sessions={sessions} activeId={active?.id} view={view} loading={loading} busy={pending} deleting={deleting} exitingId={exitingSession} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onSelect={selectSession} onMenu={openSessionMenu}/>
+      <SessionList runningIds={runningIds} sessions={sessions} savedProjects={savedProjects} activeId={active?.id} view={view} loading={loading} busy={pending} deleting={deleting} exitingId={exitingSession} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onDeleteProject={item => void deleteProject(item)} onSelect={selectSession} onMenu={openSessionMenu}/>
       <div className="agent-sidebar-foot">
         <span className="agent-status-dot"/>
         <span>本地工作区</span>
@@ -1352,6 +1579,12 @@ export function AgentPage({visible}: {visible: boolean}) {
         </div>
         <div className="agent-composer" ref={referenceComposerRef}>
           {!!quotes.length && <div className="agent-quote-drafts" aria-label="引用的文字">{quotes.map((item, index) => <div className="agent-quote-chip" key={item.id}><button type="button" className="agent-quote-chip-open" title={item.text} onClick={() => setEditingQuote(item.id)} aria-label={`编辑引用 ${index + 1}`}><span>{index + 1}</span><span>{item.text}</span></button><button type="button" className="agent-quote-chip-remove" aria-label={`移除引用 ${index + 1}`} onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(current => current === item.id ? null : current);}}><X aria-hidden="true"/></button></div>)}</div>}
+          {!!composerImages.length && <div className="agent-composer-images" aria-label="待发送图片">
+            {composerImages.map((image, index) => <div className="agent-composer-image" key={image.id}>
+              <img src={image.preview} alt={image.name} title={image.name}/>
+              <button type="button" aria-label={`移除图片 ${index + 1}`} title="移除图片" onClick={() => setComposerImages(current => current.filter(item => item.id !== image.id))}><X aria-hidden="true"/></button>
+            </div>)}
+          </div>}
           <EditorContent editor={editor} className="agent-editor"/>
           {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
@@ -1377,6 +1610,8 @@ export function AgentPage({visible}: {visible: boolean}) {
                   {availablePickerModels.map(item => <button type="button" role="menuitemradio" aria-checked={item.model === model} key={item.model} onClick={() => {setModel(item.model); setModelMenuOpen(false); modelButtonRef.current?.focus();}}><span>{item.label}<ModelPriceBadge {...item}/></span>{item.model === model && <Check aria-hidden="true"/>}</button>)}
                 </Popover>
               </div>
+              {!!composerImages.length && currentModelSupportsImages && <span className="agent-image-model-hint"><Image aria-hidden="true"/>图片将随消息发送</span>}
+              {(!!composerImages.length || historyHasImages) && !currentModelSupportsImages && <span className="agent-image-model-warning" role="status">{historyHasImages ? '会话包含图片，当前模型不支持' : '当前模型不支持图片'}</span>}
               {busy
                 ? <button type="button" className="agent-send is-stop" onClick={stop} aria-label="停止任务" title="停止任务"><Square aria-hidden="true"/></button>
                 : <button type="button" className="agent-send" disabled={!canSendRef.current} onClick={() => void send()} aria-label="发送消息" title="发送消息"><ArrowUp aria-hidden="true"/></button>}
@@ -1395,7 +1630,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       return stats ? <ThoughtDrawer runId={openThoughtRun} thoughts={thoughts} activity={activity} stats={stats} open onClose={() => setOpenThoughtRun('')}/> : null;
     })()}
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
-    <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
+    <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); setSavedProjects(current => current.map(item => matches(item.path) ? {...item, name} : item)); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
     {visible && createPortal(<>{quoteMarks.map(mark => <ReactFragment key={mark.id}>{mark.rects.map((rect, index) => <span key={index} className="agent-quote-highlight" style={rect} aria-hidden="true"/>)}<button type="button" className="agent-quote-marker" style={{left: mark.left, top: mark.top}} aria-label={`编辑引用 ${quotes.findIndex(item => item.id === mark.id) + 1}`} title="编辑引用" onClick={() => setEditingQuote(mark.id)}>{quotes.findIndex(item => item.id === mark.id) + 1}</button></ReactFragment>)}{editingQuote && (() => {const item = quotes.find(quote => quote.id === editingQuote); if (!item) return null; const mark = quoteMarks.find(value => value.id === item.id); const left = mark ? Math.max(8, Math.min(window.innerWidth - 296, mark.left - 120)) : Math.max(8, (window.innerWidth - 288) / 2); const top = mark ? Math.max(8, Math.min(window.innerHeight - 270, mark.top + 24)) : Math.max(8, (window.innerHeight - 260) / 2); return <div className="agent-quote-editor" role="dialog" aria-label="编辑引用" style={{left, top}}><div className="agent-quote-editor-head"><strong>编辑引用 {quotes.findIndex(quote => quote.id === item.id) + 1}</strong><button type="button" aria-label="关闭引用编辑" onClick={() => setEditingQuote(null)}><X aria-hidden="true"/></button></div><label>引用文字<textarea aria-label="引用文字" value={item.text} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, text:event.target.value} : quote))}/></label><label>回复<textarea aria-label="回复" placeholder="写下对这段文字的回复（可选）" value={item.reply} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, reply:event.target.value} : quote))}/></label><div className="agent-quote-editor-actions"><button type="button" onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(null);}}>移除引用</button><button type="button" disabled={!item.text.trim()} onClick={() => setEditingQuote(null)}>完成</button></div></div>;})()}</>, document.body)}
     {quoteSelection && createPortal(<button type="button" className="agent-quote-selection" style={{left: quoteSelection.left, top: quoteSelection.top}} onMouseDown={event => event.preventDefault()} onClick={() => {const selected = quoteSelection; const existing = quotes.find(item => item.messageId === selected.messageId && item.start === selected.start && item.end === selected.end); if (existing) {setEditingQuote(existing.id);} else {setQuotes(current => [...current, {id: crypto.randomUUID(), messageId: selected.messageId, start: selected.start, end: selected.end, sourceText: selected.text, text: selected.text, reply: ''}]);} setQuoteSelection(null); window.getSelection()?.removeAllRanges(); editor?.commands.focus('end');}}>引用</button>, document.body)}
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
@@ -1414,12 +1649,20 @@ export function AgentPage({visible}: {visible: boolean}) {
     <ModalPresence>{projectOpen && <ProjectModal
       name={projectName}
       path={path}
-      onApply={(nextPath, nextName) => {
+      onApply={(nextPath, nextName, saved) => {
         setPath(nextPath);
         setProjectName(nextName);
-        setError('');
         setProjectOpen(false);
+        if (nextPath && saved) setSavedProjects(current => {
+          const key = nextPath.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
+          return [...current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== key), {path: nextPath, name: nextName || current.find(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === key)?.name || nextName, saved: true}];
+        });
+        setError('');
       }}
+      onSaved={(savedPath, savedName) => setSavedProjects(current => {
+        const key = savedPath.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
+        return [...current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== key), {path: savedPath, name: savedName, saved: true}];
+      })}
       onClose={() => setProjectOpen(false)}
     />}</ModalPresence>
   </section>;

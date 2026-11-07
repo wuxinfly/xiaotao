@@ -10,7 +10,8 @@ test('agent displays streamed chunks before completion without duplicates', {tim
   browser=await chromium.launch(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE,headless:true} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge',headless:true});
   const page=await browser.newPage();
   const stamp='2026-01-01T00:00:00Z';
-  const session={id:'stream-test',title:'流式会话',model:'test',status:'completed',project:{path:'E:/fixture',name:'测试项目'},createdAt:stamp,updatedAt:stamp,messages:[],activity:[]};
+  const session={id:'stream-test',title:'流式会话',model:'test',status:'completed',project:{path:'E:/fixture',name:'测试项目'},createdAt:stamp,updatedAt:stamp,messages:[],activity:[],runStats:[]};
+  const model={model:'test',label:'测试模型'};
   const runId='turn_stream';
   await page.addInitScript(runId=>{
    const original=window.fetch;
@@ -36,6 +37,7 @@ test('agent displays streamed chunks before completion without duplicates', {tim
    if(path.endsWith('/history')) return route.fulfill({json:{session,before:''}});
    if(path==='/api/agent/access-mode') return route.fulfill({json:{mode:'safe'}});
    if(path==='/api/dashboard/events') return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
+   if(path==='/api/agent/models') return route.fulfill({json:{models:[model]}});
    return route.fulfill({json:{models:[],accounts:[],sessions:[]}});
   });
   await page.goto('http://127.0.0.1:5199');
@@ -60,6 +62,8 @@ test('agent displays streamed chunks before completion without duplicates', {tim
   await page.evaluate(()=>window.releaseAgentStream()); await page.getByText('第一段第二段',{exact:true}).waitFor();
   assert.equal(await page.locator('.agent-result-viewport.is-expanded').count(),1);
   await page.waitForFunction(()=>document.querySelector('.agent-process-collapse.is-collapsed'));
-  assert.match(await page.locator('.agent-final-meta').textContent(),/共思考/);
+  assert.match(await page.locator('.agent-final-meta').textContent(),/4 秒/);
+  assert.equal(await page.locator('.agent-final-stat[aria-label^="读取"]').count(),1);
+  assert.equal(await page.locator('.agent-final-stat[aria-label^="写入"]').count(),0);
  } finally {await browser?.close();server.kill();}
 });

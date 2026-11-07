@@ -63,7 +63,7 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
   background: #ffffffd9; border-color: var(--line); box-shadow: 0 6px 24px #294f6008;
 }
 [data-theme='light'] :is(.workspace-shell .request-card:hover, .provider-group-section:hover, .modern-account-card:hover) { background: #fff; border-color: #94c8d3; box-shadow: 0 8px 28px #294f6010; }
-[data-theme='light'] :is(.app-modal, .confirm-dialog, .account-detail-dialog, .add-account-dialog, .model-catalog-dialog, .app-popover, .agent-process-popover, .heatmap-popover, .info-tooltip-content) {
+[data-theme='light'] :is(.app-modal, .confirm-dialog, .account-detail-dialog, .add-account-dialog, .model-catalog-dialog, .app-popover, .agent-process-popover, .agent-stat-tooltip, .heatmap-popover, .info-tooltip-content) {
   background: #fbfeff; border-color: #c6dce4; color: var(--text); box-shadow: 0 20px 60px #244d6326;
 }
 [data-theme='light'] :is(.app-modal-backdrop, .confirm-overlay, .dialog-overlay) { background: #24465738; }
@@ -114,14 +114,29 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.agent-history-heading, .agent-history-label, .agent-session-list small, .agent-session-list p, .agent-sidebar-foot, .agent-group-label, .agent-context-title small, .agent-context-project, .agent-message-label, .agent-process-summary small, .agent-process-duration, .agent-process-chevron, .agent-working small, .agent-process-popover li small, .agent-process-popover li time, .agent-process-popover li.agent-process-earlier, .agent-toolbar-note, .agent-hint, .agent-hint .agent-project-context, .agent-project-note, .agent-field > span, .agent-settings-group-head small, .agent-model-choice-copy code, .agent-model-refresh, .agent-modal-empty) { color: var(--muted); }
 [data-theme='light'] :is(.agent-project-trigger, .agent-project-trigger:hover:not(:disabled), .agent-project-trigger svg:last-child, .agent-project-clear, .agent-history-switch, .agent-session-delete, .agent-project-menu button svg, .agent-model svg) { color: #537b89; }
 [data-theme='light'] :is(.agent-process, .agent-process.is-running, .agent-working) { background: #e9f4f6; border-color: #c8e1e5; }
+[data-theme='light'] :is(.agent-final-stat, .agent-run-open) { background: #eef6f8; border-color: #d1e2e9; color: #527b88; }
+[data-theme='light'] :is(.agent-final-stat:hover, .agent-final-stat:focus-visible, .agent-run-open:hover) { background: #e2f1f3; border-color: #94c8d3; color: #086570; }
+[data-theme='light'] .agent-final-state { background: #fff0ed; border-color: #efcbc8; color: #a9383e; }
+[data-theme='light'] .agent-final-state[data-state='canceled'] { background: #fff5e5; border-color: #ead4ad; color: #8a5b12; }
+[data-theme='light'] :is(.agent-run-scroll, .agent-run-bubble) { background: #e9f4f6; border-color: #c8e1e5; }
+[data-theme='light'] .agent-run-scroll p { color: #527b88; }
+[data-theme='light'] .agent-run-scroll li:last-child p { color: #203f4c; }
 [data-theme='light'] :is(.agent-process-summary:hover, .agent-working button:hover) { background: #dceef1; color: var(--text); }
-[data-theme='light'] .agent-message.role-user .agent-message-body { background: #e0eff4; color: var(--text); }
-[data-theme='light'] .agent-message.role-user .agent-message-content { color: var(--text); }
+[data-theme='light'] .agent-message.role-user .agent-message-body { background: transparent; color: var(--text); }
+[data-theme='light'] .agent-message.role-user .agent-message-content { background: #e0eff4; border-color: #bfd8e1; color: var(--text); }
+[data-theme='light'] .agent-run-bubble::before { background: #f4fafb; border-color: #c8e1e5; }
 [data-theme='light'] :is(.agent-message-content pre, .agent-message-content :not(pre) > code, .agent-editor .tiptap code, .agent-editor .tiptap pre) { background: #eaf2f5; color: #275b6b; border-color: #d1e2e9; }
+[data-theme='light'] .agent-message-content th { background: #e3eef4; }
+[data-theme='light'] .agent-message-content hr { border-top-color: #c6dce4; }
+[data-theme='light'] .agent-message-content li::marker { color: #087e87; }
 [data-theme='light'] :is(.agent-message-content blockquote, .agent-editor .tiptap blockquote) { color: #4d717f; background: #edf5f7; }
 [data-theme='light'] :is(.agent-message-content a, .agent-editor .tiptap a, .agent-hint button, .agent-settings-group-head button, .agent-model-menu button svg, .agent-history-menu svg) { color: #087e87; }
 [data-theme='light'] :is(.agent-editor .tiptap, .agent-editor .tiptap h1, .agent-editor .tiptap h2, .agent-editor .tiptap h3, .agent-editor .tiptap ul, .agent-editor .tiptap ol, .agent-editor .tiptap strong) { color: var(--text); }
 [data-theme='light'] .agent-editor .tiptap p.is-editor-empty:first-child::before { color: #6a8590; }
+[data-theme='light'] :is(.agent-message-images a, .agent-composer-image) { border-color: #c9dde3; background: #f2f8fa; }
+[data-theme='light'] .agent-composer-image button { border-color: #d5e5e9; background: rgba(255, 255, 255, .9); color: #315d68; }
+[data-theme='light'] .agent-image-model-hint { color: #477f86; }
+[data-theme='light'] .agent-image-model-warning { color: #a45845; }
 [data-theme='light'] :is(.agent-model-search, .agent-field input) { background: #f1f7f9; border-color: var(--line); color: var(--text); }
 [data-theme='light'] :is(.agent-model-search input, .agent-project-menu .agent-project-search input) { background: transparent; color: var(--text); }
 [data-theme='light'] .agent-model-choice { background: #f3f8fa; border-color: var(--line); }

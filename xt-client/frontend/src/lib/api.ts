@@ -161,6 +161,7 @@ export interface DashboardSnapshot {
 
 export interface AgentProject {
   isDefault?: boolean;
+  saved?: boolean;
   path: string;
   name: string;
 }
@@ -173,6 +174,18 @@ export interface ModelPricing {
 export interface AgentModelOption extends ModelPricing {
   model: string;
   label: string;
+  supportsImages?: boolean;
+  contextWindow?: number;
+}
+
+export interface AgentImage {
+  id: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  width?: number;
+  height?: number;
+  createdAt: string;
 }
 
 export interface AgentMessage {
@@ -180,6 +193,7 @@ export interface AgentMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool';
   content: string;
+  images?: AgentImage[];
   toolCallId?: string;
   toolName?: string;
   references?: AgentConversationReference[];
@@ -246,6 +260,12 @@ export interface AgentRunStats {
   filesRead: number;
   filesWritten: number;
   toolCalls: number;
+  modelRequests?: number;
+  outputTokens?: number;
+  outputSpeed?: number;
+  firstTokenMs?: number;
+  liveTokens?: number;
+  liveSpeed?: number;
   contextTokens: number;
   contextWindow: number;
 }
@@ -261,6 +281,7 @@ export interface AgentSession {
   thoughts: AgentThought[];
   runStats: AgentRunStats[];
   streamDrafts?: AgentMessage[];
+  hasImages?: boolean;
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -364,6 +385,9 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }),
   agentSessions: () => request<{ sessions: AgentSession[] }>('/api/agent/sessions?summary=1'),
+  agentProjects: () => request<{ projects: AgentProject[] }>('/api/agent/projects'),
+  saveAgentProject: (path: string, name: string) => request('/api/agent/projects', {method: 'POST', body: JSON.stringify({path, name})}),
+  deleteAgentProject: (path: string) => request('/api/agent/projects', {method: 'DELETE', body: JSON.stringify({path})}),
   renameAgentProject: (path: string, name: string) => request('/api/agent/project/name', {method: 'PATCH', body: JSON.stringify({path, name})}),
   openAgentProject: (path: string) => request('/api/agent/project/open', {method: 'POST', body: JSON.stringify({path})}),
   renameAgentSession: (id: string, title: string) => request<AgentSession>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'PATCH', body: JSON.stringify({title})}),

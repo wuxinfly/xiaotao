@@ -46,7 +46,7 @@ func agentModelsForAccounts(accounts []*storage.Account, fetch func(storage.Acco
 				if model.DisplayName != "" {
 					label = model.DisplayName + " · " + acct.Provider
 				}
-				results[i] = append(results[i], agent.ModelOption{Model: id, Label: label, PriceFactor: model.PriceFactor, IsFree: model.IsFree})
+				results[i] = append(results[i], agent.ModelOption{Model: id, Label: label, PriceFactor: model.PriceFactor, IsFree: model.IsFree, SupportsImages: model.Multimodal, ContextWindow: int64(model.MaxInputTokens)})
 			}
 		}(i, *acct)
 	}

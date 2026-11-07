@@ -212,6 +212,32 @@ func (s *Service) History(id, before string) (*HistoryPage, error) {
 		}
 	}
 	s.markDefault(item)
+	// The composer must know about images outside this bounded page before it
+	// lets the user switch to a text-only model.
+	rows, err := tx.Query("SELECT data FROM messages WHERE session_id=? AND json_extract(data, '$.images[0].id') IS NOT NULL", id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var raw string
+		var message Message
+		if err = rows.Scan(&raw); err == nil {
+			err = json.Unmarshal([]byte(raw), &message)
+		}
+		if err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if len(message.Images) > 0 {
+			item.HasImages = true
+			break
+		}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
 	return &HistoryPage{Session: item, Before: next}, tx.Commit()
 }
 

@@ -98,3 +98,13 @@ func TestAgentModelsPricingFollowsFirstAccount(t *testing.T) {
 		t.Fatalf("wrong routing price: %v", models)
 	}
 }
+
+func TestAgentModelsExposeContextWindow(t *testing.T) {
+	accounts := []*storage.Account{{ID: "first", Provider: "codex", Enabled: true}}
+	models := agentModelsForAccounts(accounts, func(storage.Account) []providers.ModelInfo {
+		return []providers.ModelInfo{{ID: "m", MaxInputTokens: 272000}}
+	})
+	if len(models) != 1 || models[0].ContextWindow != 272000 {
+		t.Fatalf("model context window missing: %+v", models)
+	}
+}

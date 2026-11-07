@@ -146,6 +146,62 @@ func TestHistoryKeepsLatestAnswer(t *testing.T) {
 	}
 }
 
+func TestHistoryReportsImagesOutsideLoadedPage(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	at := time.Now().UTC()
+	item := &Session{ID: "images", UpdatedAt: at}
+	item.Messages = append(item.Messages, Message{
+		ID: "image", Role: "user", CreatedAt: at,
+		Images: []ImageAttachment{{ID: "image", MimeType: "image/png"}},
+	})
+	for i := 0; i < historyPageSize+1; i++ {
+		item.Messages = append(item.Messages, Message{
+			ID: fmt.Sprintf("later-%d", i), Role: "user", CreatedAt: at.Add(time.Duration(i+1) * time.Second),
+		})
+	}
+	if err := svc.saveSession(item); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.History(item.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range page.Session.Messages {
+		if message.ID == "image" {
+			t.Fatal("test requires the image to be outside the loaded page")
+		}
+	}
+	if !page.Session.HasImages {
+		t.Fatal("image marker missing from paged history")
+	}
+}
+
+func TestHistoryIgnoresEmptyImageField(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	item := &Session{ID: "empty-images", UpdatedAt: time.Now(), Messages: []Message{
+		{ID: "plain", Role: "user", Content: "hello", CreatedAt: time.Now()},
+	}}
+	if err := svc.saveSession(item); err != nil {
+		t.Fatal(err)
+	}
+	db, err := svc.openStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE messages SET data=? WHERE session_id=? AND position=0", `{"id":"plain","role":"user","content":"hello","images":[],"createdAt":"2026-01-01T00:00:00Z"}`, item.ID); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+	page, err := svc.History(item.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Session.HasImages {
+		t.Fatal("empty image field was reported as image input")
+	}
+}
+
 func TestHistoryHydratesRunAtPageBoundary(t *testing.T) {
 	svc := NewService(t.TempDir(), "unused", nil, nil, nil)
 	at := time.Now()

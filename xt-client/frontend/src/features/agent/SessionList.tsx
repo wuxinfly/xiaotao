@@ -1,12 +1,14 @@
 import {memo, useLayoutEffect, useMemo, useRef, useState} from 'react';
-import {ChevronDown, Folder, MoreVertical, MoreHorizontal, SquarePen} from 'lucide-react';
-import type {AgentSession} from '../../lib/api';
+import {ChevronDown, Folder, MoreVertical, MoreHorizontal, SquarePen, Trash2} from 'lucide-react';
+import type {AgentProject, AgentSession} from '../../lib/api';
 import {useSessionIndicators} from './useSessionIndicators';
 
 type Props = {
   sessions: AgentSession[]; activeId?: string; view: 'project' | 'session';
+  savedProjects?: AgentProject[];
   loading: boolean; busy: boolean; deleting: string; exitingId?: string; menuId?: string; runningIds?: Set<string>;
   onNewProjectChat: (path: string, name: string) => void;
+  onDeleteProject?: (project: {path: string; name: string}) => void;
   onProjectMenu: (path: string, name: string, trigger: HTMLElement, key: string) => void;
   onSelect: (session: AgentSession) => void;
   onMenu: (session: AgentSession, x: number, y: number, trigger: HTMLElement) => void;
@@ -36,6 +38,7 @@ export const SessionList = memo(function SessionList(props: Props) {
         group.items.push(item); groups.set(key, group);
       });
       const ordered = [...groups.entries()].filter(([key]) => key !== '');
+      (props.savedProjects ?? []).filter(project => !groups.has(project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''))).forEach(project => ordered.push([project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), {name: project.name, path: project.path, items: []}]));
       if (groups.has('')) ordered.push(['', groups.get('')!]);
       ordered.forEach(([key, group]) => {
         if (result.length) top += 16;
@@ -44,7 +47,7 @@ export const SessionList = memo(function SessionList(props: Props) {
       });
     }
     return result;
-  }, [sorted, view, collapsed]);
+  }, [sorted, view, collapsed, props.savedProjects]);
   const rowIndices = useMemo(() => new Map(rows.map((row, index) => [row.key, index])), [rows]);
   const height = rows.length ? rows.at(-1)!.top + rows.at(-1)!.height : 0;
   useLayoutEffect(() => {
@@ -94,7 +97,7 @@ export const SessionList = memo(function SessionList(props: Props) {
         <button type="button" className={'agent-group-label' + (!row.path ? ' agent-group-label-recent' : '')} title={row.path || row.name} aria-expanded={!collapsed.has(row.key.slice(6))} onClick={() => setCollapsed(current => {const next = new Set(current); const key = row.key.slice(6); if (next.has(key)) next.delete(key); else next.add(key); return next;})}>
           {row.path && <Folder aria-hidden="true"/>}<span>{row.name}</span>{!row.path && <ChevronDown className="agent-group-chevron" aria-hidden="true"/>}
         </button>
-        {row.path && <div className="agent-group-actions"><button type="button" aria-label={'项目操作 '+row.name} aria-haspopup="menu" aria-expanded={menuId === row.key} disabled={busy} onClick={event => props.onProjectMenu(row.path, row.name, event.currentTarget, row.key)}><MoreHorizontal aria-hidden="true"/></button><button type="button" aria-label={'在 '+row.name+' 中新建会话'} title="新建会话" disabled={busy} onClick={() => props.onNewProjectChat(row.path, row.name)}><SquarePen aria-hidden="true"/></button></div>}
+        {row.path && <div className="agent-group-actions">{(props.savedProjects ?? []).some(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === row.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '')) && <button type="button" aria-label={'删除项目 '+row.name} disabled={busy} onClick={() => props.onDeleteProject?.({path: row.path, name: row.name})}><Trash2 aria-hidden="true"/></button>}<button type="button" aria-label={'项目操作 '+row.name} aria-haspopup="menu" aria-expanded={menuId === row.key} disabled={busy} onClick={event => props.onProjectMenu(row.path, row.name, event.currentTarget, row.key)}><MoreHorizontal aria-hidden="true"/></button><button type="button" aria-label={'在 '+row.name+' 中新建会话'} title="新建会话" disabled={busy} onClick={() => props.onNewProjectChat(row.path, row.name)}><SquarePen aria-hidden="true"/></button></div>}
       </div> : <div className="agent-session-row" onContextMenu={event => {event.preventDefault(); onMenu(row.item, event.clientX, event.clientY, event.currentTarget.querySelector('button')!);}}>
         <button type="button" disabled={busy} className={'agent-session-select ' + (row.item.id === activeId ? 'is-active' : '')} title={row.item.title} aria-current={row.item.id === activeId ? 'true' : undefined} onClick={() => onSelect(row.item)}>
           {(row.item.status === 'running' || unread[row.item.id]) && <span className={'agent-session-indicator is-' + (row.item.status === 'running' ? 'running' : unread[row.item.id])} role="img" aria-label={row.item.status === 'running' ? '运行中' : unread[row.item.id] === 'failed' ? '执行失败，未查看' : '回答完成，未查看'} title={row.item.status === 'running' ? '运行中' : unread[row.item.id] === 'failed' ? '执行失败，未查看' : '回答完成，未查看'}/>}

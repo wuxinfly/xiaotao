@@ -37,8 +37,23 @@ try {
   $versionedExe = [System.IO.Path]::GetFileNameWithoutExtension($environment.Exe) + '-v' + $version + '.exe'
   Push-Location frontend
   try {
-    npm ci
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependencies failed' }
+    # Reinstalling deletes esbuild.exe, which a running Vite dev server keeps
+    # open on Windows. Keep a valid tree in place and reserve npm ci for a
+    # missing or incomplete installation.
+    $dependenciesReady = $false
+    if (Test-Path 'node_modules/.package-lock.json') {
+      npm ls --depth=0 --silent 2>$null | Out-Null
+      $dependenciesReady = $LASTEXITCODE -eq 0
+    }
+    if (-not $dependenciesReady) {
+      $runningEsbuild = Get-CimInstance Win32_Process -Filter "Name='esbuild.exe'" |
+        Where-Object { $_.ExecutablePath -like ((Join-Path $PWD 'node_modules/*') + '*') }
+      if ($runningEsbuild) {
+        throw 'Frontend dependencies are incomplete and esbuild.exe is in use. Stop the Vite dev server, then run build.ps1 again.'
+      }
+      npm ci
+      if ($LASTEXITCODE -ne 0) { throw 'Frontend dependencies failed' }
+    }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
   } finally { Pop-Location }

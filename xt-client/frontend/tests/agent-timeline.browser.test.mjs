@@ -30,8 +30,8 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
       {id: 'a0', runId: 'turn_1', kind: 'read_file', title: '阅读文件', detail: 'README.md', status: 'completed', startedAt: stamp(2), endedAt: stamp(3)},
       {id: 'a1', runId: 'turn_1', kind: 'search_files', title: '搜索代码', detail: 'timeline', status: 'completed', startedAt: stamp(4), endedAt: stamp(5)},
     ];
-    const stats = {runId: 'turn_1', userMessageId: 'u', startedAt: stamp(1), endedAt: stamp(9), filesRead: 2, filesWritten: 0, toolCalls: 2, contextTokens: 24000};
-    const liveStats = {...stats, endedAt: undefined};
+    const stats = {runId: 'turn_1', userMessageId: 'u', startedAt: stamp(1), endedAt: stamp(9), filesRead: 2, filesWritten: 0, toolCalls: 2, modelRequests: 3, outputSpeed: 21.4, outputTokens: 72, firstTokenMs: 1200, contextTokens: 24000};
+    const liveStats = {...stats, endedAt: undefined, liveTokens: 64, liveSpeed: 18.2};
     const completedStats = {...stats};
     const terminal = {
       ...base, status: 'running', updatedAt: stamp(9),
@@ -99,7 +99,13 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     assert.match(await page.locator('.agent-run-bubble').textContent(), /已确认气泡和轨迹/);
     assert.equal(await page.locator('.agent-message.role-assistant').filter({hasText: 'PowerShell 语法，我分开跑。'}).count(), 0, 'only final assistant rows render');
     assert.equal(await page.locator('.agent-message.role-assistant').count(), 0, 'working narration stays outside the body');
-    assert.equal(await page.locator('.agent-run-scroll li').count(), 4, 'live trace renders only the latest four events');
+    assert.equal(await page.locator('.agent-run-scroll li').count(), 4, 'live trace renders available events without placeholder rows');
+    const liveBar = page.locator('.agent-live-stats');
+    await liveBar.waitFor();
+    assert.equal(await liveBar.locator('> span').count(), 4, 'live bar shows elapsed, first token, tokens and speed');
+    assert.match(await liveBar.textContent(), /首 token 1.2s/, 'live bar shows the first-token latency');
+    assert.match(await liveBar.textContent(), /64 tok/, 'live bar shows the produced tokens');
+    assert.match(await liveBar.textContent(), /18.2\s*tok\/s/, 'live bar shows the rolling output speed');
     assert.match(await page.locator('.agent-run-scroll').textContent(), /阅读文件/);
     assert.match(await page.locator('.agent-run-scroll').textContent(), /先确认这是时序交互/);
     const bubbleNode = await page.locator('.agent-run-bubble-text').elementHandle();
@@ -113,9 +119,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     assert.ok(await bubbleNode.evaluate(element => element.isConnected), 'unchanged bubble should not remount');
     await page.getByRole('button', {name: '上下文用量，约 24000 tokens，上限未知'}).waitFor();
     assert.match(await page.locator('.agent-context-meter').textContent(), /ctx 24K/);
-    const scrollHeight = await page.locator('.agent-run-scroll').evaluate(element => element.getBoundingClientRect().height);
-    assert.equal(scrollHeight, 96, 'trace must keep four-row height');
-    await page.getByRole('button', {name: /查看思考过程/}).click();
+    await page.getByRole('button', {name: '查看思考过程'}).click();
     const drawer = page.getByRole('dialog', {name: '本轮思考过程'});
     await drawer.waitFor();
     assert.match(await drawer.textContent(), /已确认气泡/);
@@ -123,6 +127,26 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     assert.equal(await drawer.locator('.agent-drawer-timeline li').count(), 4);
     await page.keyboard.press('Escape');
     await drawer.waitFor({state: 'detached'});
+    const compactPage = await browser.newPage({viewport: {width: 1200, height: 800}});
+    compactPage.on('pageerror', error => errors.push(error.message));
+    await compactPage.route('**/api/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/agent/sessions') return route.fulfill({json: {sessions: [summary]}});
+      if (url.pathname === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test', label: '测试模型', priceFactor: 1}]}});
+      if (url.pathname === '/api/agent/access-mode') return route.fulfill({json: {mode: 'safe'}});
+      if (url.pathname.endsWith('/history')) return route.fulfill({json: {session: {...terminal, messages: terminal.messages.filter(item => item.role === 'user'), thoughts: thoughts.slice(0, 1), activity: activity.slice(0, 1)}, before: ''}});
+      return route.fulfill({json: {}});
+    });
+    await compactPage.goto('http://127.0.0.1:5191');
+    await compactPage.getByRole('button', {name: '切换会话排列方式'}).click();
+    await compactPage.getByRole('button', {name: '按会话查看'}).click();
+    await compactPage.locator('.agent-session-select').filter({hasText: '时序交互'}).click();
+    const compactTrace = compactPage.locator('.agent-run-scroll');
+    await compactTrace.waitFor();
+    const compactHeight = await compactTrace.evaluate(element => element.getBoundingClientRect().height);
+    const fullHeight = await page.locator('.agent-run-scroll').evaluate(element => element.getBoundingClientRect().height);
+    const compactRows = await compactPage.locator('.agent-run-scroll li').count();
+    assert.ok(compactHeight < fullHeight, `short trace grows with content instead of reserving four rows (compact=${compactHeight}, full=${fullHeight}, rows=${compactRows})`);
     completionMode = true;
     const completedPage = await browser.newPage({viewport: {width: 1200, height: 800}});
     completedPage.on('pageerror', error => errors.push(error.message));
@@ -146,7 +170,14 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     assert.equal(await completedPage.locator('.agent-process-collapse:not(.is-collapsed) .agent-run-scroll').count(), 0, 'completed run should remove the live trace');
     assert.equal(await completedPage.locator('.agent-process-collapse:not(.is-collapsed) .agent-run-open').count(), 0, 'completed run should remove the live trace drawer trigger');
     assert.equal(await completedPage.locator('.agent-run-result').count(), 0, 'completed run has no standalone summary block');
-    assert.match(await completedAnswer.locator('.agent-final-meta').textContent(), /共思考 8 秒/);
+    assert.match(await completedAnswer.locator('.agent-final-meta').textContent(), /8 秒/);
+    assert.match(await completedAnswer.locator('.agent-final-meta').textContent(), /2/, 'summary retains real nonzero counts');
+    assert.equal(await completedAnswer.locator('.agent-final-stat[aria-label^="写入"]').count(), 0, 'zero-value summary items stay hidden');
+    assert.equal(await completedAnswer.locator('.agent-final-stat').count(), 6, 'duration, first token, read, tools, requests and speed render as icons');
+    assert.match(await completedAnswer.locator('.agent-final-stat[aria-label^="首 token"]').textContent(), /1.2 秒/, 'summary keeps the first-token latency');
+    await completedAnswer.locator('.agent-final-stat[aria-label^="输出速度"]').hover();
+    await completedPage.getByRole('tooltip').waitFor();
+    assert.match(await completedPage.getByRole('tooltip').textContent(), /输出速度 21.4 tok\/s/);
     assert.match(await completedAnswer.textContent(), /交互已经检查完成/);
     assert.ok((await completedAnswer.evaluate(element => element.getBoundingClientRect().top)) >
       (await completedPage.locator('.agent-message.role-user').last().evaluate(element => element.getBoundingClientRect().bottom)), 'final answer follows user query');

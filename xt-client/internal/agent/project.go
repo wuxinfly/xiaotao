@@ -1,11 +1,17 @@
 package agent
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+func normalizeProjectPath(path string) string {
+	return strings.ToLower(strings.ReplaceAll(filepath.Clean(path), `\\`, "/"))
+}
 
 // RenameProject changes display metadata only, preserving history and ordering.
 func (s *Service) RenameProject(path, name string) error {
@@ -18,6 +24,7 @@ func (s *Service) RenameProject(path, name string) error {
 	if strings.TrimSpace(path) == "" {
 		return fmt.Errorf("项目目录不能为空")
 	}
+	normalized := normalizeProjectPath(path)
 	items, err := s.listSessionSummaries()
 	if err != nil {
 		return err
@@ -33,7 +40,16 @@ func (s *Service) RenameProject(path, name string) error {
 		}
 	}
 	if len(selected) == 0 {
-		return fmt.Errorf("项目不存在")
+		db, checkErr := s.openStore()
+		if checkErr != nil {
+			return checkErr
+		}
+		var raw string
+		checkErr = db.QueryRow("SELECT metadata FROM saved_projects WHERE path=?", normalized).Scan(&raw)
+		db.Close()
+		if checkErr != nil {
+			return fmt.Errorf("项目不存在")
+		}
 	}
 	db, err := s.openStore()
 	if err != nil {
@@ -45,6 +61,25 @@ func (s *Service) RenameProject(path, name string) error {
 		return err
 	}
 	defer tx.Rollback()
+	var savedRaw string
+	savedErr := tx.QueryRow("SELECT metadata FROM saved_projects WHERE path=?", normalized).Scan(&savedRaw)
+	if savedErr == nil {
+		var saved SavedProject
+		if err = json.Unmarshal([]byte(savedRaw), &saved); err != nil {
+			return err
+		}
+		saved.Name = name
+		saved.UpdatedAt = time.Now()
+		raw, marshalErr := json.Marshal(saved)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, err = tx.Exec("INSERT INTO saved_projects(path,metadata) VALUES(?,?) ON CONFLICT(path) DO UPDATE SET metadata=excluded.metadata", normalized, string(raw)); err != nil {
+			return err
+		}
+	} else if savedErr != sql.ErrNoRows {
+		return savedErr
+	}
 	for _, item := range selected {
 		item.Project.Name = name
 		item.Messages = nil
@@ -58,4 +93,150 @@ func (s *Service) RenameProject(path, name string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *Service) listSavedProjects() ([]SavedProject, error) {
+	db, err := s.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT metadata FROM saved_projects")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SavedProject{}
+	for rows.Next() {
+		var raw string
+		if err = rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var item SavedProject
+		if err = json.Unmarshal([]byte(raw), &item); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) savedProject(path string) (*SavedProject, error) {
+	db, err := s.openStore()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	var raw string
+	err = db.QueryRow("SELECT metadata FROM saved_projects WHERE path=?", normalizeProjectPath(path)).Scan(&raw)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var item SavedProject
+	if err = json.Unmarshal([]byte(raw), &item); err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (s *Service) saveSavedProject(item SavedProject) error {
+	db, err := s.openStore()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	raw, err := json.Marshal(item)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("INSERT INTO saved_projects(path,metadata) VALUES(?,?) ON CONFLICT(path) DO UPDATE SET metadata=excluded.metadata", normalizeProjectPath(item.Path), string(raw))
+	return err
+}
+
+func (s *Service) SaveProject(path, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("默认工作目录不需要单独保存")
+	}
+	workspace, err := OpenWorkspace(path)
+	if err != nil {
+		return err
+	}
+	path = workspace.Root
+	if name == "" {
+		name = filepath.Base(path)
+	}
+	if len([]rune(name)) > 100 {
+		return fmt.Errorf("项目名称最多 100 个字符")
+	}
+	now := time.Now()
+	existing, err := s.savedProject(path)
+	if err != nil {
+		return err
+	}
+	createdAt := now
+	if existing != nil {
+		createdAt = existing.CreatedAt
+	}
+	return s.saveSavedProject(SavedProject{Name: name, Path: path, CreatedAt: createdAt, UpdatedAt: now})
+}
+
+func (s *Service) ListProjects() ([]Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	saved, err := s.listSavedProjects()
+	if err != nil {
+		return nil, err
+	}
+	out := []Project{}
+	seen := map[string]bool{}
+	for _, item := range saved {
+		out = append(out, Project{Path: item.Path, Name: item.Name, IsDefault: false, Saved: true})
+		seen[normalizeProjectPath(item.Path)] = true
+	}
+	summaries, err := s.listSessionSummaries()
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range summaries {
+		s.markDefault(item)
+		if item.Project.IsDefault || item.Project.Path == "" || seen[normalizeProjectPath(item.Project.Path)] {
+			continue
+		}
+		out = append(out, Project{Path: item.Project.Path, Name: item.Project.Name, IsDefault: false})
+		seen[normalizeProjectPath(item.Project.Path)] = true
+	}
+	return out, nil
+}
+
+func (s *Service) DeleteProject(path string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("项目目录不能为空")
+	}
+	normalized := normalizeProjectPath(path)
+	db, err := s.openStore()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	result, err := db.Exec("DELETE FROM saved_projects WHERE path=?", normalized)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf("项目未保存或不存在")
+	}
+	return nil
 }

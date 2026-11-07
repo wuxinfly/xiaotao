@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 )
 
 const (
-	maxTurns          = 40
 	stageToolLimit    = 8
 	introPrompt       = "先不要调用工具。用一句简洁自然的中文复述你对用户请求的理解，不超过 40 个字，只使用中文。只输出这句话。"
 	observationPrompt = "先不要调用工具。用一句简洁自然的中文说明当前进展和下一步，不超过 50 个字，只使用中文。只输出这句话。"
@@ -52,9 +52,13 @@ type httpModelClient struct {
 }
 
 type completion struct {
-	Content   string
-	Reasoning string
-	ToolCalls []toolCall
+	Content          string
+	Reasoning        string
+	ToolCalls        []toolCall
+	OutputTokens     int64
+	RequestStartedAt time.Time
+	FirstOutputAt    *time.Time
+	RequestEndedAt   time.Time
 }
 
 type toolCall struct {
@@ -82,6 +86,9 @@ type backendResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
+	Usage struct {
+		CompletionTokens int64 `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 func NewService(dataDir, endpoint string, key func() string, client *http.Client, models func() []ModelOption) *Service {
@@ -101,6 +108,24 @@ func (s *Service) AvailableModels() []ModelOption {
 		return []ModelOption{}
 	}
 	return s.models()
+}
+
+func (s *Service) supportsImages(model string) bool {
+	for _, option := range s.AvailableModels() {
+		if option.Model == model {
+			return option.SupportsImages
+		}
+	}
+	return false
+}
+
+func (s *Service) contextWindow(model string) int64 {
+	for _, option := range s.AvailableModels() {
+		if option.Model == model {
+			return option.ContextWindow
+		}
+	}
+	return 0
 }
 
 func (s *Service) Create(options Options) (*Session, error) {
@@ -127,6 +152,15 @@ func (s *Service) Create(options Options) (*Session, error) {
 		}
 		if projectName != "" {
 			project.Name = projectName
+		}
+		if projectName == "" {
+			saved, err := s.savedProject(project.Path)
+			if err != nil {
+				return nil, err
+			}
+			if saved != nil {
+				project.Name = saved.Name
+			}
 		}
 	}
 	model := strings.TrimSpace(options.Model)
@@ -280,12 +314,16 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 // SendWithReferences freezes directly referenced conversations before appending
 // the user message. Existing callers without references keep the old behavior.
 func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model string, sourceIDs []string, emit func(Event)) error {
-	return s.send(ctx, sessionID, text, model, sourceIDs, emit)
+	return s.SendWithImages(ctx, sessionID, text, model, sourceIDs, nil, emit)
 }
 
-func (s *Service) send(ctx context.Context, sessionID, text, model string, sourceIDs []string, emit func(Event)) error {
+func (s *Service) SendWithImages(ctx context.Context, sessionID, text, model string, sourceIDs []string, images []ImageInput, emit func(Event)) error {
+	return s.send(ctx, sessionID, text, model, sourceIDs, images, emit)
+}
+
+func (s *Service) send(ctx context.Context, sessionID, text, model string, sourceIDs []string, images []ImageInput, emit func(Event)) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(images) == 0 {
 		return fmt.Errorf("消息不能为空")
 	}
 	s.mu.Lock()
@@ -333,10 +371,13 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	if selected := strings.TrimSpace(model); selected != "" {
 		history.Model = selected
 	}
+	if (len(images) > 0 || historyHasImages(history.Messages)) && !s.supportsImages(history.Model) {
+		return fmt.Errorf("会话包含图片，当前模型未声明支持图片，请切换支持图片的模型")
+	}
 	history.Status = StatusRunning
 	s.mu.Lock()
 	r.project = history.Project.Path
-	r.task = titleFromPrompt(text)
+	r.task = titleFromPrompt(text, len(images) > 0)
 	s.mu.Unlock()
 	history.Error = ""
 	now := time.Now()
@@ -347,13 +388,17 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	if err = s.saveConversationReferences(references, referenceSources); err != nil {
 		return err
 	}
-	userMessage := Message{ID: "msg_" + randomID(6), Role: "user", Content: text, References: references, CreatedAt: now}
+	attachments, err := s.saveImages(images, now)
+	if err != nil {
+		return err
+	}
+	userMessage := Message{ID: "msg_" + randomID(6), Role: "user", Content: text, Images: attachments, References: references, CreatedAt: now}
 	runID := "turn_" + randomID(6)
 	userMessage.RunID = runID
 	history.Messages = append(history.Messages, userMessage)
 	history.UpdatedAt = now
 	if history.Title == "新任务" {
-		history.Title = titleFromPrompt(text)
+		history.Title = titleFromPrompt(text, len(images) > 0)
 	}
 	if err := s.saveSessionWithReferences(history, nil, nil); err != nil {
 		return err
@@ -361,13 +406,23 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
 	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions}}
-	messages = append(messages, modelHistory(history.Messages, userMessage.ID)...)
+	modelMessages, err := modelHistoryWith(history.Messages, userMessage.ID, s.imageDataURLs)
+	if err != nil {
+		return err
+	}
+	messages = append(messages, modelMessages...)
 	client := &httpModelClient{endpoint: s.endpoint, key: s.key, client: s.client}
 	stats := RunStats{Phase: "working", RunID: runID, UserMessageID: userMessage.ID, StartedAt: now}
+	stats.ContextWindow = s.contextWindow(history.Model)
+	var outputSeconds float64
 	stats.ContextTokens = estimateContextTokens(messages)
 	history.RunStats = append(history.RunStats, stats)
 	emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: &stats})
-	intro := s.describeRun(runCtx, client, history.Model, "用户请求：\n"+text, introPrompt)
+	introContext := "用户请求：\n" + text
+	if len(attachments) > 0 {
+		introContext += fmt.Sprintf("\n用户同时提供了 %d 张图片。", len(attachments))
+	}
+	intro := s.describeRun(runCtx, client, history.Model, introContext, introPrompt, &stats, &outputSeconds)
 	if !visibleChineseThinking(intro) {
 		intro = "我先理解你的需求，再决定下一步怎么做。"
 	}
@@ -376,7 +431,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	history.UpdatedAt = introStep.CreatedAt
 	emit(Event{Type: "thought", SessionID: sessionID, Thought: &introStep})
 	_ = s.saveSession(history)
-	err = s.loopWithRun(runCtx, workspace, client, history, messages, references, runID, &stats, emit)
+	err = s.loopWithRun(runCtx, workspace, client, history, messages, references, runID, &stats, &outputSeconds, emit)
 	history.UpdatedAt = time.Now()
 	end := time.Now()
 	stats.EndedAt = &end
@@ -392,6 +447,9 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 		history.Status = StatusCompleted
 	}
 	stats.Phase = history.Status
+	if stats.OutputTokens > 0 && outputSeconds > 0 {
+		stats.OutputSpeed = math.Round(float64(stats.OutputTokens)/outputSeconds*10) / 10
+	}
 	for i := range history.RunStats {
 		if history.RunStats[i].RunID == runID {
 			history.RunStats[i] = stats
@@ -421,22 +479,31 @@ func (s *Service) concurrentTaskContext(id, project string) string {
 
 func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, emit func(Event)) error {
 	stats := RunStats{RunID: "turn_" + randomID(6), StartedAt: time.Now()}
-	return s.loopWithRun(ctx, workspace, client, history, messages, nil, stats.RunID, &stats, emit)
+	var outputSeconds float64
+	return s.loopWithRun(ctx, workspace, client, history, messages, nil, stats.RunID, &stats, &outputSeconds, emit)
 }
 
 func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, emit func(Event)) error {
 	stats := RunStats{RunID: "turn_" + randomID(6), StartedAt: time.Now()}
-	return s.loopWithRun(ctx, workspace, client, history, messages, references, stats.RunID, &stats, emit)
+	var outputSeconds float64
+	return s.loopWithRun(ctx, workspace, client, history, messages, references, stats.RunID, &stats, &outputSeconds, emit)
 }
 
-func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, runID string, stats *RunStats, emit func(Event)) error {
-	connections, mcpTools, err := s.openMCP(ctx)
-	if err != nil {
-		return fmt.Errorf("MCP 启动失败: %w", err)
+func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, runID string, stats *RunStats, outputSeconds *float64, emit func(Event)) error {
+	// MCP servers stay closed until the model asks for them, so a run that
+	// never touches a browser never carries the browser tool schemas.
+	mcpState := &lazyMCP{}
+	defer mcpState.close()
+	// A run whose history already contains MCP tool calls must keep those
+	// tool names resolvable, so the servers start before the first request.
+	if historyUsesMCPTools(messages) {
+		if _, err := s.enableMCP(ctx, mcpState); err != nil {
+			return err
+		}
 	}
-	defer closeMCPConnections(connections)
 	toolsSinceCheckpoint := 0
-	for turn := 0; turn < maxTurns; turn++ {
+	var completedTokens int64
+	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -447,7 +514,7 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 		if len(references) > 0 {
 			tools = append(append([]map[string]any{}, tools...), referenceToolDefinition)
 		}
-		tools = append(append([]map[string]any{}, tools...), mcpTools...)
+		tools = append(append([]map[string]any{}, tools...), mcpState.definitions()...)
 		var streamed *Message
 		requestMessages := append([]map[string]any{}, messages...)
 		if len(requestMessages) > 0 && requestMessages[0]["role"] == "system" {
@@ -460,10 +527,28 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			}
 		}
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
+		stats.ModelRequests++
+		// The first-token metric is measured from the start of the run, so the
+		// progress summarizer before the answer counts towards the latency the
+		// user actually waits for.
+		if stats.firstRequestAt.IsZero() {
+			stats.firstRequestAt = stats.StartedAt
+		}
+		var requestChars int
+		var requestFirstOutputAt time.Time
+		var lastEmit time.Time
 		result, err := client.Complete(ctx, history.Model, requestMessages, tools, func(delta string) {
 			if delta == "" {
 				return
 			}
+			now := time.Now()
+			if requestFirstOutputAt.IsZero() {
+				requestFirstOutputAt = now
+			}
+			if stats.FirstTokenMs == 0 && !stats.firstRequestAt.IsZero() {
+				stats.FirstTokenMs = now.Sub(stats.firstRequestAt).Milliseconds()
+			}
+			requestChars += len(delta)
 			if streamed == nil {
 				message := Message{ID: "msg_" + randomID(6), Role: "assistant", RunID: runID, CreatedAt: time.Now()}
 				streamed = &message
@@ -472,7 +557,18 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			piece := *streamed
 			piece.Content = delta
 			emit(Event{Type: "message_delta", SessionID: history.ID, Message: &piece})
+			updateLiveOutput(stats, completedTokens, requestChars, requestFirstOutputAt, now)
+			if now.Sub(lastEmit) >= liveStatsInterval {
+				lastEmit = now
+				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
+			}
 		})
+		recordCompletionStats(stats, result, outputSeconds)
+		completedTokens = stats.OutputTokens
+		requestChars = 0
+		requestFirstOutputAt = time.Time{}
+		updateLiveOutput(stats, completedTokens, 0, time.Time{}, time.Now())
+		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		if err != nil {
 			if streamed != nil && streamed.Content != "" {
 				history.Messages = append(history.Messages, *streamed)
@@ -481,7 +577,7 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			return fmt.Errorf("模型调用失败: %w", err)
 		}
 		if readableReasoning(result.Reasoning) != "" {
-			observation := s.describeRun(ctx, client, history.Model, reasoningContext(result.Reasoning), observationPrompt)
+			observation := s.describeRun(ctx, client, history.Model, reasoningContext(result.Reasoning), observationPrompt, stats, outputSeconds)
 			if visibleChineseThinking(observation) {
 				step := ThoughtStep{
 					ID: "thought_" + randomID(5), RunID: runID, Kind: "observation",
@@ -544,18 +640,27 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 				Status:    "running",
 				StartedAt: time.Now(),
 			}
-			if connection := connections[call.Name]; connection != nil {
-				describeMCPActivity(&activity, connection, call)
+			output := "\u8bf7\u5148\u5173\u8054\u9879\u76ee\u624d\u80fd\u4f7f\u7528\u6587\u4ef6\u548c\u547d\u4ee4\u5de5\u5177"
+			var toolErr error
+			var mcpConnection *mcpConnection
+			if call.Name == mcpEnableToolName {
+				activity.Detail = "按需启动 MCP 服务"
+			} else if isMCPToolName(call.Name) {
+				// Resolve the server before announcing the activity so the
+				// running event already carries the real tool name.
+				mcpConnection, toolErr = s.resolveMCPTool(ctx, mcpState, call)
+				if mcpConnection != nil {
+					describeMCPActivity(&activity, mcpConnection, call)
+				}
 			}
 			history.Activity = append(history.Activity, activity)
 			history.UpdatedAt = time.Now()
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
-			output := "请先关联项目才能使用文件和命令工具"
-			var toolErr error
-			if connection := connections[call.Name]; connection != nil {
-				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)
+			if call.Name == mcpEnableToolName {
+				output, toolErr = s.enableMCPTools(ctx, mcpState, history.ID, workspace, emit)
+			} else if mcpConnection != nil {
 				if toolErr == nil {
-					output, toolErr = callMCP(ctx, connection, call.Name, call.Arguments)
+					output, toolErr = s.runMCPTool(ctx, history.ID, workspace, call, mcpConnection, emit)
 				}
 			} else if call.Name == "read_conversation_reference" {
 				output, toolErr = s.readConversationReference(call.Arguments, references)
@@ -611,7 +716,7 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			}
 		}
 		if toolsSinceCheckpoint >= stageToolLimit {
-			checkpoint := s.describeRun(ctx, client, history.Model, checkpointContext(messages), checkpointPrompt)
+			checkpoint := s.describeRun(ctx, client, history.Model, checkpointContext(messages), checkpointPrompt, stats, outputSeconds)
 			if !visibleChineseThinking(checkpoint) {
 				checkpoint = "已经完成一批检查，我会根据当前结果继续下一步。"
 			}
@@ -627,7 +732,6 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			}
 		}
 	}
-	return fmt.Errorf("工具调用超过 %d 轮，已停止", maxTurns)
 }
 
 func (s *Service) Cancel(id string) bool {
@@ -641,16 +745,20 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-func (s *Service) describeRun(ctx context.Context, client modelClient, model, contextText, instruction string) string {
+func (s *Service) describeRun(ctx context.Context, client modelClient, model, contextText, instruction string, stats *RunStats, outputSeconds *float64) string {
 	if ctx.Err() != nil {
 		return ""
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
+	if stats != nil {
+		stats.ModelRequests++
+	}
 	result, err := client.Complete(callCtx, model, []map[string]any{
 		{"role": "system", "content": "你是小涛的进度摘要器。只写可展示给用户的简短判断，不输出分析过程、Markdown 或前缀。"},
 		{"role": "user", "content": contextText + "\n\n" + instruction},
 	}, nil, nil)
+	recordCompletionStats(stats, result, outputSeconds)
 	if err != nil || result == nil {
 		return ""
 	}
@@ -659,6 +767,37 @@ func (s *Service) describeRun(ctx context.Context, client modelClient, model, co
 		text = strings.TrimSpace(result.Reasoning)
 	}
 	return readableThought(text)
+}
+
+// liveStatsInterval throttles run_stats updates while a model response streams.
+const liveStatsInterval = 200 * time.Millisecond
+
+// updateLiveOutput keeps the run statistics usable while a response is still
+// streaming: finished requests contribute their reported usage and the
+// in-flight request contributes an estimate of what it produced so far.
+func updateLiveOutput(stats *RunStats, completedTokens int64, requestChars int, requestFirstOutputAt, now time.Time) {
+	if stats == nil {
+		return
+	}
+	liveTokens := int64(requestChars) / 3
+	stats.LiveTokens = completedTokens + liveTokens
+	if !requestFirstOutputAt.IsZero() {
+		if elapsed := now.Sub(requestFirstOutputAt).Seconds(); elapsed > 0 {
+			stats.LiveSpeed = math.Round(float64(liveTokens)/elapsed*10) / 10
+		}
+	}
+}
+
+func recordCompletionStats(stats *RunStats, result *completion, outputSeconds *float64) {
+	if stats == nil || result == nil || outputSeconds == nil {
+		return
+	}
+	stats.OutputTokens += result.OutputTokens
+	if result.FirstOutputAt != nil && !result.RequestEndedAt.IsZero() {
+		if elapsed := result.RequestEndedAt.Sub(*result.FirstOutputAt).Seconds(); elapsed >= 0.05 {
+			*outputSeconds += elapsed
+		}
+	}
 }
 
 func readableReasoning(value string) string {
@@ -709,12 +848,53 @@ func visibleChineseThinking(value string) bool {
 	return visible == 0 || latin*2 <= visible
 }
 
+// checkpointContent renders one message for the progress summarizer. Image
+// attachments are described by count instead of their base64 payload: the
+// summarizer only needs to know that images were supplied, and inlining the
+// encoded bytes would both bloat the request and mislead the summary.
+func checkpointContent(value any) string {
+	switch content := value.(type) {
+	case string:
+		return content
+	case []any:
+		// Decoded JSON content arrives as []any of map[string]any. Rebuild it as
+		// []map[string]any so the multipart branch below handles it; recursing
+		// with the same value would match this branch again.
+		parts := make([]map[string]any, 0, len(content))
+		for _, part := range content {
+			if item, ok := part.(map[string]any); ok {
+				parts = append(parts, item)
+			}
+		}
+		return checkpointContent(parts)
+	case []map[string]any:
+		var text strings.Builder
+		images := 0
+		for _, item := range content {
+			if item["type"] == "image_url" {
+				images++
+				continue
+			}
+			if part, ok := item["text"].(string); ok && part != "" {
+				text.WriteString(part)
+				text.WriteString("\n")
+			}
+		}
+		if images > 0 {
+			text.WriteString(fmt.Sprintf("[用户提供了 %d 张图片]\n", images))
+		}
+		return strings.TrimSpace(text.String())
+	default:
+		return fmt.Sprint(content)
+	}
+}
+
 func checkpointContext(messages []map[string]any) string {
 	var context strings.Builder
 	for i := len(messages) - 1; i >= 0 && context.Len() < 6000; i-- {
 		message := messages[i]
 		role := fmt.Sprint(message["role"])
-		content := fmt.Sprint(message["content"])
+		content := checkpointContent(message["content"])
 		if role == "system" {
 			continue
 		}
@@ -747,6 +927,13 @@ func estimateContextTokens(messages []map[string]any) int64 {
 	return (bytes + 2) / 3
 }
 
+// estimatedImageTokens approximates what one inline image costs in the
+// upstream prompt. Vision encoders price images by pixel area, not by the size
+// of the base64 payload, so a large PNG and a thumbnail of the same image cost
+// roughly the same. Counting a flat allowance per image keeps the context
+// meter from treating encoded bytes as if they were prompt text.
+const estimatedImageTokens = 1500
+
 func estimateContentBytes(value any) int64 {
 	switch content := value.(type) {
 	case string:
@@ -755,8 +942,25 @@ func estimateContentBytes(value any) int64 {
 		var total int64
 		for _, part := range content {
 			if item, ok := part.(map[string]any); ok {
+				if item["type"] == "image_url" {
+					total += estimatedImageTokens * 3
+					continue
+				}
 				total += estimateContentBytes(item["text"])
 			}
+		}
+		return total
+	case []map[string]any:
+		// Multipart content built by messageToModelWith. Text parts count as
+		// text; image parts count as one flat image allowance instead of
+		// their base64 payload.
+		var total int64
+		for _, item := range content {
+			if item["type"] == "image_url" {
+				total += estimatedImageTokens * 3
+				continue
+			}
+			total += estimateContentBytes(item["text"])
 		}
 		return total
 	default:
@@ -765,6 +969,7 @@ func estimateContentBytes(value any) int64 {
 }
 
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, onDelta func(string)) (*completion, error) {
+	startedAt := time.Now()
 	payload := map[string]any{"model": model, "messages": messages, "stream": true}
 	if len(tools) > 0 {
 		payload["tools"] = tools
@@ -788,7 +993,12 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 400 && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
-		return readModelStream(resp.Body, onDelta)
+		result, err := readModelStream(resp.Body, onDelta)
+		if result != nil {
+			result.RequestStartedAt = startedAt
+			result.RequestEndedAt = time.Now()
+		}
+		return result, err
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if err != nil {
@@ -808,7 +1018,16 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, fmt.Errorf("模型没有返回结果")
 	}
 	message := body.Choices[0].Message
-	out := &completion{Content: message.Content, Reasoning: message.ReasoningContent}
+	out := &completion{
+		Content:          message.Content,
+		Reasoning:        message.ReasoningContent,
+		OutputTokens:     body.Usage.CompletionTokens,
+		RequestStartedAt: startedAt,
+		RequestEndedAt:   time.Now(),
+	}
+	if out.OutputTokens > 0 {
+		out.FirstOutputAt = &out.RequestEndedAt
+	}
 	for _, call := range message.ToolCalls {
 		args := strings.TrimSpace(call.Function.Arguments)
 		if args == "" {
@@ -819,39 +1038,100 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 	return out, nil
 }
 
+// voiceNotice sets the plain-language bar for every final answer. It lives in
+// the system prompt (injected each turn) because later turns replace the full
+// SKILL.md with the compact guard, so its tone rules would otherwise weaken.
+func voiceNotice() string {
+	return "\n对用户说话像靠谱同事随口讲清一件事：先说结果，再按需补原因；" +
+		"默认简短，一段话能讲清就不拆条目，少用多级列表和标题。" +
+		"少用术语，必要的技术词先用一句大白话解释；" +
+		"不写「综上」「下一步」「已完成以下操作」这类汇报腔。" +
+		"用户是开发者时可以正常用技术词，但仍然先说结论。"
+}
+
 func systemPrompt(root string) string {
 	if root == "" {
-		return "你是小涛，用中文简洁自然地帮助用户。当前未关联项目，无法访问文件或运行命令；需要这些操作时请用户新建关联项目的会话。"
+		return "你是小涛，用中文简洁自然地帮助用户。" + voiceNotice() +
+			"当前未关联项目，无法访问文件或运行命令；需要这些操作时请用户新建关联项目的会话。" + browserNotice()
 	}
 	return "你是小涛，一个直接和用户一起做软件工作的 AI 工程师。使用中文，简洁、自然、不说套话。" +
 		"\n当前项目根目录：" + root +
-		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。操作子目录前检查并遵守该目录及其上级目录中的 AGENTS.override.md 或 AGENTS.md；同目录优先前者。" +
+		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。" +
+		"\n操作子目录前检查并遵守该目录及其上级目录中的 AGENTS.override.md 或 AGENTS.md；同目录优先前者。" +
 		"\n修改后必须运行相关验证。不要声称执行过没有实际执行的命令。" +
 		"\n工作目录是默认位置；可以按用户要求访问其他路径。不要泄露凭据、token 或隐私信息。" +
-		"\n只有在工作完成、遇到阻碍或需要用户决定时才给最终答复。"
+		"\n只有在工作完成、遇到阻碍或需要用户决定时才给最终答复。" +
+		voiceNotice() + browserNotice()
+}
+
+// browserNotice tells the model that browser and MCP tools are reachable
+// through an explicit activation step. Without it the model never asks for
+// them and the browser stays unused.
+func browserNotice() string {
+	return "\n\u4f60\u8fd8\u53ef\u4ee5\u64cd\u4f5c\u6d4f\u89c8\u5668\uff1a\u6253\u5f00\u7f51\u9875\u3001\u68c0\u67e5\u63a7\u5236\u53f0\u6216\u7f51\u7edc\u8bf7\u6c42\u3001\u70b9\u51fb\u5143\u7d20\u3001\u586b\u5199\u8868\u5355\u3001\u8fd0\u884c\u9875\u9762\u811a\u672c\u3002" +
+		"\u8fd9\u4e9b\u5de5\u5177\u9ed8\u8ba4\u4e0d\u52a0\u8f7d\uff0c\u9700\u8981\u65f6\u5148\u8c03\u7528 " + mcpEnableToolName + " \u542f\u7528\uff0c\u4e0b\u4e00\u8f6e\u624d\u4f1a\u51fa\u73b0\u5177\u4f53\u5de5\u5177\u3002" +
+		"\u6ca1\u6709\u5de5\u5177\u65f6\u4e0d\u8981\u731c\u6d4f\u89c8\u5668\u80fd\u529b\u3002"
 }
 
 func messageToModel(message Message) map[string]any {
+	out, _ := messageToModelWith(message, nil)
+	return out
+}
+
+func messageToModelWith(message Message, loadImages func([]ImageAttachment) ([]string, error)) (map[string]any, error) {
 	if message.Role == "tool" {
 		return map[string]any{
 			"role": "tool", "tool_call_id": message.ToolCallID,
 			"name": message.ToolName, "content": message.Content,
-		}
+		}, nil
 	}
-	out := map[string]any{"role": message.Role, "content": message.Content}
+	if len(message.Images) == 0 {
+		out := map[string]any{"role": message.Role, "content": message.Content}
+		if len(message.ToolCalls) > 0 {
+			out["tool_calls"] = message.ToolCalls
+		}
+		return out, nil
+	}
+	if loadImages == nil {
+		return nil, fmt.Errorf("图片附件缺少读取入口")
+	}
+	urls, err := loadImages(message.Images)
+	if err != nil {
+		return nil, err
+	}
+	content := make([]map[string]any, 0, len(urls)+1)
+	if strings.TrimSpace(message.Content) != "" {
+		content = append(content, map[string]any{"type": "text", "text": message.Content})
+	}
+	for _, url := range urls {
+		content = append(content, map[string]any{"type": "image_url", "image_url": map[string]any{"url": url}})
+	}
+	out := map[string]any{"role": message.Role, "content": content}
 	if len(message.ToolCalls) > 0 {
 		out["tool_calls"] = message.ToolCalls
 	}
-	return out
+	return out, nil
 }
 
-func titleFromPrompt(text string) string {
+func titleFromPrompt(text string, hasImages bool) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	if text == "" && hasImages {
+		return "图片任务"
+	}
 	runes := []rune(text)
 	if len(runes) > 28 {
 		return string(runes[:28]) + "..."
 	}
 	return text
+}
+
+func historyHasImages(messages []Message) bool {
+	for _, message := range messages {
+		if len(message.Images) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func activityTitle(name string) string {
@@ -866,6 +1146,8 @@ func activityTitle(name string) string {
 		return "更新文件"
 	case "run_command":
 		return "运行命令"
+	case mcpEnableToolName:
+		return "启用浏览器工具"
 	default:
 		return "调用工具"
 	}

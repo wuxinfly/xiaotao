@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type fakeModel struct {
@@ -32,6 +33,222 @@ func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]
 	reply := f.replies[0]
 	f.replies = f.replies[1:]
 	return reply, nil
+}
+
+type statsModel struct {
+	mu      sync.Mutex
+	replies []*completion
+}
+
+func (m *statsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ func(string)) (*completion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if isSummaryRequest(messages) {
+		return &completion{Content: "确认请求。"}, nil
+	}
+	if len(m.replies) == 0 {
+		return &completion{Content: "done"}, nil
+	}
+	reply := m.replies[0]
+	m.replies = m.replies[1:]
+	return reply, nil
+}
+
+func TestRunStatsCountModelRequestsAndMeasuredOutputSpeed(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now().Add(-2 * time.Second)
+	first := started.Add(500 * time.Millisecond)
+	ended := started.Add(1500 * time.Millisecond)
+	model := &statsModel{replies: []*completion{{
+		Content:        "完成",
+		OutputTokens:   80,
+		FirstOutputAt:  &first,
+		RequestEndedAt: ended,
+	}}}
+	stats := RunStats{RunID: "turn_stats", StartedAt: started}
+	var outputSeconds float64
+	if err := svc.loopWithRun(context.Background(), nil, model, history, nil, nil, stats.RunID, &stats, &outputSeconds, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	stats.OutputSpeed = float64(stats.OutputTokens) / outputSeconds
+	if stats.ModelRequests != 1 || stats.OutputTokens != 80 || stats.OutputSpeed != 80 {
+		t.Fatalf("unexpected stats: %+v outputSeconds=%v", stats, outputSeconds)
+	}
+}
+
+// streamingModel replays deltas so the run can measure live output.
+type streamingModel struct {
+	mu      sync.Mutex
+	started time.Time
+	first   time.Time
+	delays  []time.Duration
+}
+
+func (m *streamingModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, onDelta func(string)) (*completion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if isSummaryRequest(messages) {
+		return &completion{Content: "确认请求。"}, nil
+	}
+	m.started = time.Now()
+	for i, delay := range m.delays {
+		time.Sleep(delay)
+		m.first = time.Now()
+		if onDelta != nil {
+			onDelta(strings.Repeat("字", 30))
+		}
+		_ = i
+	}
+	return &completion{Content: "done", OutputTokens: 60, RequestStartedAt: m.started, FirstOutputAt: &m.first, RequestEndedAt: time.Now()}, nil
+}
+
+func TestRunStatsReportsFirstTokenLatencyAndLiveOutput(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &streamingModel{delays: []time.Duration{60 * time.Millisecond}}
+	stats := RunStats{RunID: "turn_live", StartedAt: time.Now()}
+	var outputSeconds float64
+	if err := svc.loopWithRun(context.Background(), nil, model, history, nil, nil, stats.RunID, &stats, &outputSeconds, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if stats.FirstTokenMs <= 0 {
+		t.Fatalf("expected a first-token latency, got %+v", stats)
+	}
+	if stats.LiveTokens != 60 {
+		t.Fatalf("expected the live token count to fall back to the reported usage, got %+v", stats)
+	}
+}
+
+// streamingMetricsModel replays deltas so the run can be observed while it
+// is still producing output.
+type streamingMetricsModel struct {
+	mu     sync.Mutex
+	delays []time.Duration
+}
+
+func (m *streamingMetricsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, onDelta func(string)) (*completion, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if isSummaryRequest(messages) {
+		return &completion{Content: "确认请求。"}, nil
+	}
+	started := time.Now()
+	var first *time.Time
+	for _, delay := range m.delays {
+		time.Sleep(delay)
+		at := time.Now()
+		if first == nil {
+			first = &at
+		}
+		if onDelta != nil {
+			onDelta(strings.Repeat("字", 60))
+		}
+	}
+	return &completion{Content: "done", OutputTokens: 160, RequestStartedAt: started, FirstOutputAt: first, RequestEndedAt: time.Now()}, nil
+}
+
+func TestRunStatsEventsCarryLiveMetricsWhileStreaming(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &streamingMetricsModel{delays: []time.Duration{80 * time.Millisecond, 80 * time.Millisecond, 80 * time.Millisecond}}
+	var events []RunStats
+	stats := RunStats{RunID: "turn_metrics", StartedAt: time.Now()}
+	var outputSeconds float64
+	if err := svc.loopWithRun(context.Background(), nil, model, history, nil, nil, stats.RunID, &stats, &outputSeconds, func(event Event) {
+		if event.RunStats != nil {
+			events = append(events, *event.RunStats)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) == 0 {
+		t.Fatal("expected run_stats events")
+	}
+	sawLiveTokens := false
+	sawLiveSpeed := false
+	sawFirstToken := false
+	for _, event := range events {
+		if event.LiveTokens > 0 {
+			sawLiveTokens = true
+		}
+		if event.LiveSpeed > 0 {
+			sawLiveSpeed = true
+		}
+		if event.FirstTokenMs > 0 {
+			sawFirstToken = true
+		}
+	}
+	if !sawLiveTokens {
+		t.Fatalf("expected live token counts while streaming, got %+v", events)
+	}
+	if !sawLiveSpeed {
+		t.Fatalf("expected a live output speed while streaming, got %+v", events)
+	}
+	if !sawFirstToken {
+		t.Fatalf("expected a first-token latency while streaming, got %+v", events)
+	}
+	last := events[len(events)-1]
+	if last.FirstTokenMs <= 0 {
+		t.Fatalf("expected the final event to keep the first-token latency, got %+v", last)
+	}
+}
+
+func TestSendCarriesKnownModelContextWindow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Tools []map[string]any `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if len(payload.Tools) == 0 {
+			w.Write([]byte(`{"choices":[{"message":{"content":"确认请求。"}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"done"}}]}`))
+	}))
+	defer server.Close()
+	svc := NewService(t.TempDir(), server.URL, nil, server.Client(), func() []ModelOption {
+		return []ModelOption{{Model: "test/window", Label: "Window", ContextWindow: 1000}}
+	})
+	session, err := svc.Create(Options{Model: "test/window"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Send(context.Background(), session.ID, "hello", func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.RunStats) != 1 || loaded.RunStats[0].ContextWindow != 1000 || loaded.RunStats[0].ContextTokens <= 0 {
+		t.Fatalf("context stats missing: %+v", loaded.RunStats)
+	}
 }
 
 func isSummaryRequest(messages []map[string]any) bool {
@@ -86,7 +303,7 @@ func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
 	}
 }
 
-func TestLoopStopsAtToolCallLimit(t *testing.T) {
+func TestLoopContinuesPastFortyToolRounds(t *testing.T) {
 	data := t.TempDir()
 	root := t.TempDir()
 	svc := NewService(data, "http://127.0.0.1:9999", nil, nil, nil)
@@ -97,13 +314,95 @@ func TestLoopStopsAtToolCallLimit(t *testing.T) {
 	workspace, _ := OpenWorkspace(root)
 	history, _ := svc.Get(session.ID)
 	fake := &fakeModel{}
-	for i := 0; i < maxTurns+1; i++ {
-		args, _ := json.Marshal(map[string]any{"path": fmt.Sprintf("dir-%d", i)})
-		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: "call", Name: "list_files", Arguments: args}}})
+	for i := 0; i < 45; i++ {
+		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: fmt.Sprintf("call_%d", i), Name: "list_files", Arguments: json.RawMessage(`{"path":"."}`)}}})
 	}
+	fake.replies = append(fake.replies, &completion{Content: "完成"})
 	err = svc.loop(context.Background(), workspace, fake, history, nil, func(Event) {})
-	if err == nil || !strings.Contains(err.Error(), "超过") {
-		t.Fatalf("expected bounded loop error, got %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The send flow persists the final answer after loopWithRun returns.
+	if err := svc.saveSession(history); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.messages) != 46 || len(loaded.Messages) != 91 || len(loaded.Activity) != 45 {
+		t.Fatalf("unexpected request or history counts: requests=%d messages=%d activities=%d", len(fake.messages), len(loaded.Messages), len(loaded.Activity))
+	}
+	for i := 0; i < 45; i++ {
+		call, result := loaded.Messages[i*2], loaded.Messages[i*2+1]
+		id := fmt.Sprintf("call_%d", i)
+		if call.Role != "assistant" || len(call.ToolCalls) != 1 || call.ToolCalls[0]["id"] != id || result.Role != "tool" || result.ToolCallID != id || loaded.Activity[i].Status != "completed" {
+			t.Fatalf("round %d not paired or successful: %+v %+v", i, call, result)
+		}
+	}
+	if loaded.Messages[90].Content != "完成" {
+		t.Fatalf("final answer missing: %+v", loaded.Messages[90])
+	}
+	checkpoints := 0
+	for _, thought := range loaded.Thoughts {
+		if thought.Kind == "checkpoint" {
+			checkpoints++
+		}
+	}
+	if checkpoints != 5 {
+		t.Fatalf("expected five checkpoints, got %d", checkpoints)
+	}
+}
+
+func TestLoopCanCancelAfterFortyToolRounds(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{ProjectPath: t.TempDir(), Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(session.Project.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeModel{}
+	for i := 0; i < 45; i++ {
+		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: fmt.Sprintf("call_%d", i), Name: "list_files", Arguments: json.RawMessage(`{"path":"."}`)}}})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	completed := 0
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.loop(ctx, workspace, fake, history, nil, func(event Event) {
+			if event.Type == "activity" && event.Activity != nil && event.Activity.Status == "completed" {
+				completed++
+				if completed == 42 {
+					cancel()
+				}
+			}
+		})
+	}()
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatalf("expected cancellation, got %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("canceled loop did not return")
+	}
+	if len(fake.messages) != 42 || len(history.Activity) != 42 {
+		t.Fatalf("work continued after cancellation: requests=%d activities=%d", len(fake.messages), len(history.Activity))
+	}
+	loaded, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Messages) != 84 || loaded.Messages[83].ToolCallID != "call_41" {
+		t.Fatalf("canceled history missing tool result: %+v", loaded.Messages)
 	}
 }
 

@@ -14,6 +14,14 @@ type Project struct {
 	Path      string `json:"path"`
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault,omitempty"`
+	Saved     bool   `json:"saved,omitempty"`
+}
+
+type SavedProject struct {
+	Name      string    `json:"name"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type Message struct {
@@ -21,11 +29,22 @@ type Message struct {
 	ID         string                  `json:"id"`
 	Role       string                  `json:"role"`
 	Content    string                  `json:"content"`
+	Images     []ImageAttachment       `json:"images,omitempty"`
 	ToolCallID string                  `json:"toolCallId,omitempty"`
 	ToolName   string                  `json:"toolName,omitempty"`
 	RunID      string                  `json:"runId,omitempty"`
 	References []ConversationReference `json:"references,omitempty"`
 	CreatedAt  time.Time               `json:"createdAt"`
+}
+
+type ImageAttachment struct {
+	ID        string    `json:"id"`
+	MimeType  string    `json:"mimeType"`
+	Size      int64     `json:"size"`
+	URL       string    `json:"url"`
+	Width     int       `json:"width,omitempty"`
+	Height    int       `json:"height,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Activity struct {
@@ -62,23 +81,42 @@ type RunStats struct {
 	FilesRead     int        `json:"filesRead"`
 	FilesWritten  int        `json:"filesWritten"`
 	ToolCalls     int        `json:"toolCalls"`
-	ContextTokens int64      `json:"contextTokens"`
-	ContextWindow int64      `json:"contextWindow,omitempty"`
+	ModelRequests int        `json:"modelRequests,omitempty"`
+	OutputTokens  int64      `json:"outputTokens,omitempty"`
+	OutputSpeed   float64    `json:"outputSpeed,omitempty"`
+	// FirstTokenMs is the delay from the first model request of this run to
+	// its first visible token. It stays 0 until that first token arrives.
+	FirstTokenMs int64 `json:"firstTokenMs,omitempty"`
+	// LiveTokens is the token count of the run while it is still streaming:
+	// finished requests contribute their reported usage, the in-flight
+	// request contributes an estimate of what it has produced so far.
+	LiveTokens int64 `json:"liveTokens,omitempty"`
+	// LiveSpeed is the rolling output speed of the request currently
+	// streaming, in tokens per second.
+	LiveSpeed     float64 `json:"liveSpeed,omitempty"`
+	ContextTokens int64   `json:"contextTokens"`
+	ContextWindow int64   `json:"contextWindow,omitempty"`
+	// firstRequestAt is when the first model request of this run started.
+	// It is process-local bookkeeping and never leaves the service.
+	firstRequestAt time.Time
 }
 
 type Session struct {
-	ID        string        `json:"id"`
-	Project   Project       `json:"project"`
-	Title     string        `json:"title"`
-	Model     string        `json:"model"`
-	Status    string        `json:"status"`
-	Messages  []Message     `json:"messages"`
-	Activity  []Activity    `json:"activity"`
-	Thoughts  []ThoughtStep `json:"thoughts"`
-	RunStats  []RunStats    `json:"runStats"`
-	Error     string        `json:"error,omitempty"`
-	CreatedAt time.Time     `json:"createdAt"`
-	UpdatedAt time.Time     `json:"updatedAt"`
+	ID       string        `json:"id"`
+	Project  Project       `json:"project"`
+	Title    string        `json:"title"`
+	Model    string        `json:"model"`
+	Status   string        `json:"status"`
+	Messages []Message     `json:"messages"`
+	Activity []Activity    `json:"activity"`
+	Thoughts []ThoughtStep `json:"thoughts"`
+	RunStats []RunStats    `json:"runStats"`
+	Error    string        `json:"error,omitempty"`
+	// HasImages lets the composer enforce image capability even when the
+	// image message is outside the bounded history page.
+	HasImages bool      `json:"hasImages,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type Options struct {
@@ -88,10 +126,12 @@ type Options struct {
 }
 
 type ModelOption struct {
-	PriceFactor *float64 `json:"priceFactor,omitempty"`
-	IsFree      *bool    `json:"isFree,omitempty"`
-	Model       string   `json:"model"`
-	Label       string   `json:"label"`
+	PriceFactor    *float64 `json:"priceFactor,omitempty"`
+	IsFree         *bool    `json:"isFree,omitempty"`
+	SupportsImages bool     `json:"supportsImages,omitempty"`
+	ContextWindow  int64    `json:"contextWindow,omitempty"`
+	Model          string   `json:"model"`
+	Label          string   `json:"label"`
 }
 
 type ConversationReference struct {

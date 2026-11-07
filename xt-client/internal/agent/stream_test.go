@@ -46,6 +46,24 @@ func TestStreamWithoutToolIndicesKeepsDistinctCalls(t *testing.T) {
 	}
 }
 
+func TestStreamCapturesOutputUsageAndFirstToken(t *testing.T) {
+	stream := strings.Join([]string{
+		`data: {"choices":[{"delta":{"content":"第一段"}}]}`,
+		``,
+		`data: {"choices":[{"delta":{"content":"第二段"},"finish_reason":"stop"}]}`,
+		``,
+		`data: {"choices":[],"usage":{"completion_tokens":42}}`,
+		``, `data: [DONE]`, ``,
+	}, "\n")
+	result, err := readModelStream(strings.NewReader(stream), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OutputTokens != 42 || result.FirstOutputAt == nil || result.Content != "第一段第二段" {
+		t.Fatalf("unexpected output metrics: %+v", result)
+	}
+}
+
 func TestServiceStreamsBeforeCompletionAndPersists(t *testing.T) {
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

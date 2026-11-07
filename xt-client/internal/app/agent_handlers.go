@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"xiaotao/xt-client/internal/agent"
@@ -111,6 +113,41 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, map[string]any{"models": svc.AvailableModels()})
 	})
+	mux.HandleFunc("GET /api/agent/attachments/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		path, err := svc.AttachmentPath(r.PathValue("name"))
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		case ".jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		case ".gif":
+			w.Header().Set("Content-Type", "image/gif")
+		case ".webp":
+			w.Header().Set("Content-Type", "image/webp")
+		}
+		http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
+	})
 	mux.HandleFunc("GET /api/agent/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
@@ -206,11 +243,12 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			return
 		}
 		var input struct {
-			Content    string   `json:"content"`
-			Model      string   `json:"model"`
-			References []string `json:"references"`
+			Content    string             `json:"content"`
+			Model      string             `json:"model"`
+			References []string           `json:"references"`
+			Images     []agent.ImageInput `json:"images"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20)).Decode(&input); err != nil {
 			apiError(w, 400, "消息格式无效")
 			return
 		}
@@ -227,7 +265,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, b)
 			flusher.Flush()
 		}
-		err := svc.SendWithReferences(r.Context(), r.PathValue("id"), input.Content, input.Model, input.References, write)
+		err := svc.SendWithImages(r.Context(), r.PathValue("id"), input.Content, input.Model, input.References, input.Images, write)
 		if err != nil {
 			write(agent.Event{Type: "error", SessionID: r.PathValue("id"), Error: err.Error()})
 		}
@@ -315,6 +353,55 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			return
 		}
 		if err := svc.RenameProject(input.Path, input.Name); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("GET /api/agent/projects", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		projects, err := svc.ListProjects()
+		if err != nil {
+			apiError(w, 500, err.Error())
+			return
+		}
+		send(w, map[string]any{"projects": projects})
+	})
+	mux.HandleFunc("POST /api/agent/projects", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		if err := svc.SaveProject(input.Path, input.Name); err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("DELETE /api/agent/projects", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		if err := svc.DeleteProject(input.Path); err != nil {
 			apiError(w, 400, err.Error())
 			return
 		}

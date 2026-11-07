@@ -63,3 +63,24 @@ func TestCoreBundleAndLifecycle(t *testing.T) {
 		t.Fatal("environments share Core paths")
 	}
 }
+
+func TestSaveContractIsInlinedInEveryPrompt(t *testing.T) {
+	data := t.TempDir()
+	for _, initial := range []bool{true, false} {
+		prompt, err := prepareCore(data, initial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, err := os.ReadDir(filepath.Join(data, "core"))
+		if err != nil || len(entries) != 1 {
+			t.Fatalf("Core installation: %v, %v", entries, err)
+		}
+		root := filepath.Join(data, "core", entries[0].Name())
+		script := filepath.Join(root, "scripts", "save_progress.py")
+		for _, want := range []string{"save_progress.py", script, "request_id", "topic_id", "summary", "validation", "next_steps", "已启用 XiaoTao 的项目"} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("initial=%v: prompt missing %q", initial, want)
+			}
+		}
+	}
+}
