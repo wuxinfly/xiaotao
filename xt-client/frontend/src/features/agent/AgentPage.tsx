@@ -1478,6 +1478,13 @@ export function AgentPage({visible}: {visible: boolean}) {
     setDeleting(item.id);
     try {
       await api.deleteAgentSession(item.id);
+      if (item.project.path && !item.project.isDefault && !item.project.removed) {
+        setSavedProjects(current => {
+          const key = item.project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
+          return current.some(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === key)
+            ? current : [...current, {...item.project, saved: true}];
+        });
+      }
       setExitingSession(item.id);
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (!reduceMotion) await new Promise(resolve => window.setTimeout(resolve, 180));
@@ -1785,20 +1792,16 @@ export function AgentPage({visible}: {visible: boolean}) {
     <ModalPresence>{projectOpen && <ProjectModal
       name={projectName}
       path={path}
-      onApply={(nextPath, nextName, saved) => {
+      onApply={(nextPath, nextName) => {
         setPath(nextPath);
         setProjectName(nextName);
         setProjectOpen(false);
-        if (nextPath && saved) setSavedProjects(current => {
+        if (nextPath) setSavedProjects(current => {
           const key = nextPath.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
-          return [...current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== key), {path: nextPath, name: nextName || current.find(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === key)?.name || nextName, saved: true}];
+          return [...current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== key), {path: nextPath, name: nextName, saved: true}];
         });
         setError('');
       }}
-      onSaved={(savedPath, savedName) => setSavedProjects(current => {
-        const key = savedPath.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
-        return [...current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== key), {path: savedPath, name: savedName, saved: true}];
-      })}
       onClose={() => setProjectOpen(false)}
     />}</ModalPresence>
   </section>;

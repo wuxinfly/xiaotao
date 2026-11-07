@@ -96,6 +96,53 @@ func TestSavedProjectsRemainAfterSessionsAndRenamePersist(t *testing.T) {
 	}
 }
 
+func TestDeletingSessionPreservesImplicitProject(t *testing.T) {
+	data := t.TempDir()
+	svc := NewService(data, "http://localhost", nil, nil, nil)
+	root := t.TempDir()
+	session, err := svc.Create(Options{ProjectPath: root, ProjectName: "原项目", Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Delete(session.ID); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewService(data, "http://localhost", nil, nil, nil)
+	projects, err := reopened.ListProjects()
+	if err != nil || len(projects) != 1 || !projects[0].Saved || projects[0].Path != root || projects[0].Name != "原项目" {
+		t.Fatalf("project missing after deletion and restart: %+v %v", projects, err)
+	}
+	if err = reopened.DeleteProject(root); err != nil {
+		t.Fatal(err)
+	}
+	projects, err = reopened.ListProjects()
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("deleted project returned: %+v %v", projects, err)
+	}
+}
+
+func TestDeletingRemovedProjectSessionDoesNotRestoreProject(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	root := t.TempDir()
+	if err := svc.SaveProject(root, "项目"); err != nil {
+		t.Fatal(err)
+	}
+	session, err := svc.Create(Options{ProjectPath: root, Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.DeleteProject(root); err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Delete(session.ID); err != nil {
+		t.Fatal(err)
+	}
+	projects, err := svc.ListProjects()
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("removed project resurrected: %+v %v", projects, err)
+	}
+}
+
 func TestDeleteProjectSendsSessionsToRecent(t *testing.T) {
 	data := t.TempDir()
 	svc := NewService(data, "http://localhost", nil, nil, nil)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func (s *Service) openStore() (*sql.DB, error) {
@@ -287,6 +288,29 @@ func (s *Service) deleteSession(id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	var metadata string
+	if err = tx.QueryRow("SELECT metadata FROM sessions WHERE id=?", id).Scan(&metadata); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("任务不存在")
+		}
+		return err
+	}
+	var session Session
+	if err = json.Unmarshal([]byte(metadata), &session); err != nil {
+		return err
+	}
+	s.markDefault(&session)
+	if !session.Project.IsDefault && !session.Project.Removed {
+		now := time.Now()
+		project := SavedProject{Path: session.Project.Path, Name: session.Project.Name, CreatedAt: now, UpdatedAt: now}
+		raw, marshalErr := json.Marshal(project)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, err = tx.Exec("INSERT INTO saved_projects(path,metadata) VALUES(?,?) ON CONFLICT(path) DO NOTHING", normalizeProjectPath(project.Path), string(raw)); err != nil {
+			return err
+		}
+	}
 	result, err := tx.Exec("DELETE FROM sessions WHERE id=?", id)
 	if err != nil {
 		return err

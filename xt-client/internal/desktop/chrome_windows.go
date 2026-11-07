@@ -170,7 +170,8 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 	}
 	var old uintptr
 	taskbar := win("RegisterWindowMessageW", uintptr(unsafe.Pointer(windows.StringToUTF16Ptr("TaskbarCreated"))))
-	callback := syscall.NewCallback(func(h uintptr, msg uint32, wp, lp uintptr) uintptr {
+	callback := syscall.NewCallback(func(h uintptr, msg uint32, wp uintptr, lparam unsafe.Pointer) uintptr {
+		lp := uintptr(lparam)
 		switch msg {
 		case 0x14:
 			if brush != 0 {
@@ -182,20 +183,18 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 			}
 		case 0x24: // Constrain native maximization to the monitor work area.
 			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
+			if info, ok := monitorInfoFor(h); ok && lp != 0 {
+				constrainMaximizedWindow((*minMaxInfo)(lparam), info)
+			}
 			return status
 		case 0x83: // Let WebView cover the entire client area, including the old top frame.
 			if wp != 0 {
 				return 0
 			}
-		case 0x5: // Keep the WebView inside the work area while maximized.
+		case 0x5:
 			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
 			if wp != 1 {
 				resizeStartupCover(hwnd)
-			}
-			if win("IsZoomed", hwnd) != 0 {
-				if info, ok := monitorInfoFor(hwnd); ok {
-					resizeMaximizedChild(hwnd, info)
-				}
 			}
 			return status
 		case 0x84: // Keep resizing available after removing the non-client frame.

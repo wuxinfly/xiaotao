@@ -13,12 +13,13 @@ test('project actions prefill, rename and open folders', {timeout:60000}, async 
     const page=await browser.newPage({viewport:{width:1200,height:800}});
     const session={id:'s1',title:'历史会话',model:'test',status:'completed',project:{path:'E:/fixture',name:'测试项目'},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),messages:[],activity:[]};
     const savedProjects=[{...session.project,saved:true},{path:'E:/empty',name:'空项目',saved:true}];
-    let opened='', renamed='', renamedPath='', deleted='';
+    let opened='', renamed='', renamedPath='', deleted='', savedPath='', savedName='';
     await page.route('**/api/**',route=>{
       const path=new URL(route.request().url()).pathname;
       if(path==='/api/agent/sessions') return route.fulfill({json:{sessions:[session]}});
       if(path==='/api/agent/projects' && route.request().method()==='GET') return route.fulfill({json:{projects:savedProjects}});
-      if(path==='/api/agent/project') {const input=route.request().postDataJSON();return route.fulfill({json:{path:input.path,name:input.path==='E:/unsaved'?'未保存项目':'测试项目'}});}
+      if(path==='/api/agent/project') {const input=route.request().postDataJSON();return route.fulfill({json:{path:input.path,name:input.path==='E:/unsaved'?'新选项目':'测试项目'}});}
+      if(path==='/api/agent/projects' && route.request().method()==='POST') {const input=route.request().postDataJSON();savedPath=input.path;savedName=input.name;savedProjects.push({path:input.path,name:input.name,saved:true});return route.fulfill({json:{ok:true}});}
       if(path==='/api/agent/project/name') {const input=route.request().postDataJSON();renamed=input.name;renamedPath=input.path;const saved=savedProjects.find(item=>item.path===input.path);if(saved) saved.name=input.name;if(session.project.path===input.path) session.project.name=input.name;return route.fulfill({json:{ok:true}});}
       if(path==='/api/agent/projects' && route.request().method()==='DELETE') {deleted=route.request().postDataJSON().path;return route.fulfill({json:{ok:true}});}
       if(path==='/api/agent/project/open') {opened=route.request().postDataJSON().path;return route.fulfill({json:{ok:true}});}
@@ -57,8 +58,14 @@ test('project actions prefill, rename and open folders', {timeout:60000}, async 
     await page.evaluate(() => {window.xtPickFolderOnly=()=>window.xtFolderPicked({path:'E:/unsaved'});});
     await page.getByRole('button',{name:'选择',exact:true}).click();
     await page.getByLabel('已选项目目录').waitFor();
+    await page.getByLabel('项目名称').fill('新选项目');
     await page.getByRole('button',{name:'使用这个项目'}).click();
-    assert.equal(await page.getByRole('button',{name:'删除项目 未保存项目'}).count(),0);
+    // 使用这个项目会同时保存分类，不再有单独的“保存项目”按钮。
+    await page.locator('.agent-group-label').filter({hasText:'新选项目'}).waitFor();
+    assert.equal(savedPath,'E:/unsaved');
+    assert.equal(savedName,'新选项目');
+    assert.equal(await page.locator('button[aria-label="删除项目 新选项目"]').count(),1);
+    assert.equal(await page.getByRole('button',{name:'保存项目'}).count(),0);
     const emptyGroup=page.locator('.agent-session-group').filter({hasText:'空项目'});
     // A saved project without sessions stays visible with an empty hint.
     assert.equal(await page.getByLabel('空项目 暂无会话').innerText(),'暂无会话');
@@ -88,5 +95,30 @@ test('project actions prefill, rename and open folders', {timeout:60000}, async 
     await recent.waitFor();
     assert.equal(await page.locator('.agent-session-row').count(),1);
     assert.equal(await page.locator('.agent-session-title').innerText(),'历史会话');
+  } finally {await browser?.close();server.kill();}
+});
+
+test('deleting the last session retains its project immediately', {timeout:60000}, async () => {
+  const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5196','--strictPort'],{stdio:['ignore','pipe','pipe']});
+  let browser;
+  try {
+    await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in')) resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
+    browser=await chromium.launch({channel:'msedge',headless:true});
+    const page=await browser.newPage();
+    const session={id:'s1',title:'待删除',model:'test',status:'completed',project:{path:'E:/fixture',name:'项目'},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),messages:[],activity:[]};
+    await page.route('**/api/**',route=>{
+      const url=new URL(route.request().url());
+      if(url.pathname==='/api/agent/sessions') return route.fulfill({json:{sessions:[session]}});
+      if(url.pathname==='/api/agent/projects') return route.fulfill({json:{projects:[{...session.project,saved:false}]}});
+      return route.fulfill({json:{ok:true,accounts:[],providers:[],models:[]}});
+    });
+    await page.goto('http://127.0.0.1:5196');
+    const row=page.locator('.agent-session-row').filter({hasText:'待删除'});
+    await row.hover();
+    await row.click({button:'right'});
+    await page.getByRole('menuitem',{name:'删除'}).click();
+    await page.getByRole('alertdialog',{name:'删除会话？'}).getByRole('button',{name:'删除会话'}).click();
+    await page.getByLabel('项目 暂无会话').waitFor();
+    assert.equal(await page.locator('button[aria-label="删除项目 项目"]').count(),1);
   } finally {await browser?.close();server.kill();}
 });

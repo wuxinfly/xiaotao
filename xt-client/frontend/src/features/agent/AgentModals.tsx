@@ -177,12 +177,11 @@ export function AgentSettingsModal({models, selected, loading, error, onRetry, o
 interface ProjectModalProps {
   name: string;
   path: string;
-  onApply: (path: string, name: string, saved: boolean) => void;
-  onSaved?: (path: string, name: string) => void;
+  onApply: (path: string, name: string) => void;
   onClose: () => void;
 }
 
-export function ProjectModal({name, path, onApply, onSaved, onClose}: ProjectModalProps) {
+export function ProjectModal({name, path, onApply, onClose}: ProjectModalProps) {
   const [draftPath, setDraftPath] = useState(path);
   const [draftName, setDraftName] = useState(name);
   const [error, setError] = useState('');
@@ -236,38 +235,23 @@ export function ProjectModal({name, path, onApply, onSaved, onClose}: ProjectMod
     try {
       const nextPath = draftPath.trim();
       if (!nextPath) {
-        onApply('', draftName.trim(), false);
+        onApply('', draftName.trim());
         return;
       }
       const resolved = await api.resolveAgentProject(nextPath);
-      onApply(resolved.path, draftName.trim() || resolved.name, false);
+      const name = draftName.trim() || resolved.name;
+      await api.saveAgentProject(resolved.path, name);
+      onApply(resolved.path, name);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setChecking(false);
     }
   }
-  async function saveProject() {
-    const nextPath = draftPath.trim();
-    if (!nextPath) return;
-    setChecking(true);
-    setError('');
-    try {
-      const resolved = await api.resolveAgentProject(nextPath);
-      const name = draftName.trim() || resolved.name;
-      await api.saveAgentProject(resolved.path, name);
-      setChecking(false);
-      onSaved?.(resolved.path, name);
-      onApply(resolved.path, name, false);
-    } catch (reason) {
-      setChecking(false);
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  }
 
   return <ModalFrame
     title="选择项目"
-    description="先选项目文件夹，也可以给这个项目起一个更好认的名字。"
+    description="先选项目文件夹，也可以给这个项目起一个更好认的名字。使用后会保存到项目列表。"
     className="agent-project-modal"
     onClose={onClose}
     footer={<>
@@ -278,7 +262,6 @@ export function ProjectModal({name, path, onApply, onSaved, onClose}: ProjectMod
       }}>使用默认目录</button>
       <div className="app-modal-actions">
         <button type="button" className="app-modal-button secondary" onClick={onClose}>取消</button>
-        {draftPath && <button type="button" className="app-modal-button secondary" disabled={checking} onClick={() => void saveProject()}>保存项目</button>}
         <button type="button" className="app-modal-button primary" disabled={checking} onClick={() => void applyProject()}>
           {checking ? '检查中…' : '使用这个项目'}
         </button>
