@@ -24,15 +24,22 @@ type CheckinClaimResult struct {
 }
 
 type AccountService struct {
-	Store   *storage.Store
-	secret  func(id string) ([]byte, error)
-	mu      sync.Mutex
-	refresh map[string]chan struct{}
-	quotaAt map[string]int64
+	Store             *storage.Store
+	secret            func(id string) ([]byte, error)
+	mu                sync.Mutex
+	refresh           map[string]chan struct{}
+	quotaAt           map[string]int64
+	checkinQuotaDelay time.Duration
 }
 
 func NewAccountService(store *storage.Store, secret func(id string) ([]byte, error)) *AccountService {
-	return &AccountService{Store: store, secret: secret, refresh: map[string]chan struct{}{}, quotaAt: map[string]int64{}}
+	return &AccountService{
+		Store:             store,
+		secret:            secret,
+		refresh:           map[string]chan struct{}{},
+		quotaAt:           map[string]int64{},
+		checkinQuotaDelay: 5 * time.Second,
+	}
 }
 
 func (a *AccountService) decodeCred(id string) (*providers.Credential, error) {
@@ -240,6 +247,7 @@ func (a *AccountService) ClaimCheckin(id string) (CheckinClaimResult, error) {
 			acct.Checkin.FetchedAt = time.Now().Unix()
 		})
 		go func() {
+			time.Sleep(a.checkinQuotaDelay)
 			_, _ = a.RefreshQuota(id)
 		}()
 	}

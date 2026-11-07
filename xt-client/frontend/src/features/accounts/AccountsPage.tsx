@@ -15,6 +15,7 @@ import "./accounts.css";
 import { useConfirm } from "../../components/confirm/ConfirmProvider";
 
 type Flow = "idle" | "waiting" | "error";
+const CHECKIN_QUOTA_REFRESH_DELAY_MS = 6000;
 
 export function AccountsPage() {
   const confirm = useConfirm();
@@ -39,6 +40,7 @@ export function AccountsPage() {
   const [importing, setImporting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const checkinRefreshRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback(async () => {
     try {
@@ -66,7 +68,10 @@ export function AccountsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => () => clearInterval(pollRef.current), []);
+  useEffect(() => () => {
+    clearInterval(pollRef.current);
+    clearTimeout(checkinRefreshRef.current);
+  }, []);
   useEffect(() => {
     api.proxyKey().then(r => setApiKey(r.key)).catch(() => setApiKey(""));
   }, []);
@@ -238,6 +243,10 @@ export function AccountsPage() {
         toast.info(res.message || "签到未成功");
       }
       await load();
+      if (res.ok) {
+        clearTimeout(checkinRefreshRef.current);
+        checkinRefreshRef.current = setTimeout(() => void load(), CHECKIN_QUOTA_REFRESH_DELAY_MS);
+      }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     } finally {
@@ -273,6 +282,10 @@ export function AccountsPage() {
       }
       if (failedCount) toast.error(`${failedCount} 个账号签到失败，请单独打卡查看原因`);
       await load();
+      if (successCount > 0) {
+        clearTimeout(checkinRefreshRef.current);
+        checkinRefreshRef.current = setTimeout(() => void load(), CHECKIN_QUOTA_REFRESH_DELAY_MS);
+      }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
     }

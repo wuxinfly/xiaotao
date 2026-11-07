@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
 	"xiaotao/xt-client/internal/storage"
 )
 
@@ -91,5 +93,51 @@ func TestQoderCheckinRefreshesOnceOnUnauthorized(t *testing.T) {
 	raw, _ := store.LoadSecret("q", identity)
 	if !strings.Contains(string(raw), "rotated") {
 		t.Fatal("refresh rotation not persisted")
+	}
+}
+
+func TestQoderCheckinDelaysQuotaRefresh(t *testing.T) {
+	store, err := storage.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	acct := storage.Account{ID: "q", Provider: "qoder", Region: "cn", Enabled: true}
+	if err := store.UpsertAccount(&acct); err != nil {
+		t.Fatal(err)
+	}
+	old := http.DefaultTransport
+	defer func() { http.DefaultTransport = old }()
+	quotaRequests := 0
+	http.DefaultTransport = catalogTransport(func(r *http.Request) (*http.Response, error) {
+		body := `{"campaigns":[]}`
+		switch r.URL.Path {
+		case "/sash/api/v1/me/campaigns":
+			if r.Method == http.MethodGet {
+				body = `{"campaigns":[{"campaignId":"daily","actionType":"CLAIM_BENEFIT","claimStatus":"CLAIMABLE","benefit":{"kind":"CREDITS","amount":37}}]}`
+			}
+		case "/sash/api/v1/me/campaigns/daily/claim":
+			body = `{"status":"CLAIMED","benefit":{"kind":"CREDITS","amount":37}}`
+		case "/api/v2/quota/usage":
+			quotaRequests++
+			body = `{"userQuota":{"used":0,"total":100,"remaining":100}}`
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+	})
+	svc := NewAccountService(store, func(string) ([]byte, error) {
+		return []byte(`{"AccessToken":"fixture"}`), nil
+	})
+	svc.checkinQuotaDelay = 50 * time.Millisecond
+	res, err := svc.ClaimCheckin("q")
+	if err != nil || !res.OK || res.ExtraCredits != 37 {
+		t.Fatalf("unexpected claim result: %+v %v", res, err)
+	}
+	if quotaRequests != 0 {
+		t.Fatalf("quota refreshed before delay: %d", quotaRequests)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if quotaRequests != 1 {
+		t.Fatalf("expected one delayed quota refresh, got %d", quotaRequests)
 	}
 }
