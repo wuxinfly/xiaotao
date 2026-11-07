@@ -12,8 +12,11 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
   const refreshRequested = useRef(false);
   const [copied, setCopied] = useState('');
   const selectedId = accounts.some(a => a.id === accountId) ? accountId : accounts[0]?.id ?? '';
+  const accountsRef = useRef(accounts);
+  accountsRef.current = accounts;
 
   useEffect(() => {
+    const accounts = accountsRef.current;
     let active = true;
     const refresh = refreshRequested.current;
     refreshRequested.current = false;

@@ -858,7 +858,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       setReviewingSessionId(curr => (curr === targetSessionId ? null : curr));
       setError(err instanceof Error ? err.message : '发起复盘失败');
     }
-  }, [active, busy, hasCompletedRuns, reviewingSessionId]);
+  }, [active, busy, hasCompletedRuns, reviewingSessionId, defaultModels, defaultModelSettings, modelConfigs, models]);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false), [projectQuery, setProjectQuery] = useState('');
   const projectTriggerRef = useRef<HTMLButtonElement>(null), projectSearchRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!visible || busy || active) setProjectMenuOpen(false); }, [visible, busy, active]);
@@ -960,7 +960,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     if (!anchor || !el || anchor.id !== active?.id) return;
     el.scrollTop = anchor.top + el.scrollHeight - anchor.height;
     prependAnchor.current = null;
-  }, [active?.messages, active?.activity, historyLoading, historyError]);
+  }, [active?.id, active?.messages, active?.activity, historyLoading, historyError]);
   function preserveHistoryScroll(id: string) {
     const el = feed.current;
     if (el) prependAnchor.current = {id, height:el.scrollHeight, top:el.scrollTop};
@@ -1001,7 +1001,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     observer.observe(element);
     observer.observe(scrollArea);
     return () => observer.disconnect();
-  }, []);
+  }, [updateScrollToBottom]);
   const promptRef = useRef(''), canSendRef = useRef(false);
   const referenceQueryRef = useRef<{from: number; query: string} | null>(null);
   const referenceOpenRef = useRef(false);
@@ -1177,7 +1177,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       })
       .finally(() => {if (request === referenceRequest.current) setReferenceLoading(false);});
     return () => {};
-  }, [referencePicker.open, referencePicker.query, referencePicker.scope, active?.id, active?.project.path, path, prompt]);
+  }, [referencePicker.open, referencePicker.query, referencePicker.scope, active?.id, active?.project.path, path, prompt, editor]);
 
   useEffect(() => {
     const show = (event: Event) => setReferenceDetail((event as CustomEvent<AgentConversationReference>).detail);
@@ -1251,9 +1251,9 @@ export function AgentPage({visible}: {visible: boolean}) {
   useEffect(() => {
     if (feed.current && followFeed.current) feed.current.scrollTop = feed.current.scrollHeight;
     updateScrollToBottom();
-  }, [active?.messages, active?.activity.length, busy, visible]);
+  }, [active?.messages, active?.activity.length, busy, visible, updateScrollToBottom]);
 
-  function saveDraft() {
+  const saveDraft = useCallback(() => {
     if (!editor) return;
     const current = activeSessionRef.current;
     if (current) {
@@ -1263,8 +1263,8 @@ export function AgentPage({visible}: {visible: boolean}) {
         thoughts: mergeHistory(current.thoughts, cached.thoughts), runStats: mergeRunStats(current.runStats, cached.runStats)} : current);
     }
     drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes, images: composerImagesRef.current});
-  }
-  function restoreDraft(id: string, fallbackModel: string) {
+  }, [editor, model, path, projectName, quotes]);
+  const restoreDraft = useCallback((id: string, fallbackModel: string) => {
     const draft = drafts.current.get(id);
     setQuotes(draft?.quotes || []); setQuoteSelection(null); setEditingQuote(null);
     setComposerImages(draft?.images || []);
@@ -1273,7 +1273,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     if (!id) { setPath(draft?.path || ''); setProjectName(draft?.name || ''); }
     followFeed.current = draft?.follow ?? true;
     requestAnimationFrame(() => {if (feed.current && draft && !draft.follow) feed.current.scrollTop = draft.top;});
-  }
+  }, [editor]);
 
   async function send(contentOverride?: string) {
     const text = (contentOverride ?? promptRef.current).trim();
@@ -1410,7 +1410,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       editor?.commands.clearContent(); editor?.commands.focus();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
     finally {setPending(false);}
-  }, [pending, editor, resetHistory, model, path, projectName, quotes]);
+  }, [pending, editor, resetHistory, saveDraft]);
   const openSidebarProjectMenu = useCallback((path: string, name: string, trigger: HTMLElement, key: string) => {
     sidebarProjectTrigger.current = trigger;
     setSessionMenu(null);
@@ -1457,7 +1457,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     } finally { setPending(false); }
     restoreDraft(session.id, session.model);
     editor?.commands.focus();
-  }, [pending, active?.id, editor, model, path, projectName, quotes]);
+  }, [pending, editor, saveDraft, restoreDraft]);
 
   async function deleteSession(item: AgentSession) {
     if (busy || deleting) return;
@@ -1508,7 +1508,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   const activity = active?.activity ?? [];
   const thoughts = active?.thoughts ?? [];
-  const runStats = active?.runStats ?? [];
+  const runStats = useMemo(() => active?.runStats ?? [], [active?.runStats]);
   useLayoutEffect(() => {
     const area = feed.current;
     if (!area) return;
@@ -1518,7 +1518,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     });
     area.querySelectorAll('.agent-run-timeline').forEach(element => observer.observe(element));
     return () => observer.disconnect();
-  }, [active?.id, active?.runStats?.length]);
+  }, [active?.id, active?.runStats?.length, updateScrollToBottom]);
   const contextRun = runStats.at(-1);
   const contextTokens = contextRun?.contextTokens ?? 0;
   const currentModel = model || active?.model || '';
@@ -1534,7 +1534,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   const {entries} = useMemo(() => {
     type Entry = {kind: 'message'; item: AgentMessage; stats?: AgentRunStats} | {kind: 'run'; runId: string; stats: AgentRunStats; phase: 'live' | 'done'};
-    const timeline = active ? conversationMessages(active.messages) : [];
+    const timeline = conversationMessages(active?.messages ?? []);
     const entries: Entry[] = timeline.map(item => ({kind: 'message', item,
       stats: item.role === 'assistant' ? runStats.find(run => run.runId === item.runId) : undefined}));
     for (const run of runStats) {

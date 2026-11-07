@@ -25,7 +25,9 @@ export function Popover({open, onClose, anchorRef, point, side = 'bottom', align
   const [position, setPosition] = useState<CSSProperties>({visibility: 'hidden'});
   const content = useRef(children);
   const close = useRef(onClose);
+  const pointRef = useRef(point);
   close.current = onClose;
+  pointRef.current = point;
   if (open) content.current = children;
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export function Popover({open, onClose, anchorRef, point, side = 'bottom', align
     const element = panel.current;
     if (!element) return;
     const place = () => {
+      const point = pointRef.current;
       const anchor = anchorRef.current?.getBoundingClientRect();
       if (!anchor && !point) return;
       const x = point?.x ?? (align === 'end' ? anchor!.right : anchor!.left);

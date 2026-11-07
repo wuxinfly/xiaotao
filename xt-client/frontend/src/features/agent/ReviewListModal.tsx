@@ -1,4 +1,4 @@
-import {useEffect, useState, useCallback} from 'react';
+import {useEffect, useRef, useState, useCallback} from 'react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
 import {api, type BehaviorReview, type ReviewSummary} from '../../lib/api';
 import {Download, Eye, RotateCw, Trash2, XCircle, Loader2} from 'lucide-react';
@@ -17,10 +17,10 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const nextCursorRef = useRef(nextCursor); nextCursorRef.current = nextCursor;
   const [actionError, setActionError] = useState('');
   const [activeDetail, setActiveDetail] = useState<BehaviorReview | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
   const fetchReviews = useCallback(async (reset = true) => {
     if (reset) {
       setLoading(true);
@@ -31,7 +31,7 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
 
     try {
       const sessionId = filterMode === 'current' ? currentSessionId : undefined;
-      const cursor = reset ? undefined : nextCursor;
+      const cursor = reset ? undefined : nextCursorRef.current;
       const res = await api.listReviews(sessionId, cursor, 20);
       setReviews(prev => (reset ? res.reviews : [...prev, ...res.reviews]));
       setNextCursor(res.nextCursor);
@@ -41,11 +41,11 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filterMode, currentSessionId, nextCursor]);
+  }, [filterMode, currentSessionId]);
 
   useEffect(() => {
     void fetchReviews(true);
-  }, [filterMode, currentSessionId]);
+  }, [fetchReviews]);
 
   // Periodic poll if any item is pending/running
   useEffect(() => {

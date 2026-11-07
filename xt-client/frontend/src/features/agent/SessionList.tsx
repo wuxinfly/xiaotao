@@ -72,7 +72,7 @@ export const SessionList = memo(function SessionList(props: Props) {
       else if (row.top + row.height > el.scrollTop + el.clientHeight) el.scrollTop = row.top + row.height - el.clientHeight;
       setViewport({top:el.scrollTop, height:el.clientHeight});
     }
-  }, [activeId, view, sorted]);
+  }, [activeId, view, sorted, rows, rowIndices]);
   // Keep a focused row mounted when the pointer scrolls it outside the window.
   const firstAt = (offset: number) => {
     let low = 0, high = rows.length;
