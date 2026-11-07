@@ -20,13 +20,18 @@ func TestSendLoadsCurrentProjectInstructions(t *testing.T) {
 			Messages []struct {
 				Content string `json:"content"`
 			} `json:"messages"`
+			Tools []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 			return
 		}
-		prompts = append(prompts, body.Messages[0].Content)
 		w.Header().Set("Content-Type", "application/json")
+		if len(body.Tools) == 0 {
+			w.Write([]byte(`{"choices":[{"message":{"content":"确认请求。"}}]}`))
+			return
+		}
+		prompts = append(prompts, body.Messages[0].Content)
 		w.Write([]byte(`{"choices":[{"message":{"content":"done"}}]}`))
 	}))
 	defer server.Close()

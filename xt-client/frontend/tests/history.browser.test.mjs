@@ -20,6 +20,8 @@ test('large sidebar and paged history interactions', {timeout: 60000}, async () 
     let fullReads=0;
     await page.route('**/api/**', async route=> {
       const url=new URL(route.request().url());
+      if(url.pathname==='/api/agent/models') return route.fulfill({json:{models:[{model:'test',label:'测试模型'}]}});
+      if(url.pathname==='/api/agent/access-mode') return route.fulfill({json:{mode:'full'}});
       if(url.pathname==='/api/agent/sessions') return route.fulfill({json:{sessions}});
       if (/\/sessions\/s\d+$/.test(url.pathname) && route.request().method()==='GET') fullReads++;
       if (url.pathname.endsWith('/messages') && route.request().method()==='POST') {
@@ -37,16 +39,18 @@ test('large sidebar and paged history interactions', {timeout: 60000}, async () 
       return route.fulfill({json:{}});
     });
     await page.goto('http://127.0.0.1:5188');
-    await page.getByRole('button',{name:'测试项目',exact:true}).waitFor();
+    await page.locator('.agent-group-label').filter({hasText:'测试项目'}).waitFor();
     assert.ok(await page.locator('.agent-session-row').count()<35,'10k sessions must stay windowed');
-    await page.getByRole('button',{name:'测试项目',exact:true}).click();
+    await page.locator('.agent-group-label').filter({hasText:'测试项目'}).click();
     assert.equal(await page.locator('.agent-session-row').count(),0,'collapsed children must unmount');
-    await page.getByRole('button',{name:'测试项目',exact:true}).click();
+    await page.locator('.agent-group-label').filter({hasText:'测试项目'}).click();
     const nav=page.getByRole('navigation',{name:'会话历史'});
     await nav.focus(); await page.keyboard.press('End');
     await page.waitForFunction(()=>document.activeElement?.getAttribute('title')==='会话 9999');
     assert.ok(await page.locator('.agent-session-row').count()<35);
-    await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Home');
+    await page.waitForFunction(()=>document.activeElement?.classList.contains('agent-group-label'));
+    await page.keyboard.press('ArrowDown');
     await page.waitForFunction(()=>document.activeElement?.getAttribute('title')==='会话 0');
     await page.keyboard.press('Enter');
     await page.locator('.agent-message').last().waitFor();

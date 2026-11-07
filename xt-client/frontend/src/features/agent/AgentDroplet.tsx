@@ -1,5 +1,5 @@
 import './AgentDroplet.css';
-export type DropletState = 'idle' | 'waiting' | 'thinking' | 'tool' | 'reading' | 'writing' | 'completed' | 'error';
+export type DropletState = 'idle' | 'waiting' | 'thinking' | 'tool' | 'reading' | 'writing' | 'output' | 'completed' | 'error';
 const symbols: Record<string, string> = {
 error:'<rect fill="currentColor" x="8" y="1" width="8" height="14" rx="3"/><circle fill="currentColor" cx="12" cy="21" r="3"/>' , 
 completed:'<path fill="currentColor" d="M2 10h4v12H2zM8 10l5-7c.5-.7 1.5-.7 2-.1.8 1 .5 2.6.1 3.8L14 9h6a2 2 0 0 1 2 2.4l-1.6 8A3 3 0 0 1 17.5 22H8Z"/>',

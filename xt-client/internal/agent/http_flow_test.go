@@ -20,10 +20,11 @@ func TestHTTPFlowWithMockModel(t *testing.T) {
 			t.Errorf("unexpected model request")
 		}
 		w.Header().Set("Content-Type", "application/json")
+		if !bytes.Contains(body, []byte(`"tools"`)) {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"先确认项目结构。"}}]}`))
+			return
+		}
 		if calls.Add(1) == 1 {
-			if !bytes.Contains(body, []byte(`"tools"`)) {
-				t.Errorf("tool schema missing")
-			}
 			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"list_files","arguments":"{\"path\":\".\"}"}}]}}]}`))
 			return
 		}
@@ -50,8 +51,8 @@ func TestHTTPFlowWithMockModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls.Load() != 2 {
-		t.Fatalf("expected two model calls, got %d", calls.Load())
+	if calls.Load() < 2 {
+		t.Fatalf("expected tool and final model calls, got %d", calls.Load())
 	}
 	if !strings.Contains(events.String(), "项目结构已看过。") {
 		t.Fatalf("missing final agent message: %s", events.String())
@@ -63,9 +64,15 @@ func TestHTTPFlowWithMockModel(t *testing.T) {
 	if loaded.Status != StatusCompleted || len(loaded.Activity) != 1 || loaded.Activity[0].Status != "completed" {
 		t.Fatalf("unexpected final session: %+v", loaded)
 	}
+	if len(loaded.Thoughts) == 0 || len(loaded.RunStats) != 1 {
+		t.Fatalf("missing run timeline: %+v", loaded)
+	}
 	raw, _ := json.Marshal(loaded)
 	if !bytes.Contains(raw, []byte(`"role":"tool"`)) {
 		t.Fatalf("tool result was not persisted: %s", raw)
+	}
+	if !bytes.Contains(raw, []byte(`"thoughts"`)) || !bytes.Contains(raw, []byte(`"runStats"`)) {
+		t.Fatalf("run timeline was not persisted: %s", raw)
 	}
 }
 
@@ -77,9 +84,15 @@ func TestSwitchModelBetweenMessages(t *testing.T) {
 		var payload struct {
 			Model    string           `json:"model"`
 			Messages []map[string]any `json:"messages"`
+			Tools    []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Error(err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if len(payload.Tools) == 0 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"确认请求。"}}]}`))
+			return
 		}
 		models = append(models, payload.Model)
 		histories = append(histories, payload.Messages)
@@ -87,7 +100,6 @@ func TestSwitchModelBetweenMessages(t *testing.T) {
 			close(started)
 			<-release
 		}
-		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"reply"}}]}`))
 	}))
 	defer server.Close()

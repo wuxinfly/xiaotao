@@ -13,9 +13,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
-const maxTurns = 40
+const (
+	maxTurns          = 40
+	stageToolLimit    = 8
+	introPrompt       = "先不要调用工具。用一句简洁自然的中文复述你对用户请求的理解，不超过 40 个字，只使用中文。只输出这句话。"
+	observationPrompt = "先不要调用工具。用一句简洁自然的中文说明当前进展和下一步，不超过 50 个字，只使用中文。只输出这句话。"
+	checkpointPrompt  = "先暂停调用工具。用一句简洁自然的中文说明目前已查明什么、下一步要做什么，不超过 60 个字。只输出这句话。"
+)
 
 type Service struct {
 	dataDir   string
@@ -46,6 +53,7 @@ type httpModelClient struct {
 
 type completion struct {
 	Content   string
+	Reasoning string
 	ToolCalls []toolCall
 }
 
@@ -58,8 +66,9 @@ type toolCall struct {
 type backendResponse struct {
 	Choices []struct {
 		Message struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
 				ID       string `json:"id"`
 				Type     string `json:"type"`
 				Function struct {
@@ -132,6 +141,8 @@ func (s *Service) Create(options Options) (*Session, error) {
 		Status:    StatusIdle,
 		Messages:  []Message{},
 		Activity:  []Activity{},
+		Thoughts:  []ThoughtStep{},
+		RunStats:  []RunStats{},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -215,6 +226,7 @@ func (s *Service) List() ([]*Session, error) {
 		if !known && session.Status == StatusRunning {
 			session.Status = StatusFailed
 			session.Error = "上次任务因服务退出而中断"
+			finishInterruptedRuns(session)
 			if err := s.saveSession(session); err != nil {
 				return nil, err
 			}
@@ -244,6 +256,7 @@ func (s *Service) ListSummaries() ([]*Session, error) {
 			}
 			full.Status = StatusFailed
 			full.Error = "上次任务因服务退出而中断"
+			finishInterruptedRuns(full)
 			if err := s.saveSession(full); err != nil {
 				return nil, err
 			}
@@ -267,6 +280,10 @@ func (s *Service) SendWithModel(ctx context.Context, sessionID, text, model stri
 // SendWithReferences freezes directly referenced conversations before appending
 // the user message. Existing callers without references keep the old behavior.
 func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model string, sourceIDs []string, emit func(Event)) error {
+	return s.send(ctx, sessionID, text, model, sourceIDs, emit)
+}
+
+func (s *Service) send(ctx context.Context, sessionID, text, model string, sourceIDs []string, emit func(Event)) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("消息不能为空")
@@ -331,6 +348,8 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 		return err
 	}
 	userMessage := Message{ID: "msg_" + randomID(6), Role: "user", Content: text, References: references, CreatedAt: now}
+	runID := "turn_" + randomID(6)
+	userMessage.RunID = runID
 	history.Messages = append(history.Messages, userMessage)
 	history.UpdatedAt = now
 	if history.Title == "新任务" {
@@ -344,8 +363,23 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions}}
 	messages = append(messages, modelHistory(history.Messages, userMessage.ID)...)
 	client := &httpModelClient{endpoint: s.endpoint, key: s.key, client: s.client}
-	err = s.loopWithReferences(runCtx, workspace, client, history, messages, references, emit)
+	stats := RunStats{Phase: "working", RunID: runID, UserMessageID: userMessage.ID, StartedAt: now}
+	stats.ContextTokens = estimateContextTokens(messages)
+	history.RunStats = append(history.RunStats, stats)
+	emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: &stats})
+	intro := s.describeRun(runCtx, client, history.Model, "用户请求：\n"+text, introPrompt)
+	if !visibleChineseThinking(intro) {
+		intro = "我先理解你的需求，再决定下一步怎么做。"
+	}
+	introStep := ThoughtStep{ID: "thought_" + randomID(5), RunID: runID, Kind: "understanding", Text: intro, Status: "completed", CreatedAt: time.Now()}
+	history.Thoughts = append(history.Thoughts, introStep)
+	history.UpdatedAt = introStep.CreatedAt
+	emit(Event{Type: "thought", SessionID: sessionID, Thought: &introStep})
+	_ = s.saveSession(history)
+	err = s.loopWithRun(runCtx, workspace, client, history, messages, references, runID, &stats, emit)
 	history.UpdatedAt = time.Now()
+	end := time.Now()
+	stats.EndedAt = &end
 	if err != nil {
 		if runCtx.Err() != nil {
 			history.Status = StatusCanceled
@@ -354,11 +388,17 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 			history.Status = StatusFailed
 			history.Error = err.Error()
 		}
-		emit(Event{Type: "status", SessionID: sessionID, Status: history.Status, Error: history.Error})
 	} else {
 		history.Status = StatusCompleted
-		emit(Event{Type: "status", SessionID: sessionID, Status: StatusCompleted})
 	}
+	stats.Phase = history.Status
+	for i := range history.RunStats {
+		if history.RunStats[i].RunID == runID {
+			history.RunStats[i] = stats
+		}
+	}
+	emit(Event{Type: "run_stats", SessionID: sessionID, RunID: runID, RunStats: &stats})
+	emit(Event{Type: "status", SessionID: sessionID, RunID: runID, Status: history.Status, Error: history.Error})
 	saveErr := s.saveSession(history)
 	if err != nil {
 		return err
@@ -380,15 +420,22 @@ func (s *Service) concurrentTaskContext(id, project string) string {
 }
 
 func (s *Service) loop(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, emit func(Event)) error {
-	return s.loopWithReferences(ctx, workspace, client, history, messages, nil, emit)
+	stats := RunStats{RunID: "turn_" + randomID(6), StartedAt: time.Now()}
+	return s.loopWithRun(ctx, workspace, client, history, messages, nil, stats.RunID, &stats, emit)
 }
 
 func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, emit func(Event)) error {
+	stats := RunStats{RunID: "turn_" + randomID(6), StartedAt: time.Now()}
+	return s.loopWithRun(ctx, workspace, client, history, messages, references, stats.RunID, &stats, emit)
+}
+
+func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client modelClient, history *Session, messages []map[string]any, references []ConversationReference, runID string, stats *RunStats, emit func(Event)) error {
 	connections, mcpTools, err := s.openMCP(ctx)
 	if err != nil {
 		return fmt.Errorf("MCP 启动失败: %w", err)
 	}
 	defer closeMCPConnections(connections)
+	toolsSinceCheckpoint := 0
 	for turn := 0; turn < maxTurns; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -404,16 +451,22 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 		var streamed *Message
 		requestMessages := append([]map[string]any{}, messages...)
 		if len(requestMessages) > 0 && requestMessages[0]["role"] == "system" {
-			requestMessages[0] = map[string]any{"role": "system", "content": fmt.Sprint(messages[0]["content"]) + "\n" + s.concurrentTaskContext(history.ID, history.Project.Path)}
+			requestMessages[0] = map[string]any{"role": "system", "content": fmt.Sprint(messages[0]["content"]) + "\n执行中的说明用于进度；完成任务后直接给出最终回答。\n" + s.concurrentTaskContext(history.ID, history.Project.Path)}
 		}
+		stats.ContextTokens = estimateContextTokens(requestMessages)
+		for i := range history.RunStats {
+			if history.RunStats[i].RunID == runID {
+				history.RunStats[i].ContextTokens = stats.ContextTokens
+			}
+		}
+		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		result, err := client.Complete(ctx, history.Model, requestMessages, tools, func(delta string) {
 			if delta == "" {
 				return
 			}
 			if streamed == nil {
-				message := Message{ID: "msg_" + randomID(6), Role: "assistant", CreatedAt: time.Now()}
-				history.Messages = append(history.Messages, message)
-				streamed = &history.Messages[len(history.Messages)-1]
+				message := Message{ID: "msg_" + randomID(6), Role: "assistant", RunID: runID, CreatedAt: time.Now()}
+				streamed = &message
 			}
 			streamed.Content += delta
 			piece := *streamed
@@ -421,7 +474,22 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 			emit(Event{Type: "message_delta", SessionID: history.ID, Message: &piece})
 		})
 		if err != nil {
+			if streamed != nil && streamed.Content != "" {
+				history.Messages = append(history.Messages, *streamed)
+				emit(Event{Type: "message", SessionID: history.ID, Message: streamed})
+			}
 			return fmt.Errorf("模型调用失败: %w", err)
+		}
+		if readableReasoning(result.Reasoning) != "" {
+			observation := s.describeRun(ctx, client, history.Model, reasoningContext(result.Reasoning), observationPrompt)
+			if visibleChineseThinking(observation) {
+				step := ThoughtStep{
+					ID: "thought_" + randomID(5), RunID: runID, Kind: "observation",
+					Text: observation, Status: "completed", CreatedAt: time.Now(),
+				}
+				history.Thoughts = append(history.Thoughts, step)
+				emit(Event{Type: "thought", SessionID: history.ID, Thought: &step})
+			}
 		}
 		if len(result.ToolCalls) == 0 {
 			content := strings.TrimSpace(result.Content)
@@ -433,11 +501,20 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 				streamed.Content = content
 				message = *streamed
 			} else {
-				message = Message{ID: "msg_" + randomID(6), Role: "assistant", Content: content, CreatedAt: time.Now()}
-				history.Messages = append(history.Messages, message)
+				message = Message{ID: "msg_" + randomID(6), Role: "assistant", Content: content, RunID: runID, CreatedAt: time.Now()}
 			}
-			emit(Event{Type: "message", SessionID: history.ID, Message: &message})
+			history.Messages = append(history.Messages, message)
+			emit(Event{Type: "answer_end", SessionID: history.ID, RunID: runID, MessageID: message.ID, Message: &message})
 			return nil
+		}
+		summaryText := strings.TrimSpace(result.Content)
+		if summaryText != "" {
+			step := ThoughtStep{
+				ID: "thought_" + randomID(5), RunID: runID, Kind: "decision",
+				Text: readableThought(summaryText), Status: "completed", CreatedAt: time.Now(),
+			}
+			history.Thoughts = append(history.Thoughts, step)
+			emit(Event{Type: "thought", SessionID: history.ID, Thought: &step})
 		}
 		assistant := map[string]any{"role": "assistant", "content": result.Content}
 		rawCalls := make([]any, 0, len(result.ToolCalls))
@@ -449,17 +526,18 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 		}
 		assistant["tool_calls"] = rawCalls
 		messages = append(messages, assistant)
-		if streamed == nil && strings.TrimSpace(result.Content) != "" {
-			history.Messages = append(history.Messages, Message{
-				ID: "msg_" + randomID(6), Role: "assistant", Content: result.Content, CreatedAt: time.Now(),
-			})
+		storedCalls := make([]map[string]any, 0, len(rawCalls))
+		for _, call := range rawCalls {
+			storedCalls = append(storedCalls, call.(map[string]any))
 		}
+		history.Messages = append(history.Messages, Message{ID: "msg_" + randomID(6), Role: "assistant", Content: result.Content, ToolCalls: storedCalls, RunID: runID, CreatedAt: time.Now()})
 		for _, call := range result.ToolCalls {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			activity := Activity{
 				ID:        "act_" + randomID(5),
+				RunID:     runID,
 				Kind:      call.Name,
 				Title:     activityTitle(call.Name),
 				Detail:    activityDetail(call.Arguments),
@@ -513,6 +591,14 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 			history.Activity[len(history.Activity)-1] = activity
 			history.UpdatedAt = end
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
+			stats.ToolCalls++
+			if call.Name == "read_file" {
+				stats.FilesRead++
+			}
+			if call.Name == "write_file" {
+				stats.FilesWritten++
+			}
+			toolsSinceCheckpoint++
 			messages = append(messages, map[string]any{
 				"role": "tool", "tool_call_id": call.ID, "name": call.Name, "content": output,
 			})
@@ -520,6 +606,22 @@ func (s *Service) loopWithReferences(ctx context.Context, workspace *Workspace, 
 				ID: "msg_" + randomID(6), Role: "tool", Content: output,
 				ToolCallID: call.ID, ToolName: call.Name, CreatedAt: end,
 			})
+			if err := s.saveSession(history); err != nil {
+				return err
+			}
+		}
+		if toolsSinceCheckpoint >= stageToolLimit {
+			checkpoint := s.describeRun(ctx, client, history.Model, checkpointContext(messages), checkpointPrompt)
+			if !visibleChineseThinking(checkpoint) {
+				checkpoint = "已经完成一批检查，我会根据当前结果继续下一步。"
+			}
+			step := ThoughtStep{
+				ID: "thought_" + randomID(5), RunID: runID, Kind: "checkpoint",
+				Text: readableThought(checkpoint), Status: "completed", CreatedAt: time.Now(),
+			}
+			history.Thoughts = append(history.Thoughts, step)
+			emit(Event{Type: "thought", SessionID: history.ID, Thought: &step})
+			toolsSinceCheckpoint = 0
 			if err := s.saveSession(history); err != nil {
 				return err
 			}
@@ -537,6 +639,129 @@ func (s *Service) Cancel(id string) bool {
 	}
 	r.cancel()
 	return true
+}
+
+func (s *Service) describeRun(ctx context.Context, client modelClient, model, contextText, instruction string) string {
+	if ctx.Err() != nil {
+		return ""
+	}
+	callCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	result, err := client.Complete(callCtx, model, []map[string]any{
+		{"role": "system", "content": "你是小涛的进度摘要器。只写可展示给用户的简短判断，不输出分析过程、Markdown 或前缀。"},
+		{"role": "user", "content": contextText + "\n\n" + instruction},
+	}, nil, nil)
+	if err != nil || result == nil {
+		return ""
+	}
+	text := strings.TrimSpace(result.Content)
+	if text == "" {
+		text = strings.TrimSpace(result.Reasoning)
+	}
+	return readableThought(text)
+}
+
+func readableReasoning(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		return ""
+	}
+	for _, cut := range []string{"\n", "分析：", "用户要求", "我们需要", "Let me", "I need to"} {
+		if index := strings.Index(value, cut); index > 0 {
+			value = strings.TrimSpace(value[:index])
+		}
+	}
+	return readableThought(value)
+}
+
+func readableThought(value string) string {
+	value = strings.TrimSpace(strings.Join(strings.Fields(value), " "))
+	value = strings.TrimLeft(value, "-*# ")
+	runes := []rune(value)
+	if len(runes) > 60 {
+		return string(runes[:60]) + "…"
+	}
+	return value
+}
+
+func visibleChineseThinking(value string) bool {
+	hasChinese := false
+	for _, r := range value {
+		if unicode.Is(unicode.Han, r) {
+			hasChinese = true
+			break
+		}
+	}
+	if !hasChinese {
+		return false
+	}
+	// A mostly English sentence is still model reasoning, even if it contains
+	// one Chinese identifier or UI label.
+	var latin, visible int
+	for _, r := range value {
+		if unicode.IsLetter(r) {
+			visible++
+			if r < unicode.MaxASCII {
+				latin++
+			}
+		}
+	}
+	return visible == 0 || latin*2 <= visible
+}
+
+func checkpointContext(messages []map[string]any) string {
+	var context strings.Builder
+	for i := len(messages) - 1; i >= 0 && context.Len() < 6000; i-- {
+		message := messages[i]
+		role := fmt.Sprint(message["role"])
+		content := fmt.Sprint(message["content"])
+		if role == "system" {
+			continue
+		}
+		context.WriteString("[" + role + "]\n" + content + "\n\n")
+	}
+	return context.String()
+}
+
+func reasoningContext(reasoning string) string {
+	const limit = 2400
+	value := strings.TrimSpace(reasoning)
+	runes := []rune(value)
+	if len(runes) > limit {
+		value = string(runes[len(runes)-limit:])
+	}
+	return "模型中间判断：\n" + value
+}
+
+func estimateContextTokens(messages []map[string]any) int64 {
+	var bytes int64
+	for _, message := range messages {
+		bytes += estimateContentBytes(message["content"])
+	}
+	if bytes == 0 {
+		return 0
+	}
+	// UTF-8 bytes are deterministic across desktop and browser hosts, while
+	// Chinese, English and code have different token densities. This estimate
+	// remains an estimate until an upstream prompt token count is available.
+	return (bytes + 2) / 3
+}
+
+func estimateContentBytes(value any) int64 {
+	switch content := value.(type) {
+	case string:
+		return int64(len(content))
+	case []any:
+		var total int64
+		for _, part := range content {
+			if item, ok := part.(map[string]any); ok {
+				total += estimateContentBytes(item["text"])
+			}
+		}
+		return total
+	default:
+		return int64(len(fmt.Sprint(content)))
+	}
 }
 
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, onDelta func(string)) (*completion, error) {
@@ -583,7 +808,7 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, fmt.Errorf("模型没有返回结果")
 	}
 	message := body.Choices[0].Message
-	out := &completion{Content: message.Content}
+	out := &completion{Content: message.Content, Reasoning: message.ReasoningContent}
 	for _, call := range message.ToolCalls {
 		args := strings.TrimSpace(call.Function.Arguments)
 		if args == "" {
@@ -614,6 +839,9 @@ func messageToModel(message Message) map[string]any {
 		}
 	}
 	out := map[string]any{"role": message.Role, "content": message.Content}
+	if len(message.ToolCalls) > 0 {
+		out["tool_calls"] = message.ToolCalls
+	}
 	return out
 }
 

@@ -20,9 +20,15 @@ func TestConcurrentSessionsStopIndependently(t *testing.T) {
 			Messages []struct {
 				Content string `json:"content"`
 			} `json:"messages"`
+			Tools []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if len(body.Tools) == 0 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"确认请求。"}}]}`))
 			return
 		}
 		entered <- body.Messages[0].Content
@@ -31,7 +37,6 @@ func TestConcurrentSessionsStopIndependently(t *testing.T) {
 		case <-r.Context().Done():
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"done"}}]}`))
 	}))
 	defer server.Close()

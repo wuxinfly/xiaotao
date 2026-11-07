@@ -170,12 +170,17 @@ func TestSendProvidesOnlyEnabledMetadataAndKeepsCore(t *testing.T) {
 			Messages []struct {
 				Content string `json:"content"`
 			} `json:"messages"`
+			Tools []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
-		prompts = append(prompts, body.Messages[0].Content)
 		w.Header().Set("Content-Type", "application/json")
+		if len(body.Tools) == 0 {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"确认请求。"},"finish_reason":"stop"}]}`)
+			return
+		}
+		prompts = append(prompts, body.Messages[0].Content)
 		fmt.Fprint(w, `{"choices":[{"message":{"content":"done"},"finish_reason":"stop"}]}`)
 	}))
 	defer server.Close()
@@ -236,13 +241,18 @@ func TestSkillBodyIsReadThroughExistingToolAfterDiscovery(t *testing.T) {
 				Content    string `json:"content"`
 				ToolCallID string `json:"tool_call_id"`
 			} `json:"messages"`
+			Tools []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 			return
 		}
-		requests++
 		w.Header().Set("Content-Type", "application/json")
+		if len(body.Tools) == 0 {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"确认请求。"},"finish_reason":"stop"}]}`)
+			return
+		}
+		requests++
 		if requests == 1 {
 			if strings.Contains(body.Messages[0].Content, "SECRET_SKILL_BODY") {
 				t.Error("body preloaded before tool call")

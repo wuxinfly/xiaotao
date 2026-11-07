@@ -110,7 +110,7 @@ func TestInvalidLegacyDoesNotPartiallyMigrate(t *testing.T) {
 func TestSummariesPreserveInterruptedSessionHistory(t *testing.T) {
 	data := t.TempDir()
 	svc := NewService(data, "http://localhost", nil, nil, nil)
-	original := &Session{ID: "run_interrupted", Status: StatusRunning, Messages: []Message{{ID: "m", Content: "hello"}}, Activity: []Activity{{ID: "a", Title: "read"}}, UpdatedAt: time.Now()}
+	original := &Session{ID: "run_interrupted", Status: StatusRunning, RunStats: []RunStats{{RunID: "run", Phase: "working", StartedAt: time.Now()}}, Messages: []Message{{ID: "m", Content: "hello"}}, Activity: []Activity{{ID: "a", Title: "read"}}, UpdatedAt: time.Now()}
 	if err := svc.saveSession(original); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestSummariesPreserveInterruptedSessionHistory(t *testing.T) {
 		t.Fatalf("summary: %+v %v", items, err)
 	}
 	full, err := svc.Get(original.ID)
-	if err != nil || full.Status != StatusFailed || len(full.Messages) != 1 || len(full.Activity) != 1 {
+	if err != nil || full.Status != StatusFailed || len(full.Messages) != 1 || len(full.Activity) != 1 || full.RunStats[0].Phase != "failed" || full.RunStats[0].EndedAt == nil {
 		t.Fatalf("history: %+v %v", full, err)
 	}
 }

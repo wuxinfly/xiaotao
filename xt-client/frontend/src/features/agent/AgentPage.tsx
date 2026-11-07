@@ -1,4 +1,4 @@
-import {AgentDroplet, activityState} from './AgentDroplet';
+import {AgentDroplet, activityState, type DropletState} from './AgentDroplet';
 import {Popover} from '../../components/popover/Popover';
 import {ModalPresence} from '../../components/modal/ModalFrame';
 import {Fragment as ReactFragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
@@ -32,10 +32,11 @@ import {
   Settings2,
   Trash2,
   Square,
+  PanelRight,
   X,
 } from 'lucide-react';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
-import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentReferenceCandidate, type AgentSession} from '../../lib/api';
+import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentMessage, type AgentModelOption, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought} from '../../lib/api';
 import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
 import {ConversationReference, conversationReferenceType} from './ConversationReference';
 import './agent.css';
@@ -70,44 +71,129 @@ async function readEventStream(response: Response, onEvent: (event: AgentEvent) 
   }
 }
 
-function mergeHistory<T extends {id: string}>(older: T[], newer: T[]): T[] {
-  return Array.from(new Map([...older, ...newer].map(item => [item.id, item])).values());
+function mergeHistory<T extends {id: string}>(older: T[] | null | undefined, newer: T[] | null | undefined): T[] {
+  const merged = new Map<string, T>();
+  for (const item of [...(older ?? []), ...(newer ?? [])]) {
+    const previous = merged.get(item.id);
+    const before = previous as (T & {role?: string; content?: string}) | undefined;
+    const after = item as T & {role?: string; content?: string};
+    // A history snapshot may predate an SSE fragment. Formal answers are monotonic.
+    if (before?.role === 'assistant' && before.content && after.content !== undefined && before.content.startsWith(after.content)) continue;
+    merged.set(item.id, item);
+  }
+  return Array.from(merged.values());
+}
+
+function mergeRunStats(older: AgentRunStats[] | null | undefined, newer: AgentRunStats[] | null | undefined): AgentRunStats[] {
+  const merged = new Map<string, AgentRunStats>();
+  for (const item of [...(older ?? []), ...(newer ?? [])]) {
+    const previous = merged.get(item.runId);
+    if (previous?.endedAt && !item.endedAt) continue;
+    merged.set(item.runId, item);
+  }
+  return Array.from(merged.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+}
+
+const thoughtKindLabel: Record<AgentThought['kind'], string> = {
+  understanding: '理解',
+  observation: '进展',
+  decision: '决定',
+  checkpoint: '阶段',
+};
+
+function runPhase(stats: AgentRunStats): NonNullable<AgentRunStats['phase']> {
+  return stats.phase ?? (stats.endedAt ? 'completed' : 'working');
 }
 
 function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
-  if ((event.type === 'message' || event.type === 'message_delta' || event.type === 'session') && event.message) {
+  if (event.type === 'answer_end' && event.message) {
     const message = event.message;
     const existing = session.messages.find(item => item.id === message.id);
-    const next = event.type === 'message_delta' && existing ? {...existing, content: existing.content + message.content} : message;
-    return {...session, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? next : item) : [...session.messages, next]};
+    // start is idempotent; deltas append only to the formal answer, never drafts.
+    const next = existing && existing.content.startsWith(message.content) ? existing : message;
+    return {...session,
+      streamDrafts: (session.streamDrafts ?? []).filter(item => item.runId !== message.runId),
+      messages: existing ? session.messages.map(item => item.id === message.id ? next : item) : [...session.messages, next],
+    };
+  }
+  if (event.type === 'message_delta' && event.message) {
+    if (session.messages.some(item => item.role === 'assistant' && item.runId === event.message!.runId)) return session;
+    const current = session.streamDrafts ?? [];
+    const existing = current.find(item => item.id === event.message!.id);
+    const draft = existing ? {...existing, content: existing.content + event.message.content} : event.message;
+    return {...session, streamDrafts: existing ? current.map(item => item.id === draft.id ? draft : item) : [...current, draft]};
+  }
+  if ((event.type === 'message' || event.type === 'session') && event.message) {
+    const message = event.message;
+    const existing = session.messages.find(item => item.id === message.id);
+    const streamDrafts = event.type === 'message' && message.runId ? (session.streamDrafts ?? []).filter(item => item.runId !== message.runId) : session.streamDrafts;
+    return {...session, streamDrafts, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? message : item) : [...session.messages, message]};
   }
   if (event.type === 'activity' && event.activity) {
-    const activity = session.activity.filter(item => item.id !== event.activity!.id);
-    return {...session, activity: [...activity, event.activity]};
+    const activity = (session.activity ?? []).filter(item => item.id !== event.activity!.id);
+    const runId = event.activity.runId;
+    const streamDrafts = runId ? (session.streamDrafts ?? []).filter(item => item.runId !== runId) : session.streamDrafts;
+    return {...session, streamDrafts, activity: [...activity, event.activity]};
+  }
+  if (event.type === 'thought' && event.thought) {
+    const thoughts = (session.thoughts ?? []).filter(item => item.id !== event.thought!.id);
+    return {...session, thoughts: [...thoughts, event.thought]};
+  }
+  if (event.type === 'run_stats' && event.runStats) {
+    return {...session, runStats: mergeRunStats(session.runStats, [event.runStats])};
   }
   if (event.type === 'status' || event.type === 'error') {
-    return {...session, status: event.status || (event.type === 'error' ? 'failed' : session.status), error: event.error || ''};
+    if (event.type === 'error' && ['completed', 'failed', 'canceled'].includes(session.status)) return {...session, error: session.error || event.error};
+    if (event.type === 'status' && event.status === 'running') return {...session, status: event.status, error: ''};
+    const status = event.status || (event.type === 'error' ? 'failed' : session.status);
+    return {...session, status, error: event.error || '', runStats: (session.runStats ?? []).map(item =>
+      (!event.runId || item.runId === event.runId) && !item.endedAt && status !== 'running' && status !== 'idle'
+        ? {...item, phase: status, endedAt: new Date().toISOString()} : item)};
   }
   return session;
 }
 
-function activityIcon(activity: AgentActivity) {
-  if (activity.status === 'running') return <LoaderCircle className="agent-spin" aria-hidden="true"/>;
-  if (activity.status === 'failed') return <X aria-hidden="true"/>;
-  return <Check aria-hidden="true"/>;
+function conversationMessages(messages: AgentMessage[]): AgentMessage[] {
+  const finalIds = new Map<string, string>();
+  let legacyTurn = 0;
+  for (const item of messages) {
+    if (item.role === 'user') legacyTurn++;
+    if (item.role === 'assistant' && !item.toolCalls?.length) finalIds.set(item.runId ?? `legacy:${legacyTurn}`, item.id);
+  }
+  const ids = new Set(finalIds.values());
+  return messages.filter(item => item.role !== 'tool' && (item.role !== 'assistant' || ids.has(item.id)));
 }
 
-function formatElapsed(start: string, end: string | number) {
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return '耗时未知';
-  if (ms < 1000) return ms === 0 ? '< 1 毫秒' : `${ms} 毫秒`;
-  const seconds = Math.floor(ms / 1000);
+function runDuration(stats: AgentRunStats) {
+  const start = new Date(stats.startedAt).getTime();
+  const end = stats.endedAt ? new Date(stats.endedAt).getTime() : Date.now();
+  const seconds = Math.max(0, Math.round((end - start) / 1000));
   return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
 }
 
-const MessageRow = memo(function MessageRow({item, followsProcess}: {item: AgentMessage; followsProcess: boolean}) {
+function liveRunState(runId: string, thoughts: AgentThought[], activity: AgentActivity[]): DropletState {
+  const latestActivity = activity.filter(item => item.runId === runId).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).at(-1);
+  const latestThought = thoughts.filter(item => item.runId === runId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
+  if (!latestActivity || (latestThought && latestThought.createdAt >= latestActivity.startedAt)) return 'thinking';
+  if (latestActivity.status === 'failed') return 'error';
+  return activityState(latestActivity.kind);
+}
+
+function formatCompactTokens(value: number) {
+  if (value >= 1_000_000) return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (value >= 1_000) return (value / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(value);
+}
+
+const MessageRow = memo(function MessageRow({item, followsProcess, stats, onOpenRun}: {
+  item: AgentMessage;
+  followsProcess: boolean;
+  stats?: AgentRunStats;
+  onOpenRun?: () => void;
+}) {
+  const completed = !!stats?.endedAt;
   return <article data-message-id={item.id} className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
-    {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet running={false}/></div>}
+    {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet state={stats?.phase === 'failed' ? 'error' : completed ? 'completed' : 'output'}/></div>}
     <div className="agent-message-body">
       {item.role === 'user' && !!item.references?.length && <div className="agent-message-references" aria-label="已引用对话">
         {item.references.map(reference => <button type="button" key={reference.id} className={'agent-message-reference' + (reference.sourceAvailable === false ? ' is-unavailable' : '')} onClick={() => window.dispatchEvent(new CustomEvent('xiaotao:agent-reference', {detail: reference}))} title={reference.sourceAvailable === false ? '来源对话已删除，摘要仍保留' : `引用对话：${reference.title}`}>
@@ -116,10 +202,16 @@ const MessageRow = memo(function MessageRow({item, followsProcess}: {item: Agent
           {reference.sourceAvailable === false && <small>来源不可用</small>}
         </button>)}
       </div>}
+      {item.role === 'assistant' && completed && <div className="agent-final-meta">
+        <small>{stats.phase === 'failed' ? '任务失败 · ' : stats.phase === 'canceled' ? '任务已停止 · ' : '共思考 '}{runDuration(stats)}</small>
+        <small>读了 {stats.filesRead} 个文件</small>
+        <small>调用了 {stats.toolCalls} 个工具</small>
+        {onOpenRun && <button type="button" onClick={onOpenRun}>查看过程 <PanelRight aria-hidden="true"/></button>}
+      </div>}
       <div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div>
     </div>
   </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references));
+}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.onOpenRun === next.onOpenRun && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references));
 
 function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boolean; onClose: () => void; children: React.ReactNode; maxHeight?: number}) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -158,6 +250,76 @@ function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boole
     return () => { window.removeEventListener('resize', update); document.removeEventListener('scroll', update, true); document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
   }, [open, onClose, maxHeight]);
   return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
+}
+
+function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, busy, onOpen}: {
+  runId: string; thoughts: AgentThought[]; activity: AgentActivity[];
+  streamDraft?: AgentMessage; answer?: AgentMessage; stats: AgentRunStats; busy: boolean; onOpen: () => void;
+}) {
+  const rows = useMemo(() => [
+    ...thoughts.filter(item => item.runId === runId).map(item => ({id: item.id, time: item.createdAt, kind: 'thought', label: thoughtKindLabel[item.kind], text: item.text})),
+    ...activity.filter(item => item.runId === runId).map(item => ({id: item.id, time: item.startedAt, kind: 'activity', label: '操作', text: item.title + (item.detail ? ' · ' + item.detail : '')})),
+  ].sort((a, b) => a.time.localeCompare(b.time)).slice(-4), [runId, thoughts, activity]);
+  const current = thoughts.filter(item => item.runId === runId).at(-1);
+  const finished = !!stats.endedAt;
+  const text = answer?.content || streamDraft?.content || current?.text || '正在理解你的需求…';
+  const content = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>();
+  useLayoutEffect(() => {
+    const element = content.current;
+    if (!element) return;
+    const measure = () => setHeight(finished ? element.scrollHeight : Math.min(element.scrollHeight, parseFloat(getComputedStyle(element).lineHeight) * 2));
+    measure();
+    const observer = new ResizeObserver(measure); observer.observe(element);
+    return () => observer.disconnect();
+  }, [finished, text]);
+  useLayoutEffect(() => {
+    if (viewport.current) viewport.current.scrollTop = finished ? 0 : viewport.current.scrollHeight;
+  }, [text, finished, height]);
+  const label = (stats.phase === 'failed' ? '任务失败 ' : stats.phase === 'canceled' ? '任务已停止 ' : '共思考 ') + runDuration(stats) + ' · 读取 ' + stats.filesRead + ' 个文件 · 写入 ' + stats.filesWritten + ' 个文件 · ' + stats.toolCalls + ' 次操作';
+  return <div className={'agent-run-timeline' + (finished ? ' is-finished' : '')} data-run-id={runId}>
+    <div className="agent-message-avatar"><AgentDroplet state={finished ? stats.phase === 'failed' ? 'error' : 'completed' : liveRunState(runId, thoughts, activity)} running={busy && !finished}/></div>
+    {(!finished || answer) && <div className={'agent-run-bubble' + (!finished && streamDraft ? ' is-streaming' : '')} data-message-id={answer?.id}>
+      <div ref={viewport} className={'agent-result-viewport' + (finished ? ' is-expanded' : '')} style={{height}}><div ref={content} className="agent-run-bubble-text agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{text}</Markdown></div></div>
+    </div>}
+    <div className={'agent-process-collapse' + (finished ? ' is-collapsed' : '')} inert={finished} aria-hidden={finished}><div>
+      <div className="agent-run-scroll" aria-label="最新四条思考与操作"><ol>{rows.map(row => <li key={row.id} data-kind={row.kind}><span>{row.label}</span><p>{row.text}</p></li>)}{!rows.length && <li data-kind="thought"><span>理解</span><p>正在理解你的需求…</p></li>}</ol></div>
+      <button type="button" className="agent-run-open" onClick={onOpen}><span>查看思考过程</span><PanelRight aria-hidden="true"/></button>
+    </div></div>
+    {finished && <div className="agent-final-meta"><button type="button" onClick={onOpen} title={label}><span>{label}</span><PanelRight aria-hidden="true"/></button></div>}
+  </div>;
+}
+
+function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
+  runId: string; thoughts: AgentThought[]; activity: AgentActivity[]; stats: AgentRunStats; open: boolean; onClose: () => void;
+}) {
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+    close.current?.focus();
+    const escape = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); onClose();}};
+    document.addEventListener('keydown', escape);
+    return () => {document.removeEventListener('keydown', escape); previous?.focus();};
+  }, [open, onClose]);
+  const timeline = [
+    ...(thoughts ?? []).filter(item => item.runId === runId).map(item => ({id: item.id, time: item.createdAt, kind: 'thought' as const, thoughtKind: item.kind, text: item.text})),
+    ...(activity ?? []).filter(item => item.runId === runId).map(item => ({id: item.id, time: item.startedAt, kind: 'activity' as const, text: item.title + (item.detail ? ' · ' + item.detail : ''), status: item.status})),
+  ].sort((a, b) => a.time.localeCompare(b.time));
+  return createPortal(<div className={'agent-drawer-backdrop' + (open ? ' is-open' : '')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
+    <aside className="agent-thought-drawer" role="dialog" aria-modal="true" aria-label="本轮思考过程">
+      <header><div><span>思考过程</span><strong>{runDuration(stats)}</strong></div><button ref={close} type="button" onClick={onClose} aria-label="关闭思考过程" title="关闭"><X aria-hidden="true"/></button></header>
+      <div className="agent-drawer-summary"><span>读取 {stats.filesRead} 个文件</span><span>写入 {stats.filesWritten} 个文件</span><span>执行 {stats.toolCalls} 次操作</span></div>
+      <ol className="agent-drawer-timeline">{timeline.map((row, index) => <li key={row.id} data-kind={row.kind}>
+        <span className="agent-drawer-marker">{String(index + 1).padStart(2, '0')}</span>
+        <div className="agent-drawer-entry">
+          <strong>{row.kind === 'thought' ? thoughtKindLabel[row.thoughtKind] : '操作'}</strong>
+          <p>{row.text}</p>
+        </div>
+      </li>)}</ol>
+    </aside>
+  </div>, document.body);
 }
 
 function ReferencePicker({anchor, editor, anchorAt, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
@@ -250,16 +412,6 @@ function ReferenceModal({reference, onOpenSource, onClose}: {reference: AgentCon
 
 const enabledModelsKey = 'xiaotao.agent.enabledModels';
 const modelLabelsKey = 'xiaotao.agent.modelLabels';
-const modelCatalogKey = 'xiaotao.agent.modelCatalog';
-
-function readModelCatalog(): AgentModelOption[] | null {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(modelCatalogKey) || 'null');
-    if (!Array.isArray(value) || !value.every(item => item && typeof item.model === 'string' && typeof item.label === 'string')) return null;
-    return value;
-  } catch { return null; }
-}
-
 function readModelLabels(): Record<string, string> {
   try {
     const value = JSON.parse(localStorage.getItem(modelLabelsKey) || '{}');
@@ -436,11 +588,10 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [renaming, setRenaming] = useState<AgentSession | null>(null);
   const sessionMenuTrigger = useRef<HTMLElement | null>(null);
   const [enabledModels, setEnabledModels] = useState<string[]>(readEnabledModels);
-  const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return Array.from(new Map([...readEnabledModels().map(id => ({model: id, label: labels[id] || id})), ...(readModelCatalog() || [])].map(item => [item.model, item])).values()); });
+  const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return Array.from(new Map([...readEnabledModels().map(id => ({model: id, label: labels[id] || id}))].map(item => [item.model, item])).values()); });
   const [modelsLoading, setModelsLoading] = useState(false), [modelsError, setModelsError] = useState('');
   const [modelsAttempt, setModelsAttempt] = useState(0);
-  const catalogCached = useRef(readModelCatalog() !== null);
-  const lastModelsAttempt = useRef(0);
+  const refreshModelsRequested = useRef(false);
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
@@ -462,6 +613,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     setSessionMenu({item, x: Math.max(8, Math.min(x, window.innerWidth - 168)), y: Math.max(8, Math.min(y, window.innerHeight - 92))});
   }, [busy, deleting]);
   const [error, setError] = useState(''), [openActivities, setOpenActivities] = useState<Record<string, boolean>>({});
+  const [openThoughtRun, setOpenThoughtRun] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const wasBusy = useRef(false);
   useEffect(() => {
@@ -566,6 +718,8 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [historyError, setHistoryError] = useState('');
   const historyRequest = useRef(0);
   const historyInFlight = useRef(false);
+  const activeSessionRef = useRef(active);
+  activeSessionRef.current = active;
   const activeIdRef = useRef(active?.id);
   activeIdRef.current = active?.id;
   const prependAnchor = useRef<{id: string; height: number; top: number} | null>(null);
@@ -590,7 +744,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       if (version !== historyRequest.current || activeIdRef.current !== id) return;
       preserveHistoryScroll(id);
       followFeed.current = false;
-      setActive(current => current?.id === id ? {...current, messages:mergeHistory(page.session.messages, current.messages), activity:mergeHistory(page.session.activity, current.activity)} : current);
+      setActive(current => current?.id === id ? {...current, messages:mergeHistory(page.session.messages, current.messages), activity:mergeHistory(page.session.activity, current.activity), thoughts:mergeHistory(page.session.thoughts, current.thoughts), runStats:mergeRunStats(page.session.runStats, current.runStats)} : current);
       setHistoryBefore(page.before);
     } catch (reason) {
       if (version === historyRequest.current) { preserveHistoryScroll(id); setHistoryError(reason instanceof Error ? reason.message : String(reason)); }
@@ -802,19 +956,18 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, []);
 
   useEffect(() => {
-    if (!visible || !settingsOpen) return;
-    if (catalogCached.current && lastModelsAttempt.current === modelsAttempt) return;
-    lastModelsAttempt.current = modelsAttempt;
+    if (!visible) return;
+    const refresh = refreshModelsRequested.current;
+    refreshModelsRequested.current = false;
     let live = true;
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 30000);
     setModelsLoading(true);
     setModelsError('');
-    api.agentModels(controller.signal)
+    api.agentModels(controller.signal, refresh)
       .then(available => {
         if (!live) return;
-        catalogCached.current = true;
-        try { localStorage.setItem(modelCatalogKey, JSON.stringify(available.models)); } catch { /* keep in-memory cache */ }
+        if (available.errors?.length) setModelsError(available.errors.join('；'));
         setModels(current => {
           const selected = new Set(readEnabledModels());
           return Array.from(new Map([...current.filter(item => selected.has(item.model)), ...available.models].map(item => [item.model, item])).values());
@@ -825,7 +978,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         : reason instanceof TypeError ? '无法连接小涛服务，请检查服务是否正在运行' : reason instanceof Error ? reason.message : String(reason)))
       .finally(() => { window.clearTimeout(timer); if (live) setModelsLoading(false); });
     return () => {live = false; window.clearTimeout(timer); controller.abort();};
-  }, [visible, settingsOpen, modelsAttempt]);
+  }, [visible, settingsOpen, modelMenuOpen, modelsAttempt]);
 
   useEffect(() => {
     if (!visible) { setSettingsOpen(false); setProjectOpen(false); setModelMenuOpen(false); setQuoteSelection(null); }
@@ -838,7 +991,13 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   function saveDraft() {
     if (!editor) return;
-    if (active) sessionCache.current.set(active.id, active);
+    const current = activeSessionRef.current;
+    if (current) {
+      const cached = sessionCache.current.get(current.id);
+      sessionCache.current.set(current.id, cached ? {...current, ...cached,
+        messages: mergeHistory(current.messages, cached.messages), activity: mergeHistory(current.activity, cached.activity),
+        thoughts: mergeHistory(current.thoughts, cached.thoughts), runStats: mergeRunStats(current.runStats, cached.runStats)} : current);
+    }
     drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes});
   }
   function restoreDraft(id: string, fallbackModel: string) {
@@ -917,8 +1076,9 @@ export function AgentPage({visible}: {visible: boolean}) {
       const page = await api.agentHistory(id);
       const latest = page.session;
       const cached = sessionCache.current.get(latest.id);
-      sessionCache.current.set(latest.id, cached ? {...latest, messages:mergeHistory(cached.messages, latest.messages), activity:mergeHistory(cached.activity, latest.activity)} : latest);
-      setActive(current => current?.id === id ? {...latest, messages:mergeHistory(current.messages, latest.messages), activity:mergeHistory(current.activity, latest.activity)} : current);
+      const merged = cached ? {...latest, messages:mergeHistory(latest.messages, cached.messages), activity:mergeHistory(latest.activity, cached.activity), thoughts:mergeHistory(latest.thoughts, cached.thoughts), runStats:mergeRunStats(latest.runStats, cached.runStats)} : latest;
+      sessionCache.current.set(latest.id, merged);
+      setActive(current => current?.id === id ? {...merged, messages:mergeHistory(merged.messages, current.messages), activity:mergeHistory(merged.activity, current.activity), thoughts:mergeHistory(merged.thoughts, current.thoughts), runStats:mergeRunStats(current.runStats, merged.runStats)} : current);
       setSessions(current => [{...latest, messages:[], activity:[]}, ...current.filter(item => item.id !== id)]);
     } catch (reason) {
       if (activeIdRef.current === session?.id || sending) setError(reason instanceof Error ? reason.message : String(reason));
@@ -926,8 +1086,10 @@ export function AgentPage({visible}: {visible: boolean}) {
         try {
           const page = await api.agentHistory(session.id);
           const latest = page.session;
-          sessionCache.current.set(latest.id, latest);
-          setActive(current => current?.id === latest.id ? {...latest, messages:mergeHistory(current.messages, latest.messages), activity:mergeHistory(current.activity, latest.activity)} : current);
+          const cached = sessionCache.current.get(latest.id);
+          const merged = cached ? {...latest, messages:mergeHistory(latest.messages, cached.messages), activity:mergeHistory(latest.activity, cached.activity), thoughts:mergeHistory(latest.thoughts, cached.thoughts), runStats:mergeRunStats(latest.runStats, cached.runStats)} : latest;
+          sessionCache.current.set(latest.id, merged);
+          setActive(current => current?.id === latest.id ? {...merged, messages:mergeHistory(merged.messages, current.messages), activity:mergeHistory(merged.activity, current.activity), thoughts:mergeHistory(merged.thoughts, current.thoughts), runStats:mergeRunStats(current.runStats, merged.runStats)} : current);
           setSessions(current => [{...latest, messages:[], activity:[]}, ...current.filter(item => item.id !== latest.id)]);
         } catch { /* retain visible state */ }
       }
@@ -936,13 +1098,13 @@ export function AgentPage({visible}: {visible: boolean}) {
       if (streamID) {
         const cached = sessionCache.current.get(streamID);
         if (cached?.status === 'running') {
-          const failed = {...cached, status:'failed' as const, error:'连接已结束，请查看任务状态'};
+          const failed = applyEvent(cached, {type:'status', sessionId:streamID, status:'failed', error:'连接已结束，请查看任务状态'});
           sessionCache.current.set(streamID, failed);
           setSessions(current => current.map(item => item.id === streamID ? {...failed, messages:[], activity:[]} : item));
         }
         runningRef.current.delete(streamID);
         setRunningIds(new Set(runningRef.current));
-        setActive(current => current?.id === streamID && current.status === 'running' ? {...current, status:'failed', error:'连接已结束，请查看任务状态'} : current);
+        setActive(current => current?.id === streamID && current.status === 'running' ? applyEvent(current, {type:'status', sessionId:streamID, status:'failed', error:'连接已结束，请查看任务状态'}) : current);
       }
       if (activeIdRef.current === streamID) editor.commands.focus();
     }
@@ -1007,10 +1169,11 @@ export function AgentPage({visible}: {visible: boolean}) {
       const page = await api.agentHistory(session.id);
       const cached = sessionCache.current.get(session.id);
       const detail = runningRef.current.has(session.id) && cached ? cached : cached
-        ? {...page.session, messages:mergeHistory(cached.messages, page.session.messages), activity:mergeHistory(cached.activity, page.session.activity)} : page.session;
+        ? {...page.session, streamDrafts: cached.streamDrafts, messages:mergeHistory(page.session.messages, cached.messages), activity:mergeHistory(cached.activity, page.session.activity), thoughts:mergeHistory(cached.thoughts, page.session.thoughts), runStats:mergeRunStats(cached.runStats, page.session.runStats)} : page.session;
       followFeed.current = true;
       setHistoryBefore(page.before);
       setHistoryError('');
+      sessionCache.current.set(detail.id, detail);
       setActive(detail);
       setModel(detail.model);
     } catch (reason) {
@@ -1047,71 +1210,60 @@ export function AgentPage({visible}: {visible: boolean}) {
     setSettingsOpen(false);
   }
 
+  const activity = active?.activity ?? [];
+  const thoughts = active?.thoughts ?? [];
+  const runStats = active?.runStats ?? [];
+  useLayoutEffect(() => {
+    const area = feed.current;
+    if (!area) return;
+    const observer = new ResizeObserver(() => {
+      if (followFeed.current) area.scrollTop = area.scrollHeight;
+      updateScrollToBottom();
+    });
+    area.querySelectorAll('.agent-run-timeline').forEach(element => observer.observe(element));
+    return () => observer.disconnect();
+  }, [active?.id, active?.runStats?.length]);
+  const contextRun = runStats.at(-1);
+  const contextTokens = contextRun?.contextTokens ?? 0;
+  const contextWindow = contextRun?.contextWindow ?? 0;
+  const contextRatio = contextWindow > 0 ? Math.min(1, contextTokens / contextWindow) : 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
   canSendRef.current = !busy && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference) && (!!active || !!model);
 
-  const activity = active?.activity ?? [];
-  const entries = useMemo(() => {
-    const timeline = [
-      ...(active?.messages.filter(item => item.role !== 'tool').map(item => ({kind: 'message' as const, time: item.createdAt, item})) ?? []),
-      ...activity.map(item => ({kind: 'activity' as const, time: item.startedAt, item})),
-    ].sort((a, b) => a.time.localeCompare(b.time));
-    const entries: Array<{kind: 'message'; item: AgentMessage} | {kind: 'activity'; items: AgentActivity[]; details: typeof timeline}> = [];
-    let turn: typeof timeline = [];
-    const finishTurn = () => {
-      let lastActivity = -1;
-      turn.forEach((entry, index) => { if (entry.kind === 'activity') lastActivity = index; });
-      if (lastActivity >= 0) {
-        // Tool-round prose arrives with the final history refresh. Keep it inside
-        // the same process instead of splitting the already visible card.
-        const details = turn.slice(0, lastActivity + 1);
-        entries.push({kind: 'activity', items: details.flatMap(entry => entry.kind === 'activity' ? [entry.item] : []), details});
-      }
-      for (const entry of turn.slice(lastActivity + 1)) {
-        if (entry.kind === 'message') entries.push({kind: 'message', item: entry.item});
-      }
-      turn = [];
-    };
-    for (const entry of timeline) {
-      if (entry.kind === 'message' && entry.item.role === 'user') {
-        finishTurn();
-        entries.push({kind: 'message', item: entry.item});
-      } else turn.push(entry);
+  const {entries} = useMemo(() => {
+    type Entry = {kind: 'message'; item: AgentMessage; stats?: AgentRunStats} | {kind: 'run'; runId: string; stats: AgentRunStats; phase: 'live' | 'done'};
+    const timeline = active ? conversationMessages(active.messages) : [];
+    const entries: Entry[] = timeline.map(item => ({kind: 'message', item,
+      stats: item.role === 'assistant' ? runStats.find(run => run.runId === item.runId) : undefined}));
+    for (const run of runStats) {
+      for (let i = entries.length - 1; i >= 0; i--) { const entry = entries[i]; if (entry.kind === 'message' && entry.item.role === 'assistant' && entry.item.runId === run.runId) entries.splice(i, 1); }
+      entries.push({kind: 'run', runId: run.runId, stats: run,
+        phase: runPhase(run) === 'working' ? 'live' : 'done'});
     }
-    finishTurn();
-    return entries;
-  }, [active?.messages, active?.activity]);
-  const {avatarOwners, workingAvatar} = useMemo(() => {
+    const time = (entry: Entry) => entry.kind === 'message' ? entry.item.createdAt : entry.stats.startedAt;
+    entries.sort((a, b) => time(a).localeCompare(time(b)) || (a.kind === 'message' && a.item.role === 'user' ? -1 : 1));
+    return {entries};
+  }, [active?.messages, runStats]);
+  const {avatarOwners} = useMemo(() => {
     const owners = new Set<number>();
-    let response: number | undefined, process: number | undefined;
-    const finishTurn = (pending: boolean) => {
-      const owner = process ?? (pending ? undefined : response);
+    let response: number | undefined;
+    const finishTurn = () => {
+      const owner = response;
       if (owner !== undefined) owners.add(owner);
       return owner === undefined;
     };
     entries.forEach((entry, index) => {
       if (entry.kind === 'message' && entry.item.role === 'user') {
-        finishTurn(false);
-        response = process = undefined;
-      } else if (entry.kind === 'activity') {
-        process = index;
-      } else if (entry.item.role === 'assistant') {
+        finishTurn();
+        response = undefined;
+      } else if (entry.kind === 'message' && entry.item.role === 'assistant') {
         response ??= index;
       }
     });
-    // Prose can precede tools: choose one avatar for the whole user turn.
-    const workingAvatar = finishTurn(busy);
-    return {avatarOwners: owners, workingAvatar};
-  }, [entries, busy]);
-  // Keep the current turn's status above its prose, sharing an existing tool panel.
-  const currentTurnStart = entries.reduce((start, entry, index) => entry.kind === 'message' && entry.item.role === 'user' ? index + 1 : start, 0);
-  const currentTurn = entries.slice(currentTurnStart);
-  const workingIndex = busy && !currentTurn.some(entry => entry.kind === 'activity') ? currentTurnStart : -1;
-  const workingIndicator = <div className="agent-working-row" role="status">
-    {workingAvatar && <div className="agent-message-avatar"><AgentDroplet running/></div>}<div className="agent-working">
-      <span><strong>{currentTurn.some(entry => entry.kind === 'message' && entry.item.role === 'assistant') ? '正在回复' : '正在思考'}</strong><small>{currentTurn.some(entry => entry.kind === 'message' && entry.item.role === 'assistant') ? '正在生成回复…' : '正在准备下一步…'}</small></span>
-    </div>
-  </div>;
+    finishTurn();
+    return {avatarOwners: owners};
+  }, [entries]);
+  const workingIndicator = <div className="agent-working-row" role="status"><div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working"><span><strong>正在思考</strong><small>准备下一步…</small></span></div></div>;
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const activeProjectPath = active ? active.project.path : path;
   const availablePickerModels = models.filter(item => enabledModels.includes(item.model));
@@ -1158,40 +1310,16 @@ export function AgentPage({visible}: {visible: boolean}) {
         </div>}
 
         {entries.map((entry, index) => {
-          if (entry.kind === 'activity') {
-            const id = entry.items[0].id;
-            const running = busy && index >= currentTurnStart;
-            const open = running || !!openActivities[id];
-            const latest = entry.items.at(-1);
-            const next = entries[index + 1];
-            const previous = entries[index - 1];
-            const started = previous?.kind === 'message' && previous.item.role === 'user' ? previous.item.createdAt : entry.items[0].startedAt;
-            const ended = next?.kind === 'message' && next.item.role === 'assistant' ? next.item.createdAt : latest?.endedAt;
-            const status = running ? latest?.status === 'running' ? '正在执行' : '继续思考' : next?.kind === 'message' && next.item.role === 'assistant' ? '执行完成' : active?.status === 'canceled' ? '已停止' : active?.status === 'failed' ? '执行中断' : '步骤已结束';
-            return <div key={id} className="agent-process-row">{avatarOwners.has(index) && <div className="agent-message-avatar"><AgentDroplet state={running ? activityState(latest?.kind) : status === '执行中断' ? 'error' : status === '已停止' ? 'waiting' : 'completed'}/></div>}<div className={'agent-process' + (open ? ' is-open' : '') + (running ? ' is-running' : '')}>
-              <button type="button" className="agent-process-summary" onClick={() => {if (!running) setOpenActivities(current => ({...current, [id]: !open}));}} aria-expanded={open}>
-                <span className="agent-process-icon">{running ? <LoaderCircle className="agent-spin" aria-hidden="true"/> : status === '执行中断' || status === '已停止' ? <X aria-hidden="true"/> : <Check aria-hidden="true"/>}</span>
-                <span><strong>{status}</strong><small>{[running && latest?.status !== 'running' ? '最近操作' : '', latest?.title, latest?.detail].filter(Boolean).join(' · ')}</small></span>
-                <span className="agent-process-duration">{running ? formatElapsed(started, clock) : ended ? formatElapsed(started, ended) : '耗时未知'}</span>
-                <ChevronDown className="agent-process-chevron" aria-hidden="true"/>
-              </button>
-              <ProcessDetails open={open} maxHeight={entry.items.some(item => item.tool) ? 360 : 220} onClose={() => {if (!running) setOpenActivities(current => ({...current, [id]: false}));}}>
-                {entry.details.map(detail => {
-                  if (detail.kind === 'message') return <li key={detail.item.id} className="agent-process-note"><div><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{detail.item.content}</Markdown></div></li>;
-                  const item = detail.item;
-                  return <li key={item.id} data-status={item.status} className={item.tool ? 'agent-tool-activity' : undefined}><span>{activityIcon(item)}</span><div>
-                    <div className="agent-activity-heading"><strong>{item.title}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</div>
-                    {item.tool && <details className="agent-tool-details"><summary aria-label={`查看${item.title}的参数与结果`}>参数与结果</summary><code className="agent-tool-identity">{item.tool}</code>{item.input && <><span>调用参数</span><pre>{item.input}</pre></>}<span>{item.status === 'failed' ? '失败原因' : '结果预览'}</span><pre>{item.output || (item.status === 'running' ? '执行中，等待结果…' : '未记录结果。')}</pre></details>}
-                  </div><time>{item.endedAt ? formatElapsed(item.startedAt, item.endedAt) : item.status === 'running' && running ? formatElapsed(item.startedAt, clock) : ''}</time></li>;
-                })}
-              </ProcessDetails>
-            </div></div>;
+          if (entry.kind === 'run') {
+            const running = entry.phase === 'live';
+            return <ReactFragment key={entry.runId}>
+              <RunTimeline runId={entry.runId} thoughts={thoughts} activity={activity} streamDraft={active?.streamDrafts?.find(item => item.runId === entry.runId)} stats={entry.stats} busy={running} answer={conversationMessages(active?.messages ?? []).find(item => item.role === 'assistant' && item.runId === entry.runId)} onOpen={() => setOpenThoughtRun(entry.runId)}/>
+            </ReactFragment>;
           }
           const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
-          return <ReactFragment key={entry.item.id}>{index === workingIndex && workingIndicator}<MessageRow item={entry.item} followsProcess={followsProcess}/></ReactFragment>;
+          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats} onOpenRun={entry.stats ? () => setOpenThoughtRun(entry.stats!.runId) : undefined}/>;
         })}
-
-        {workingIndex === entries.length && workingIndicator}
+        {busy && !entries.some(entry => entry.kind === 'run' || (entry.kind === 'message' && entry.stats && !entry.stats.endedAt)) && workingIndicator}
         {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
       </div>
 
@@ -1227,12 +1355,18 @@ export function AgentPage({visible}: {visible: boolean}) {
           <EditorContent editor={editor} className="agent-editor"/>
           {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
           <div className="agent-toolbar">
+            <div className="agent-composer-meta">
             <div className="agent-mode-picker">
               <button ref={modeButtonRef} type="button" className="agent-option" aria-label="访问模式" aria-expanded={modeMenuOpen} disabled={!accessReady} onClick={() => setModeMenuOpen(open => !open)}>{accessMode === 'safe' ? '安全模式' : '完全访问'}<ChevronDown aria-hidden="true"/></button>
               <Popover open={modeMenuOpen} onClose={() => setModeMenuOpen(false)} anchorRef={modeButtonRef} side="top" className="agent-model-menu" aria-label="访问模式">
                 <button type="button" role="menuitemradio" aria-checked={accessMode === 'safe'} onClick={() => void changeAccessMode('safe')}><span>安全模式 · 高危操作需确认</span>{accessMode === 'safe' && <Check aria-hidden="true"/>}</button>
                 <button type="button" role="menuitemradio" aria-checked={accessMode === 'full'} onClick={() => void changeAccessMode('full')}><span>完全访问 · 自主执行</span>{accessMode === 'full' && <Check aria-hidden="true"/>}</button>
               </Popover>
+            </div>
+            {contextTokens > 0 && <button type="button" className="agent-context-meter" aria-label={contextWindow > 0 ? `上下文用量 ${Math.round(contextRatio * 100)}%` : `上下文用量，约 ${contextTokens} tokens，上限未知`} title={contextWindow > 0 ? `已用约 ${contextTokens} / ${contextWindow} tokens` : '已用约 ' + contextTokens + ' tokens · 模型上下文上限未知'}>
+              <span className={contextWindow > 0 ? 'agent-context-ring' : 'agent-context-dot'} aria-hidden="true" style={{'--context-ratio': contextRatio} as React.CSSProperties}><i/></span>
+              <span>{contextWindow > 0 ? `ctx ${Math.round(contextRatio * 100)}%` : `ctx ${formatCompactTokens(contextTokens)}`}</span>
+            </button>}
             </div>
             <div className="agent-composer-actions">
               <div className="agent-model-picker">
@@ -1256,6 +1390,10 @@ export function AgentPage({visible}: {visible: boolean}) {
       </div>
     </div>
 
+    {openThoughtRun && (() => {
+      const stats = runStats.find(item => item.runId === openThoughtRun);
+      return stats ? <ThoughtDrawer runId={openThoughtRun} thoughts={thoughts} activity={activity} stats={stats} open onClose={() => setOpenThoughtRun('')}/> : null;
+    })()}
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
     {visible && createPortal(<>{quoteMarks.map(mark => <ReactFragment key={mark.id}>{mark.rects.map((rect, index) => <span key={index} className="agent-quote-highlight" style={rect} aria-hidden="true"/>)}<button type="button" className="agent-quote-marker" style={{left: mark.left, top: mark.top}} aria-label={`编辑引用 ${quotes.findIndex(item => item.id === mark.id) + 1}`} title="编辑引用" onClick={() => setEditingQuote(mark.id)}>{quotes.findIndex(item => item.id === mark.id) + 1}</button></ReactFragment>)}{editingQuote && (() => {const item = quotes.find(quote => quote.id === editingQuote); if (!item) return null; const mark = quoteMarks.find(value => value.id === item.id); const left = mark ? Math.max(8, Math.min(window.innerWidth - 296, mark.left - 120)) : Math.max(8, (window.innerWidth - 288) / 2); const top = mark ? Math.max(8, Math.min(window.innerHeight - 270, mark.top + 24)) : Math.max(8, (window.innerHeight - 260) / 2); return <div className="agent-quote-editor" role="dialog" aria-label="编辑引用" style={{left, top}}><div className="agent-quote-editor-head"><strong>编辑引用 {quotes.findIndex(quote => quote.id === item.id) + 1}</strong><button type="button" aria-label="关闭引用编辑" onClick={() => setEditingQuote(null)}><X aria-hidden="true"/></button></div><label>引用文字<textarea aria-label="引用文字" value={item.text} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, text:event.target.value} : quote))}/></label><label>回复<textarea aria-label="回复" placeholder="写下对这段文字的回复（可选）" value={item.reply} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, reply:event.target.value} : quote))}/></label><div className="agent-quote-editor-actions"><button type="button" onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(null);}}>移除引用</button><button type="button" disabled={!item.text.trim()} onClick={() => setEditingQuote(null)}>完成</button></div></div>;})()}</>, document.body)}
@@ -1268,7 +1406,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       selected={enabledModels}
       loading={modelsLoading}
       error={modelsError}
-      onRetry={() => setModelsAttempt(value => value + 1)}
+      onRetry={() => { refreshModelsRequested.current = true; setModelsAttempt(value => value + 1); }}
       onAccounts={() => { setSettingsOpen(false); window.dispatchEvent(new CustomEvent('xiaotao:navigate', {detail: 'accounts'})); }}
       onSave={saveAgentSettings}
       onClose={() => setSettingsOpen(false)}

@@ -20,9 +20,13 @@ func TestSendWithReferencesReturnsReferenceToModelAndTool(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Error(err)
 		}
+		w.Header().Set("Content-Type", "application/json")
+		if len(payload.Tools) == 0 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"确认引用请求。"}}]}`))
+			return
+		}
 		raw, _ := json.Marshal(payload)
 		requests = append(requests, string(raw))
-		w.Header().Set("Content-Type", "application/json")
 		if len(requests) == 1 {
 			toolFound := false
 			for _, tool := range payload.Tools {
@@ -68,7 +72,10 @@ func TestSendWithReferencesReturnsReferenceToModelAndTool(t *testing.T) {
 		t.Fatalf("model did not receive frozen summary: %s", requests[0])
 	}
 	loaded, err := svc.Get(target.ID)
-	if err != nil || len(loaded.Messages) != 3 || len(loaded.Messages[0].References) != 1 || !loaded.Messages[0].References[0].SourceAvailable {
+	if err != nil || len(loaded.Messages) != 4 || len(loaded.Messages[0].References) != 1 || !loaded.Messages[0].References[0].SourceAvailable {
 		t.Fatalf("reference message not persisted: %+v %v", loaded, err)
+	}
+	if len(loaded.Thoughts) == 0 || len(loaded.RunStats) != 1 {
+		t.Fatalf("missing run timeline: %+v", loaded)
 	}
 }

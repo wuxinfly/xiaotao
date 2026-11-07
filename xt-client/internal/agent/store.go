@@ -20,7 +20,7 @@ func (s *Service) openStore() (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 	fail := func(e error) (*sql.DB, error) { db.Close(); return nil, e }
-	_, err = db.Exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, metadata TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS activities (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS conversation_references (id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL, source_text TEXT NOT NULL); CREATE INDEX IF NOT EXISTS conversation_references_source ON conversation_references(source_session_id,created_at); CREATE TABLE IF NOT EXISTS migration (name TEXT PRIMARY KEY)")
+	_, err = db.Exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, metadata TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS activities (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS thoughts (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS run_stats (session_id TEXT NOT NULL, position INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY(session_id,position)); CREATE TABLE IF NOT EXISTS conversation_references (id TEXT PRIMARY KEY, source_session_id TEXT NOT NULL, created_at TEXT NOT NULL, data TEXT NOT NULL, source_text TEXT NOT NULL); CREATE INDEX IF NOT EXISTS conversation_references_source ON conversation_references(source_session_id,created_at); CREATE TABLE IF NOT EXISTS migration (name TEXT PRIMARY KEY)")
 	if err != nil {
 		return fail(err)
 	}
@@ -77,6 +77,8 @@ func writeSession(tx *sql.Tx, item *Session) error {
 	meta := *item
 	meta.Messages = nil
 	meta.Activity = nil
+	meta.Thoughts = nil
+	meta.RunStats = nil
 	raw, err := json.Marshal(meta)
 	if err != nil {
 		return err
@@ -87,7 +89,7 @@ func writeSession(tx *sql.Tx, item *Session) error {
 	for _, spec := range []struct {
 		table string
 		items any
-	}{{"messages", item.Messages}, {"activities", item.Activity}} {
+	}{{"messages", item.Messages}, {"activities", item.Activity}, {"thoughts", item.Thoughts}, {"run_stats", item.RunStats}} {
 		var entries []json.RawMessage
 		b, e := json.Marshal(spec.items)
 		if e != nil {
@@ -156,7 +158,9 @@ func readSession(db *sql.DB, id string) (*Session, error) {
 	}
 	item.Messages = []Message{}
 	item.Activity = []Activity{}
-	for _, table := range []string{"messages", "activities"} {
+	item.Thoughts = []ThoughtStep{}
+	item.RunStats = []RunStats{}
+	for _, table := range []string{"messages", "activities", "thoughts", "run_stats"} {
 		rows, e := db.Query("SELECT data FROM "+table+" WHERE session_id=? ORDER BY position", id)
 		if e != nil {
 			return nil, e
@@ -171,10 +175,18 @@ func readSession(db *sql.DB, id string) (*Session, error) {
 				var m Message
 				e = json.Unmarshal([]byte(raw), &m)
 				item.Messages = append(item.Messages, m)
-			} else {
+			} else if table == "activities" {
 				var a Activity
 				e = json.Unmarshal([]byte(raw), &a)
 				item.Activity = append(item.Activity, a)
+			} else if table == "thoughts" {
+				var t ThoughtStep
+				e = json.Unmarshal([]byte(raw), &t)
+				item.Thoughts = append(item.Thoughts, t)
+			} else {
+				var stats RunStats
+				e = json.Unmarshal([]byte(raw), &stats)
+				item.RunStats = append(item.RunStats, stats)
 			}
 			if e != nil {
 				rows.Close()
@@ -283,7 +295,7 @@ func (s *Service) deleteSession(id string) error {
 	if count == 0 {
 		return fmt.Errorf("任务不存在")
 	}
-	for _, table := range []string{"messages", "activities"} {
+	for _, table := range []string{"messages", "activities", "thoughts", "run_stats"} {
 		if _, err = tx.Exec("DELETE FROM "+table+" WHERE session_id=?", id); err != nil {
 			return err
 		}

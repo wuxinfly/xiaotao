@@ -6,7 +6,8 @@
     "scripts": {
         "build": "tsc --noEmit && vite build",
         "dev": "node scripts/dev.mjs",
-        "test:history": "node --test tests/history.browser.test.mjs"
+        "test:history": "node --test tests/history.browser.test.mjs",
+        "test:timeline": "node --test tests/agent-timeline.browser.test.mjs"
     },
     "dependencies": {
         "@tiptap/extension-placeholder": "^3.32.2",

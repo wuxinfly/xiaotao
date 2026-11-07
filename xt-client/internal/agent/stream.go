@@ -22,8 +22,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	type chunk struct {
 		Choices []struct {
 			Delta struct {
-				Content   string     `json:"content"`
-				ToolCalls []toolPart `json:"tool_calls"`
+				Content          string     `json:"content"`
+				ReasoningContent string     `json:"reasoning_content"`
+				ToolCalls        []toolPart `json:"tool_calls"`
 			} `json:"delta"`
 			FinishReason *string `json:"finish_reason"`
 		} `json:"choices"`
@@ -33,6 +34,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	}
 	type assembled struct{ id, name, args string }
 	var text strings.Builder
+	var reasoning strings.Builder
 	var calls []*assembled
 	byIndex := map[int]*assembled{}
 	byID := map[string]*assembled{}
@@ -69,6 +71,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 				if onDelta != nil {
 					onDelta(choice.Delta.Content)
 				}
+			}
+			if choice.Delta.ReasoningContent != "" {
+				reasoning.WriteString(choice.Delta.ReasoningContent)
 			}
 			for _, part := range choice.Delta.ToolCalls {
 				var call *assembled
@@ -130,7 +135,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	if !done || !finished {
 		return nil, fmt.Errorf("模型流意外中断")
 	}
-	result := &completion{Content: text.String()}
+	result := &completion{Content: text.String(), Reasoning: reasoning.String()}
 	ids := map[string]bool{}
 	for _, call := range calls {
 		args := strings.TrimSpace(call.args)

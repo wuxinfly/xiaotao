@@ -159,8 +159,8 @@ func TestSendWithReferencesHydratesDeletedSource(t *testing.T) {
 	if err != nil || len(loaded.Messages) != 1 || len(loaded.Messages[0].References) != 1 || loaded.Messages[0].References[0].SourceAvailable {
 		t.Fatalf("deleted source status: %+v %v", loaded, err)
 	}
-	fake := &fakeModel{replies: []*completion{{Content: "可以继续"}}}
 	history := &Session{ID: target.ID, Model: "test", Messages: loaded.Messages}
+	fake := &fakeModel{replies: []*completion{{Content: "可以继续"}}}
 	err = svc.loop(context.Background(), nil, fake, history, modelHistory(history.Messages, "u"), func(Event) {})
 	if err != nil {
 		t.Fatal(err)

@@ -126,3 +126,58 @@ func TestHistoryEmptyAndOneStream(t *testing.T) {
 		t.Fatalf("empty stream cursor not frozen: %+v %v", page, err)
 	}
 }
+
+func TestHistoryKeepsLatestAnswer(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://localhost", nil, nil, nil)
+	at := time.Now().UTC()
+	item := &Session{ID: "latest_answer", UpdatedAt: at, Messages: []Message{{ID: "user", Role: "user", CreatedAt: at}, {ID: "answer", Role: "assistant", CreatedAt: at.Add(200 * time.Second)}}}
+	for i := 0; i < 90; i++ {
+		item.Activity = append(item.Activity, Activity{ID: fmt.Sprint(i), StartedAt: at.Add(time.Duration(i+1) * time.Second)})
+	}
+	if err := svc.saveSession(item); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.History(item.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Session.Messages) != 1 || page.Session.Messages[0].ID != "answer" {
+		t.Fatal("latest answer missing")
+	}
+}
+
+func TestHistoryHydratesRunAtPageBoundary(t *testing.T) {
+	svc := NewService(t.TempDir(), "unused", nil, nil, nil)
+	at := time.Now()
+	end := at.Add(time.Hour)
+	item := &Session{ID: "boundary", Status: "failed", UpdatedAt: end, RunStats: []RunStats{{RunID: "run", Phase: "failed", StartedAt: at, EndedAt: &end}}}
+	for i := 0; i < 100; i++ {
+		item.Activity = append(item.Activity, Activity{ID: fmt.Sprint(i), RunID: "run", StartedAt: at.Add(time.Duration(i+1) * time.Second)})
+	}
+	if err := svc.saveSession(item); err != nil {
+		t.Fatal(err)
+	}
+	page, err := svc.History(item.ID, "")
+	if err != nil || len(page.Session.RunStats) != 1 || page.Session.RunStats[0].Phase != "failed" || page.Before == "" {
+		t.Fatalf("missing supporting run: %+v %v", page, err)
+	}
+	seen := map[string]bool{}
+	for {
+		for _, a := range page.Session.Activity {
+			if seen[a.ID] {
+				t.Fatal("duplicate activity")
+			}
+			seen[a.ID] = true
+		}
+		if page.Before == "" {
+			break
+		}
+		page, err = svc.History(item.ID, page.Before)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(seen) != 100 {
+		t.Fatal("supporting stats shifted cursors")
+	}
+}

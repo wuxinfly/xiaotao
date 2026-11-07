@@ -54,6 +54,10 @@ func TestServiceStreamsBeforeCompletionAndPersists(t *testing.T) {
 			t.Errorf("stream request missing: %v %v", req, err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
+		if tools, _ := req["tools"].([]any); len(tools) == 0 {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"理解请求"},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+			return
+		}
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"第一段\"}}]}\n\n")
 		w.(http.Flusher).Flush()
 		select {
@@ -101,14 +105,19 @@ func TestServiceStreamsBeforeCompletionAndPersists(t *testing.T) {
 func TestStreamedToolCallsAreExecutedAfterCompleteArguments(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
 		var req struct {
 			Messages []map[string]any `json:"messages"`
+			Tools    []map[string]any `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Error(err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
+		if len(req.Tools) == 0 {
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"先查看项目。\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+			return
+		}
+		calls++
 		if calls == 1 {
 			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"先看看。\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"list_files\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n\n")
 			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\".\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
@@ -143,19 +152,27 @@ func TestStreamedToolCallsAreExecutedAfterCompleteArguments(t *testing.T) {
 		t.Fatalf("bad tool execution: %+v", saved)
 	}
 	count := 0
+	var replies []string
 	for _, message := range saved.Messages {
-		if message.Role == "assistant" {
+		if message.Role == "assistant" && len(message.ToolCalls) == 0 {
 			count++
+			replies = append(replies, message.Content)
 		}
 	}
-	if count != 2 {
-		t.Fatalf("streamed assistant duplicated: %+v", saved.Messages)
+	if count != 1 || replies[0] != "完成。" {
+		t.Fatalf("intermediate narration should not be a reply: %+v", saved.Messages)
 	}
 }
 
 func TestCanceledStreamKeepsPartialReply(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		json.NewDecoder(r.Body).Decode(&req)
 		w.Header().Set("Content-Type", "text/event-stream")
+		if tools, _ := req["tools"].([]any); len(tools) == 0 {
+			fmt.Fprint(w, `data: {"choices":[{"delta":{"content":"理解请求"},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+			return
+		}
 		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"部分内容\"}}]}\n\n")
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()

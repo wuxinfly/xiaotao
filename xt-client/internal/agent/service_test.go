@@ -3,6 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +19,12 @@ type fakeModel struct {
 	messages [][]map[string]any
 }
 
-func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ func(string)) (*completion, error) {
+func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, tools []map[string]any, _ func(string)) (*completion, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if isSummaryRequest(messages) {
+		return &completion{Content: "确认请求。"}, nil
+	}
 	f.messages = append(f.messages, messages)
 	if len(f.replies) == 0 {
 		return &completion{Content: "done"}, nil
@@ -26,6 +32,10 @@ func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]
 	reply := f.replies[0]
 	f.replies = f.replies[1:]
 	return reply, nil
+}
+
+func isSummaryRequest(messages []map[string]any) bool {
+	return len(messages) > 0 && strings.Contains(fmt.Sprint(messages[0]["content"]), "小涛的进度摘要器")
 }
 
 func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
@@ -55,11 +65,11 @@ func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
 	if err != nil || string(text) != "hello" {
 		t.Fatalf("file not written: %q %v", text, err)
 	}
-	if len(history.Messages) != 3 {
+	if len(history.Messages) != 4 {
 		t.Fatalf("expected user/tool/final history, got %+v", history.Messages)
 	}
 	if len(fake.messages) != 2 {
-		t.Fatalf("expected two model turns, got %d", len(fake.messages))
+		t.Fatalf("expected tool and final turns, got %d", len(fake.messages))
 	}
 	second := fake.messages[1]
 	if len(second) != 3 || second[2]["role"] != "tool" || second[2]["tool_call_id"] != "call_1" {
@@ -67,7 +77,7 @@ func TestLoopPersistsToolHistoryAndReturnsFinalMessage(t *testing.T) {
 	}
 	foundFinal := false
 	for _, event := range events {
-		if event.Type == "message" && event.Message != nil && strings.Contains(event.Message.Content, "已创建") {
+		if event.Type == "answer_end" && event.Message != nil && strings.Contains(event.Message.Content, "已创建") {
 			foundFinal = true
 		}
 	}
@@ -88,12 +98,95 @@ func TestLoopStopsAtToolCallLimit(t *testing.T) {
 	history, _ := svc.Get(session.ID)
 	fake := &fakeModel{}
 	for i := 0; i < maxTurns+1; i++ {
-		args, _ := json.Marshal(map[string]any{"path": "."})
+		args, _ := json.Marshal(map[string]any{"path": fmt.Sprintf("dir-%d", i)})
 		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: "call", Name: "list_files", Arguments: args}}})
 	}
 	err = svc.loop(context.Background(), workspace, fake, history, nil, func(Event) {})
 	if err == nil || !strings.Contains(err.Error(), "超过") {
 		t.Fatalf("expected bounded loop error, got %v", err)
+	}
+}
+
+func TestLoopAllowsRepeatedPolling(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{ProjectPath: t.TempDir(), Model: "test/model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(session.Project.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeModel{}
+	for i := 0; i < 4; i++ {
+		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: fmt.Sprintf("call_%d", i), Name: "list_files", Arguments: json.RawMessage(`{"path":"."}`)}}})
+	}
+	fake.replies = append(fake.replies, &completion{Content: "完成"})
+	if err := svc.loop(context.Background(), workspace, fake, history, nil, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Activity) != 4 {
+		t.Fatalf("expected four polls, got %d", len(history.Activity))
+	}
+}
+
+func TestIntermediateToolNarrationIsNotPersistedAsReply(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Messages []map[string]any `json:"messages"`
+			Tools    []map[string]any `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		if len(request.Tools) == 0 {
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"先看当前状态。\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+			return
+		}
+		calls++
+		if calls == 1 {
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"我先看看当前状态。\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"list_files\",\"arguments\":\"{\\\"path\\\":\\\".\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
+			return
+		}
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"检查完了。\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer server.Close()
+	svc := NewService(t.TempDir(), server.URL, nil, server.Client(), nil)
+	session, err := svc.Create(Options{Model: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Send(context.Background(), session.ID, "检查一下", func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replies []string
+	for _, message := range saved.Messages {
+		if message.Role == "assistant" && len(message.ToolCalls) == 0 {
+			replies = append(replies, message.Content)
+		}
+	}
+	if len(replies) != 1 || replies[0] != "检查完了。" {
+		t.Fatalf("intermediate narration was persisted as a reply: %+v", replies)
+	}
+	foundNarration := false
+	for _, thought := range saved.Thoughts {
+		if thought.Text == "我先看看当前状态。" {
+			foundNarration = true
+		}
+	}
+	if !foundNarration {
+		t.Fatalf("intermediate narration missing from thought trail: %+v", saved.Thoughts)
 	}
 }
 
@@ -113,6 +206,27 @@ func TestCreateKeepsProjectDisplayName(t *testing.T) {
 	}
 	if loaded.Project.Name != "小涛 UI 重构" {
 		t.Fatalf("project name was not persisted: %+v", loaded.Project)
+	}
+}
+
+func TestVisibleChineseThinkingRejectsRawModelReasoning(t *testing.T) {
+	for _, value := range []string{
+		"Let me inspect the actual diff before deciding the next step.",
+		"Use rg to find README references",
+		"",
+	} {
+		if visibleChineseThinking(value) {
+			t.Fatalf("accepted non-visible reasoning: %q", value)
+		}
+	}
+	for _, value := range []string{
+		"已确认测试文件，下一步检查失败路径。",
+		"先核对 git 变更，再补充测试。",
+		"当前上下文够了，继续修改 Agent 页面。",
+	} {
+		if !visibleChineseThinking(value) {
+			t.Fatalf("rejected Chinese progress: %q", value)
+		}
 	}
 }
 
@@ -181,7 +295,7 @@ func TestLoopDenialReturnsToolResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(fake.messages) != 2 {
-		t.Fatalf("expected next model turn: %d", len(fake.messages))
+		t.Fatalf("expected tool and next model turns: %d", len(fake.messages))
 	}
 	messages := fake.messages[1]
 	result := messages[len(messages)-1]

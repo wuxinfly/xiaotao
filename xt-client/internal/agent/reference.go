@@ -177,7 +177,7 @@ func (s *Service) prepareConversationReferences(tx *sql.Tx, sourceIDs []string) 
 				rows.Close()
 				return nil, nil, err
 			}
-			if message.Role != "user" && message.Role != "assistant" {
+			if len(message.ToolCalls) > 0 || (message.Role != "user" && message.Role != "assistant") {
 				continue
 			}
 			content := strings.TrimSpace(message.Content)
@@ -396,14 +396,38 @@ func referenceModelMessage(refs []ConversationReference) map[string]any {
 // frozen 64 KiB source from being resent on every model call.
 func modelHistory(messages []Message, currentUserID string) []map[string]any {
 	out := make([]map[string]any, 0, len(messages)+1)
+	pending := map[string]string{}
+	flush := func() {
+		for id, name := range pending {
+			out = append(out, map[string]any{"role": "tool", "tool_call_id": id, "name": name, "content": "工具执行中断，未保存结果；不能据此判断执行成功。"})
+		}
+		pending = map[string]string{}
+	}
 	for _, message := range messages {
+		if message.Role != "tool" {
+			flush()
+		} else {
+			if _, ok := pending[message.ToolCallID]; !ok {
+				// Older stores saved results without their assistant calls. Keep
+				// the evidence as quoted context, never fabricate call arguments.
+				flush()
+				out = append(out, map[string]any{"role": "user", "content": "[历史工具结果，仅供参考：" + message.ToolName + "]\n" + message.Content})
+				continue
+			}
+			delete(pending, message.ToolCallID)
+		}
 		if message.ID == currentUserID {
 			if block := referenceModelMessage(message.References); block != nil {
 				out = append(out, block)
 			}
 		}
 		out = append(out, messageToModel(message))
+		for _, call := range message.ToolCalls {
+			function, _ := call["function"].(map[string]any)
+			pending[fmt.Sprint(call["id"])] = fmt.Sprint(function["name"])
+		}
 	}
+	flush()
 	return out
 }
 
