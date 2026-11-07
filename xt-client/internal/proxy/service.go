@@ -180,6 +180,8 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		ReasoningEffort string          `json:"reasoning_effort"`
 		Model           string          `json:"model"`
 		Stream          bool            `json:"stream"`
+		MaxTokens       int64           `json:"max_tokens"`
+		MaxCompletionTokens int64        `json:"max_completion_tokens"`
 		Messages        json.RawMessage `json:"messages"`
 		Tools           json.RawMessage `json:"tools"`
 		ToolChoice      any             `json:"tool_choice"`
@@ -206,6 +208,10 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "invalid_request_error", "缺少 model")
 		return
 	}
+	maxTokens := body.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = body.MaxCompletionTokens
+	}
 	providerID, _ := splitModelID(body.Model)
 	id := "chatcmpl-" + randHex()
 	created := time.Now().Unix()
@@ -224,7 +230,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if providerID == "antigravity" {
-		s.handleAntigravityWithFailover(ctx, w, reqTracker, id, created, body.Model, body.Stream, msgs, tools, body.ToolChoice, body.ReasoningEffort)
+		s.handleAntigravityWithFailover(ctx, w, reqTracker, id, created, body.Model, body.Stream, msgs, tools, body.ToolChoice, body.ReasoningEffort, maxTokens)
 		return
 	}
 	if !ok {
@@ -300,6 +306,9 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ReasoningEffort != "" {
 		upstream["reasoning_effort"] = body.ReasoningEffort
+	}
+	if maxTokens > 0 {
+		upstream["max_tokens"] = maxTokens
 	}
 	if body.Stream {
 		s.streamLive(ctx, reqTracker, w, id, created, body.Model, &cred, acct, acct.MachineID, acct.DeviceID, model, upstream, sessionID)

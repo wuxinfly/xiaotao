@@ -191,7 +191,7 @@
 
 2026-11-05 Qoder 排队兼容修复：QueueWait 对带内外层 403 的错误继续解析嵌套 message，仅结构化 code=10605 进入既有账号内等待重试；普通 403 不重试。重试次数、等待上限与已有事件后禁止重放的边界不变。详情见 Qoder 实施计划。
 
-2026-11-05 模型计费元数据：ModelInfo 增加可空 priceFactor / isFree，Qoder 从实时模型目录映射，Trae CN 从 display_contact_config.consumption_rate.data.rate 映射。未知或无效数据省略，不合并不同账号价格；账号目录、Agent 目录与 /v1/models 透传（公开接口为 snake_case）。Agent 聚合按账号顺序保留首条，与现有模型聚合口径一致。其他渠道当前无明确来源，保持未知；不改变实际结算和统计。实施与验证见 docs/plans/2026-11-05-model-pricing.md。
+2026-11-05 模型计费元数据：ModelInfo 增加可空 priceFactor / isFree，Qoder 从实时模型目录映射，Trae CN 从 display_contact_config.consumption_rate.data.rate 映射，WorkBuddy 从原生 /v3/config 的 models[].credits 与当前生效的 modelPromotions 映射。未知或无效数据省略，不合并不同账号价格；账号目录、Agent 目录与 /v1/models 透传（公开接口为 snake_case）。Agent 聚合按账号顺序保留首条，与现有模型聚合口径一致。Antigravity、Codex 当前无明确来源，保持未知；不改变实际结算和统计。实施与验证见 docs/plans/2026-11-05-model-pricing.md。
 
 WorkBuddy 国内原生登录与凭据隔离见 `../plans/2026-11-06-workbuddy-native.md`；旧 CodeBuddy 渠道凭据需重新登录。
 

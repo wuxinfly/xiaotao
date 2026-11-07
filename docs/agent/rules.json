@@ -154,6 +154,16 @@
           ]
         },
         {
+          "id": "development-conventions.client-code-quality",
+          "kind": "convention",
+          "text": "客户端代码质量按 `docs/agent/client-code-quality.md` 检查；新增代码不得新增超限文件或函数，修改存量超限文件时不得继续变大。",
+          "source_refs": [
+            "docs/agent/client-code-quality.md",
+            "xt-client/AGENTS.md",
+            "xt-client/frontend/eslint.config.js"
+          ]
+        },
+        {
           "id": "development-conventions.workbuddy-login-sync-flow",
           "kind": "fact",
           "text": "WorkBuddy 国内原生渠道使用 www.workbuddy.cn 与 platform=workbuddy；先获取 authUrl 再返回登录会话并打开浏览器，账号身份从 token 元数据读取，模型来自 /v3/config。不得将 CodeBuddy VSCode 插件凭据视为 WorkBuddy 原生凭据；旧渠道账号需重新登录。",
@@ -230,10 +240,12 @@
         {
           "id": "verification.client",
           "kind": "convention",
-          "text": "客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；手动打包使用 `./build.ps1` 或 `./build.ps1 -Env uat`，AI 自行构建验证必须添加 `-Verify`，不得递增版本，详见局部 AGENTS.md。",
+          "text": "客户端：在 xt-client/frontend 运行 `npm run lint`、`npm run check:size`、`npm run build`，在 xt-client 运行 `node tools/check-go-size.mjs`、`go test ./...`、`go vet ./...`；手动打包使用 `./build.ps1` 或 `./build.ps1 -Env uat`，AI 自行构建验证必须添加 `-Verify`，不得递增版本，详见局部 AGENTS.md。",
           "source_refs": [
             "xt-client/AGENTS.md",
-            "xt-client/build.ps1"
+            "xt-client/build.ps1",
+            "xt-client/frontend/package.json",
+            "docs/agent/client-code-quality.md"
           ]
         },
         {

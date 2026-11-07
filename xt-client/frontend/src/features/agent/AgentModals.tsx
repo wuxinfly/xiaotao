@@ -1,10 +1,7 @@
-import {useEffect, useMemo, useState} from 'react';
-import {ModelPriceBadge} from '../../components/ModelPriceBadge';
-import {MCPSettings} from './MCPSettings';
-import {SkillsSettings} from './SkillsSettings';
+import {useEffect, useRef, useState} from 'react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
-import {Check, ChevronDown, FolderOpen, Search, X} from 'lucide-react';
-import {api, type AgentConversationReference, type AgentModelOption} from '../../lib/api';
+import {FolderOpen, Sparkles} from 'lucide-react';
+import {api, type AgentConversationReference} from '../../lib/api';
 
 declare global {
   interface Window {
@@ -14,164 +11,36 @@ declare global {
   }
 }
 
-const providerNames: Record<string, string> = {
-  trae: 'Trae',
-  workbuddy: 'WorkBuddy',
-  antigravity: 'Antigravity',
-  qoder: 'Qoder',
-  codex: 'Codex',
-};
-
-function splitModel(model: string) {
-  const slash = model.indexOf('/');
-  if (slash < 0) return {provider: 'other', name: model};
-  return {provider: model.slice(0, slash), name: model.slice(slash + 1)};
-}
-
-function providerLabel(provider: string) {
-  return providerNames[provider] || provider;
-}
-
 function projectNameFromPath(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() || '';
 }
 
-export function RenameSessionModal({title, origin, onSave, onClose, project = false}: {project?: boolean; title: string; origin?: {x: number; y: number}; onSave: (value: string) => Promise<void>; onClose: () => void}) {
- const [value, setValue] = useState(title), [saving, setSaving] = useState(false), [error, setError] = useState('');
- const submit = async () => { if (saving || !value.trim()) return; setSaving(true); setError(''); try { await onSave(value.trim()); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally {setSaving(false);} };
- return <ModalFrame origin={origin} title={project ? "重命名项目" : "重命名会话"} className="agent-rename-modal" onClose={() => {if (!saving) onClose();}} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={saving} onClick={onClose}>取消</button><button type="button" className="app-modal-button primary" disabled={saving || !value.trim() || Array.from(value.trim()).length > 100} onClick={() => void submit()}>{saving ? '保存中…' : '保存'}</button></div>}><label className="agent-field"><span>{project ? "项目名称" : "会话名称"}</span><input value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => {if(event.key === 'Enter' && !event.nativeEvent.isComposing) void submit();}}/></label>{error && <p className="agent-modal-error" role="alert">{error}</p>}</ModalFrame>;
-}
-
-interface AgentSettingsModalProps {
-  models: AgentModelOption[];
-  selected: string[];
-  loading: boolean;
-  error: string;
-  onRetry: () => void;
-  onAccounts: () => void;
-  onSave: (models: string[]) => void;
-  onClose: () => void;
-}
-
-export function AgentSettingsModal({models, selected, loading, error, onRetry, onAccounts, onSave, onClose}: AgentSettingsModalProps) {
-  const [tab, setTab] = useState<'models' | 'mcp' | 'skills'>('models');
-  const [mcpBusy, setMCPBusy] = useState(false);
-  const [skillsBusy, setSkillsBusy] = useState(false);
-  const settingsBusy = mcpBusy || skillsBusy;
-  const [query, setQuery] = useState('');
-  const [chosen, setChosen] = useState(() => new Set(selected));
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const visibleModels = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return models;
-    return models.filter(item => `${item.label} ${item.model}`.toLowerCase().includes(term));
-  }, [models, query]);
-  const groups = useMemo(() => {
-    const grouped = new Map<string, AgentModelOption[]>();
-    for (const item of visibleModels) {
-      const provider = splitModel(item.model).provider;
-      const list = grouped.get(provider) || [];
-      list.push(item);
-      grouped.set(provider, list);
-    }
-    return Array.from(grouped.entries());
-  }, [visibleModels]);
-  const availableIDs = useMemo(() => new Set(models.map(item => item.model)), [models]);
-  const selectedCount = Array.from(chosen).filter(id => availableIDs.has(id)).length;
-
-  function toggleModel(model: string) {
-    setChosen(current => {
-      const next = new Set(current);
-      if (next.has(model)) next.delete(model);
-      else next.add(model);
-      return next;
-    });
-  }
-
-  function toggleGroup(items: AgentModelOption[]) {
-    const allSelected = items.every(item => chosen.has(item.model));
-    setChosen(current => {
-      const next = new Set(current);
-      for (const item of items) {
-        if (allSelected) next.delete(item.model);
-        else next.add(item.model);
-      }
-      return next;
-    });
-  }
-
-  return <ModalFrame
-    title="Agent 设置"
-    description={tab === 'models' ? '只把常用模型留在输入区，选择切换会更清爽。' : tab === 'mcp' ? '管理 Agent 可以使用的外部工具。' : '为小涛添加本地技能，按任务需要使用。'}
-    className="agent-settings-modal"
-    onClose={() => {if (!settingsBusy) onClose();}}
-    footer={tab !== 'models' ? <div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={settingsBusy} onClick={onClose}>关闭</button></div> : <>
-      <span className="app-modal-count">已选 {selectedCount} 个模型</span>
-      <div className="app-modal-actions">
-        <button type="button" className="app-modal-button secondary" onClick={onClose}>取消</button>
-        <button
-          type="button"
-          className="app-modal-button primary"
-          disabled={!selectedCount}
-          onClick={() => onSave(models.filter(item => chosen.has(item.model)).map(item => item.model))}
-        >保存设置</button>
-      </div>
-    </>}
-  >
-    <div className="agent-settings-tabs" role="group" aria-label="设置分类"><button type="button" aria-pressed={tab === 'models'} disabled={settingsBusy} onClick={() => setTab('models')}>常用模型</button><button type="button" aria-pressed={tab === 'mcp'} disabled={settingsBusy} onClick={() => setTab('mcp')}>MCP 工具</button><button type="button" aria-pressed={tab === 'skills'} disabled={settingsBusy} onClick={() => setTab('skills')}>Skills 技能</button></div>
-    <div hidden={tab !== 'mcp'}><MCPSettings active={tab === 'mcp'} onBusyChange={setMCPBusy}/></div>
-    <div hidden={tab !== 'skills'}><SkillsSettings active={tab === 'skills'} onBusyChange={setSkillsBusy}/></div>
-    <div hidden={tab !== 'models'}>
-    <div className="agent-model-refresh"><span>模型列表已缓存，账号或模型变化后可手动刷新。</span><button type="button" className="app-modal-button secondary" disabled={loading} onClick={onRetry}>{loading ? '刷新中…' : '刷新模型列表'}</button></div>
-    <label className="agent-model-search">
-      <Search aria-hidden="true"/>
-      <input
-        value={query}
-        onChange={event => { const value = event.target.value; setQuery(value); const term = value.trim().toLowerCase(); setExpanded(new Set(term ? models.filter(item => `${item.label} ${item.model}`.toLowerCase().includes(term)).map(item => splitModel(item.model).provider) : [])); }}
-        placeholder="搜索模型或来源"
-        aria-label="搜索模型"
-        autoComplete="off"
-      />
-      {query && <button type="button" onClick={() => {setQuery(''); setExpanded(new Set());}} aria-label="清除搜索"><X aria-hidden="true"/></button>}
-    </label>
-    <div className="agent-settings-groups">
-      {loading && <div className="agent-modal-empty" role="status">正在从已启用的账号获取模型，可能需要一些时间…</div>}
-      {error && <div className="agent-modal-empty" role="alert"><p>模型列表加载失败：{error}。已选模型仍会保留。</p><button type="button" className="app-modal-button secondary" onClick={onRetry}>重试</button> <button type="button" className="app-modal-button secondary" onClick={onAccounts}>查看账号与配额</button></div>}
-      {!loading && !error && !models.length && <div className="agent-modal-empty"><p>没有获取到可用模型，请检查账号是否已接入并启用。</p><button type="button" className="app-modal-button secondary" onClick={onAccounts}>前往账号与配额</button> <button type="button" className="app-modal-button secondary" onClick={onRetry}>重新获取</button></div>}
-      {models.length > 0 && !visibleModels.length && <div className="agent-modal-empty">没有匹配的模型。</div>}
-      {groups.map(([provider, items]) => {
-        const allSelected = items.every(item => chosen.has(item.model));
-        const open = expanded.has(provider);
-        const groupSelected = items.filter(item => chosen.has(item.model)).length;
-        return <section className="agent-settings-group" key={provider}>
-          <div className="agent-settings-group-head">
-            <button type="button" className="agent-settings-group-toggle" aria-expanded={open} onClick={() => setExpanded(current => { const next = new Set(current); if (open) next.delete(provider); else next.add(provider); return next; })}><ChevronDown className={open ? 'is-open' : ''} aria-hidden="true"/><strong>{providerLabel(provider)}</strong><small>{items.length} 个 · 已选 {groupSelected}</small></button>
-            {open && <button type="button" onClick={() => toggleGroup(items)}>{allSelected ? '取消全选' : '全选'}</button>}
-          </div>
-          {open && <div className="agent-model-options">
-            {items.map(item => {
-              const {name} = splitModel(item.model);
-              const active = chosen.has(item.model);
-              return <button
-                type="button"
-                className={'agent-model-choice' + (active ? ' is-selected' : '')}
-                key={item.model}
-                aria-pressed={active}
-                onClick={() => toggleModel(item.model)}
-              >
-                <span className="agent-model-check">{active && <Check aria-hidden="true"/>}</span>
-                <span className="agent-model-choice-copy">
-                  <strong>{item.label || name}<ModelPriceBadge {...item}/></strong>
-                  <code>{item.model}</code>
-                </span>
-              </button>;
-            })}
-          </div>}
-        </section>;
-      })}
-    </div>
-    </div>
-  </ModalFrame>;
+export function RenameSessionModal({title, origin, onSave, onClose, project = false, onGenerateTitle}: {project?: boolean; title: string; origin?: {x: number; y: number}; onSave: (value: string) => Promise<void>; onClose: () => void; onGenerateTitle?: (signal: AbortSignal) => Promise<string>}) {
+ const [value, setValue] = useState(title), [saving, setSaving] = useState(false), [generating, setGenerating] = useState(false), [error, setError] = useState('');
+ const busy = saving || generating;
+ const generation = useRef<AbortController | null>(null);
+ const cancelGeneration = () => {generation.current?.abort(); generation.current = null; setGenerating(false);};
+ const close = () => { if (saving) return; cancelGeneration(); onClose(); };
+ useEffect(() => () => generation.current?.abort(), []);
+ const submit = async () => { if (busy || !value.trim()) return; setSaving(true); setError(''); try { await onSave(value.trim()); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally {setSaving(false);} };
+ const generate = async () => {
+   if (!onGenerateTitle || busy) return;
+   const controller = new AbortController();
+   generation.current = controller;
+   setGenerating(true); setError('');
+   try {
+     const generated = await onGenerateTitle(controller.signal);
+     if (generated.trim()) setValue(generated.trim());
+   } catch (reason) {
+     if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(reason instanceof Error ? reason.message : String(reason));
+   } finally {
+     if (generation.current === controller) {
+       generation.current = null;
+       setGenerating(false);
+     }
+   }
+ };
+ return <ModalFrame origin={origin} title={project ? "重命名项目" : "重命名会话"} className="agent-rename-modal" onClose={close} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" disabled={saving} onClick={close}>取消</button><button type="button" className="app-modal-button primary" disabled={busy || !value.trim() || Array.from(value.trim()).length > 100} onClick={() => void submit()}>{saving ? '保存中…' : generating ? '生成中…' : '保存'}</button></div>}><label className="agent-field"><span>{project ? "项目名称" : "会话名称"}</span><div className="agent-title-input-row"><input value={value} onChange={event => setValue(event.target.value)} disabled={saving} onKeyDown={event => {if(event.key === 'Enter' && !event.nativeEvent.isComposing) void submit();}}/>{onGenerateTitle && <button type="button" className="agent-title-generate" disabled={busy} onClick={() => void generate()} aria-label="AI生成标题" title="根据最新会话内容生成标题"><Sparkles aria-hidden="true"/>{generating ? '生成中…' : 'AI生成'}</button>}</div></label>{error && <p className="agent-modal-error" role="alert">{error}</p>}</ModalFrame>;
 }
 
 interface ProjectModalProps {

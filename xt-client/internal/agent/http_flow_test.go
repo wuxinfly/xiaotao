@@ -64,7 +64,7 @@ func TestHTTPFlowWithMockModel(t *testing.T) {
 	if loaded.Status != StatusCompleted || len(loaded.Activity) != 1 || loaded.Activity[0].Status != "completed" {
 		t.Fatalf("unexpected final session: %+v", loaded)
 	}
-	if len(loaded.Thoughts) == 0 || len(loaded.RunStats) != 1 {
+	if len(loaded.Activity) != 1 || len(loaded.RunStats) != 1 || loaded.RunStats[0].ModelRequests != 2 {
 		t.Fatalf("missing run timeline: %+v", loaded)
 	}
 	raw, _ := json.Marshal(loaded)
@@ -138,5 +138,35 @@ func TestSwitchModelBetweenMessages(t *testing.T) {
 	}
 	if loaded.Model != "second" || len(loaded.Messages) != 6 {
 		t.Fatalf("unexpected session: %+v", loaded)
+	}
+}
+
+func TestHTTPModelRequestIncludesMaximumOutput(t *testing.T) {
+	var maxTokens float64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			MaxTokens float64 `json:"max_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		maxTokens = payload.MaxTokens
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+	svc := NewService(t.TempDir(), server.URL, func() string { return "key" }, server.Client(), nil)
+	session, err := svc.Create(Options{
+		Model: "test/model",
+		ModelSettings: &ModelSettings{ContextWindow: 32000, MaxOutputTokens: 2048},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Send(context.Background(), session.ID, "hello", func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if maxTokens != 2048 {
+		t.Fatalf("expected max_tokens 2048, got %v", maxTokens)
 	}
 }

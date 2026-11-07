@@ -94,6 +94,7 @@ type BehaviorReview struct {
 	RequestID            string                 `json:"requestId"`
 	AttemptOf            string                 `json:"attemptOf,omitempty"`
 	Model                string                 `json:"model"`
+	ModelSettings        *ModelSettings         `json:"modelSettings,omitempty"`
 	ClientVersion        string                 `json:"clientVersion"`
 	CoreVersion          string                 `json:"coreVersion"`
 	PromptVersion        string                 `json:"promptVersion"`
@@ -132,7 +133,9 @@ type ReviewListPage struct {
 }
 
 type CreateReviewRequest struct {
-	RequestID string `json:"requestId"`
+	RequestID     string         `json:"requestId"`
+	Model         string         `json:"model,omitempty"`
+	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
 }
 
 type RetryReviewRequest struct {

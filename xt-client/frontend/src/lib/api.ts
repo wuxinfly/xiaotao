@@ -1,3 +1,7 @@
+import type {AgentModelSettings} from './agent-model-settings';
+
+export type {AgentDefaultModels, AgentModelConfig, AgentModelDefaults, AgentModelSettings} from './agent-model-settings';
+
 export interface ReviewScope {
   cutoffPositions: Record<string, number>;
   runIds: string[];
@@ -398,6 +402,7 @@ export interface AgentSession {
   project: AgentProject;
   title: string;
   model: string;
+  modelSettings?: AgentModelSettings;
   status: 'idle' | 'running' | 'completed' | 'failed' | 'canceled';
   messages: AgentMessage[];
   activity: AgentActivity[];
@@ -447,7 +452,7 @@ async function dashboardRequest(): Promise<DashboardSnapshot> {
     return await request<DashboardSnapshot>('/api/dashboard', { signal: controller.signal });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error('仪表盘响应超时，请重试');
+      throw new Error('仪表盘响应超时，请重试', {cause: error});
     }
     throw error;
   } finally {
@@ -514,6 +519,7 @@ export const api = {
   renameAgentProject: (path: string, name: string) => request('/api/agent/project/name', {method: 'PATCH', body: JSON.stringify({path, name})}),
   openAgentProject: (path: string) => request('/api/agent/project/open', {method: 'POST', body: JSON.stringify({path})}),
   renameAgentSession: (id: string, title: string) => request<AgentSession>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'PATCH', body: JSON.stringify({title})}),
+  generateAgentSessionTitle: (id: string, signal?: AbortSignal, model?: string, modelSettings?: AgentModelSettings) => request<{title: string}>('/api/agent/sessions/' + encodeURIComponent(id) + '/title', {method: 'POST', body: JSON.stringify({model, modelSettings}), signal}),
   deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
   agentModels: (signal?: AbortSignal, refresh = false) => request<{ models: AgentModelOption[]; errors?: string[] }>(refresh ? '/api/agent/models/refresh' : '/api/agent/models', {signal, method: refresh ? 'POST' : 'GET'}),
   agentHistory: (id: string, before = '') => request<{session: AgentSession; before: string}>(`/api/agent/sessions/${encodeURIComponent(id)}/history?before=${encodeURIComponent(before)}`),
@@ -524,10 +530,10 @@ export const api = {
   },
   agentReference: (id: string) => request<AgentConversationReferenceDetail>(`/api/agent/references/${encodeURIComponent(id)}`),
   agentSession: (id: string) => request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}`),
-  createAgentSession: (projectPath: string, model: string, projectName = '') =>
+  createAgentSession: (projectPath: string, model: string, projectName = '', modelSettings?: AgentModelSettings) =>
     request<AgentSession>('/api/agent/sessions', {
       method: 'POST',
-      body: JSON.stringify({ projectPath, projectName, model }),
+      body: JSON.stringify({ projectPath, projectName, model, modelSettings }),
     }),
   resolveAgentProject: (path: string) =>
     request<AgentProject>('/api/agent/project', {
@@ -536,10 +542,10 @@ export const api = {
     }),
   cancelAgentSession: (id: string) =>
     request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
-  createReview: (sessionId: string, requestId?: string) =>
+  createReview: (sessionId: string, requestId?: string, model?: string, modelSettings?: AgentModelSettings) =>
     request<BehaviorReview>(`/api/agent/sessions/${encodeURIComponent(sessionId)}/reviews`, {
       method: 'POST',
-      body: JSON.stringify({ requestId }),
+      body: JSON.stringify({ requestId, model, modelSettings }),
     }),
   listReviews: (sessionId?: string, cursor?: string, limit?: number) => {
     const params = new URLSearchParams();

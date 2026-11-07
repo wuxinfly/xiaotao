@@ -35,8 +35,8 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
       const res = await api.listReviews(sessionId, cursor, 20);
       setReviews(prev => (reset ? res.reviews : [...prev, ...res.reviews]));
       setNextCursor(res.nextCursor);
-    } catch (err: any) {
-      setActionError(err?.message || '读取复盘记录失败');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : '读取复盘记录失败');
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -63,8 +63,8 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
     try {
       const detail = await api.getReview(id);
       setActiveDetail(detail);
-    } catch (err: any) {
-      setActionError(err?.message || '读取复盘详情失败');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : '读取复盘详情失败');
     }
   };
 
@@ -72,8 +72,8 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
     try {
       await api.cancelReview(id);
       void fetchReviews(true);
-    } catch (err: any) {
-      setActionError(err?.message || '取消复盘失败');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : '取消复盘失败');
     }
   };
 
@@ -81,8 +81,8 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
     try {
       await api.retryReview(id);
       void fetchReviews(true);
-    } catch (err: any) {
-      setActionError(err?.message || '重试复盘失败');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : '重试复盘失败');
     }
   };
 
@@ -91,8 +91,8 @@ export function ReviewListModal({currentSessionId, onClose}: ReviewListModalProp
       await api.deleteReview(id);
       setDeletingId(null);
       void fetchReviews(true);
-    } catch (err: any) {
-      setActionError(err?.message || '删除复盘失败');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : '删除复盘失败');
     }
   };
 

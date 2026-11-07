@@ -26,12 +26,11 @@ test('theme persists, covers portals and synchronizes the HUD', {timeout: 60000}
     const page=await context.newPage();
     const screenshot = name => page.screenshot({path:join(tmpdir(), `xiaotao-light-${name}.png`)});
     await page.goto('http://127.0.0.1:5191');
-    await page.getByRole('button',{name:'切换到浅海亮色主题'}).focus();
-    await page.keyboard.press('Enter');
+    await page.getByRole('button',{name:'更多',exact:true}).click();
+    await page.getByRole('menuitem',{name:'切换到浅海主题'}).click();
     assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
     assert.equal(await page.locator('.agent-main-panel').evaluate(el=>getComputedStyle(el).backgroundImage),'none');
     await page.reload();
-    await page.getByRole('button',{name:'切换到深海暗色主题'}).waitFor();
     await screenshot('agent');
     await page.getByRole('button',{name:'打开 Agent 设置'}).click();
     assert.equal(await page.locator('.app-modal').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(251, 254, 255)');
@@ -48,15 +47,15 @@ test('theme persists, covers portals and synchronizes the HUD', {timeout: 60000}
     const hud=await context.newPage();
     await hud.goto('http://127.0.0.1:5191/hud.html');
     assert.equal(await hud.locator('html').getAttribute('data-theme'),'light');
-    await page.getByRole('button',{name:'切换到深海暗色主题'}).click();
+    await page.getByRole('button',{name:'更多',exact:true}).click();
+    await page.getByRole('menuitem',{name:'切换到深海主题'}).click();
     await hud.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
     assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
-    await page.getByRole('button',{name:'切换到浅海亮色主题'}).click();
+    await page.evaluate(async()=>{const {saveTheme}=await import('/src/lib/theme.ts'); saveTheme('light');});
     for(const width of [540,850]) {
       await page.setViewportSize({width,height:800});
-      const toggle=await page.locator('.theme-toggle').boundingBox();
-      const nav=await page.locator('.titlebar nav').boundingBox();
-      assert.ok(toggle.x>=nav.x+nav.width,'theme toggle must not overlap navigation');
+      assert.equal(await page.locator('.titlebar nav').count(),0,'top navigation must remain removed');
+      assert.ok(await page.getByRole('button',{name:'更多',exact:true}).isVisible(),'more menu must remain available in narrow windows');
     }
     const blocked=await browser.newContext();
     await blocked.addInitScript(()=>{Storage.prototype.getItem=()=>{throw new Error('blocked storage')};Storage.prototype.setItem=()=>{throw new Error('blocked storage')};});

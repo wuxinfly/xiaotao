@@ -99,6 +99,15 @@ func (s *Service) CreateReview(sessionID string, req CreateReviewRequest) (*Beha
 		coreVer = "unknown"
 	}
 
+	model := sess.Model
+	settings := sess.ModelSettings
+	if requested := strings.TrimSpace(req.Model); requested != "" {
+		model = requested
+		settings, err = normalizeModelSettings(req.ModelSettings, s.modelDefaults(model))
+		if err != nil {
+			return nil, err
+		}
+	}
 	review := &BehaviorReview{
 		ID:                   "rev_" + randomID(8),
 		SchemaVersion:        ReviewSchemaVersion,
@@ -109,7 +118,7 @@ func (s *Service) CreateReview(sessionID string, req CreateReviewRequest) (*Beha
 		Timezone:             "Asia/Shanghai",
 		Status:               ReviewStatusPending,
 		RequestID:            requestID,
-		Model:                sess.Model,
+		Model:                model,
 		ClientVersion:        clientVer,
 		CoreVersion:          coreVer,
 		PromptVersion:        ReviewPromptVersion,
@@ -128,7 +137,9 @@ func (s *Service) CreateReview(sessionID string, req CreateReviewRequest) (*Beha
 	}
 
 	// 7. Launch background review execution
-	go s.runReviewTask(review.ID, sess.Model, snapshot.PromptPayload, snapshot.EvidenceSnapshot)
+	modelSettings := derefModelSettings(settings)
+	review.ModelSettings = &modelSettings
+	go s.runReviewTask(review.ID, model, snapshot.PromptPayload, snapshot.EvidenceSnapshot, modelSettings)
 
 	return review, nil
 }
@@ -208,6 +219,7 @@ func (s *Service) RetryReview(id string, req RetryReviewRequest) (*BehaviorRevie
 		RequestID:            requestID,
 		AttemptOf:            orig.ID,
 		Model:                orig.Model,
+		ModelSettings:        orig.ModelSettings,
 		ClientVersion:        clientVer,
 		CoreVersion:          coreVer,
 		PromptVersion:        ReviewPromptVersion,
@@ -220,7 +232,7 @@ func (s *Service) RetryReview(id string, req RetryReviewRequest) (*BehaviorRevie
 		return nil, err
 	}
 
-	go s.runReviewTask(newReview.ID, newReview.Model, rawEvidence, newReview.EvidenceSnapshot)
+	go s.runReviewTask(newReview.ID, newReview.Model, rawEvidence, newReview.EvidenceSnapshot, derefModelSettings(newReview.ModelSettings))
 
 	return newReview, nil
 }
@@ -248,7 +260,7 @@ func (s *Service) DeleteReview(id string) error {
 	return s.deleteReviewRecord(id)
 }
 
-func (s *Service) runReviewTask(reviewID, model, promptPayload string, evidenceItems []ReviewEvidenceItem) {
+func (s *Service) runReviewTask(reviewID, model, promptPayload string, evidenceItems []ReviewEvidenceItem, settings ModelSettings) {
 	ctx, cancel := context.WithTimeout(context.Background(), ReviewTimeout)
 	defer cancel()
 
@@ -332,7 +344,7 @@ JSON 输出格式规范：
 	}
 
 	client := s.getModelClient()
-	comp, err := client.Complete(ctx, model, messages, nil, nil)
+	comp, err := client.Complete(ctx, model, messages, nil, settings, nil)
 	if err != nil {
 		finishTime := time.Now().UTC()
 		if errors.Is(err, context.Canceled) {

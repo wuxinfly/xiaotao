@@ -20,12 +20,9 @@ type fakeModel struct {
 	messages [][]map[string]any
 }
 
-func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, tools []map[string]any, _ func(string)) (*completion, error) {
+func (f *fakeModel) Complete(_ context.Context, _ string, messages []map[string]any, tools []map[string]any, _ ModelSettings, _ func(string)) (*completion, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if isSummaryRequest(messages) {
-		return &completion{Content: "确认请求。"}, nil
-	}
 	f.messages = append(f.messages, messages)
 	if len(f.replies) == 0 {
 		return &completion{Content: "done"}, nil
@@ -40,7 +37,7 @@ type statsModel struct {
 	replies []*completion
 }
 
-func (m *statsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ func(string)) (*completion, error) {
+func (m *statsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ ModelSettings, _ func(string)) (*completion, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isSummaryRequest(messages) {
@@ -95,6 +92,89 @@ func TestCompletionStatsReportToolOnlyOutputBeforeRunEnds(t *testing.T) {
 	}
 }
 
+type captureSettingsModel struct {
+	settings []ModelSettings
+}
+
+func (m *captureSettingsModel) Complete(_ context.Context, _ string, _ []map[string]any, _ []map[string]any, settings ModelSettings, _ func(string)) (*completion, error) {
+	m.settings = append(m.settings, settings)
+	return &completion{Content: "完成"}, nil
+}
+
+func TestModelSettingsAreSnapshottedAndPassedToTheModel(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	session, err := svc.Create(Options{
+		Model: "test/model",
+		ModelSettings: &ModelSettings{ContextWindow: 120000, MaxOutputTokens: 8192},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ModelSettings == nil || session.ModelSettings.ContextWindow != 120000 || session.ModelSettings.MaxOutputTokens != 8192 {
+		t.Fatalf("settings were not snapshotted: %+v", session.ModelSettings)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &captureSettingsModel{}
+	stats := RunStats{RunID: "turn_settings", StartedAt: time.Now()}
+	var outputSeconds float64
+	if err := svc.loopWithRun(context.Background(), nil, model, history, nil, nil, stats.RunID, &stats, &outputSeconds, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(model.settings) != 1 || model.settings[0].ContextWindow != 120000 || model.settings[0].MaxOutputTokens != 8192 {
+		t.Fatalf("model did not receive settings: %+v", model.settings)
+	}
+}
+
+func TestModelSettingsValidation(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, nil)
+	for _, settings := range []*ModelSettings{
+		{ContextWindow: 512},
+		{ContextWindow: 4096, MaxOutputTokens: 4096},
+		{MaxOutputTokens: 8},
+		{ContextWindow: -1},
+	} {
+		if _, err := svc.Create(Options{Model: "test/model", ModelSettings: settings}); err == nil {
+			t.Fatalf("expected invalid settings to fail: %+v", settings)
+		}
+	}
+}
+
+func TestSettingsFollowAModelSwitchWhenNoNewValuesAreSent(t *testing.T) {
+	svc := NewService(t.TempDir(), "http://127.0.0.1:9999", nil, nil, func() []ModelOption {
+		return []ModelOption{{Model: "test/new", ContextWindow: 64000}}
+	})
+	session, err := svc.Create(Options{
+		Model: "test/old",
+		ModelSettings: &ModelSettings{ContextWindow: 12000, MaxOutputTokens: 1024},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.Get(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &captureSettingsModel{}
+	stats := RunStats{RunID: "turn_switch", StartedAt: time.Now()}
+	var outputSeconds float64
+	if err := svc.loopWithRunSettings(context.Background(), nil, model, history, nil, nil, stats.RunID, &stats, &outputSeconds, &ModelSettings{ContextWindow: 64000}, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(model.settings) != 1 || model.settings[0].ContextWindow != 64000 {
+		t.Fatalf("new settings were not passed: %+v", model.settings)
+	}
+	settings, err := normalizeModelSettings(&ModelSettings{MaxOutputTokens: 512}, svc.modelDefaults("test/new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ContextWindow != 64000 || settings.MaxOutputTokens != 512 {
+		t.Fatalf("catalog context was not merged into output-only settings: %+v", settings)
+	}
+}
+
 // streamingModel replays deltas so the run can measure live output.
 type streamingModel struct {
 	mu      sync.Mutex
@@ -103,7 +183,7 @@ type streamingModel struct {
 	delays  []time.Duration
 }
 
-func (m *streamingModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, onDelta func(string)) (*completion, error) {
+func (m *streamingModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ ModelSettings, onDelta func(string)) (*completion, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isSummaryRequest(messages) {
@@ -152,7 +232,7 @@ type streamingMetricsModel struct {
 	delays []time.Duration
 }
 
-func (m *streamingMetricsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, onDelta func(string)) (*completion, error) {
+func (m *streamingMetricsModel) Complete(_ context.Context, _ string, messages []map[string]any, _ []map[string]any, _ ModelSettings, onDelta func(string)) (*completion, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isSummaryRequest(messages) {
@@ -227,7 +307,9 @@ func TestRunStatsEventsCarryLiveMetricsWhileStreaming(t *testing.T) {
 }
 
 func TestSendCarriesKnownModelContextWindow(t *testing.T) {
+	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
 		var payload struct {
 			Tools []map[string]any `json:"tools"`
 		}
@@ -257,7 +339,10 @@ func TestSendCarriesKnownModelContextWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.RunStats) != 1 || loaded.RunStats[0].ContextWindow != 1000 || loaded.RunStats[0].ContextTokens <= 0 {
+	if requests != 1 {
+		t.Fatalf("expected one model request for a simple send, got %d", requests)
+	}
+	if len(loaded.RunStats) != 1 || loaded.RunStats[0].ModelRequests != 1 || loaded.RunStats[0].ContextWindow != 1000 || loaded.RunStats[0].ContextTokens <= 0 {
 		t.Fatalf("context stats missing: %+v", loaded.RunStats)
 	}
 }
@@ -326,9 +411,9 @@ func TestLoopContinuesPastFortyToolRounds(t *testing.T) {
 	history, _ := svc.Get(session.ID)
 	fake := &fakeModel{}
 	for i := 0; i < 45; i++ {
-		fake.replies = append(fake.replies, &completion{ToolCalls: []toolCall{{ID: fmt.Sprintf("call_%d", i), Name: "list_files", Arguments: json.RawMessage(`{"path":"."}`)}}})
+		fake.replies = append(fake.replies, &completion{Reasoning: "private reasoning", ToolCalls: []toolCall{{ID: fmt.Sprintf("call_%d", i), Name: "list_files", Arguments: json.RawMessage(`{"path":"."}`)}}})
 	}
-	fake.replies = append(fake.replies, &completion{Content: "完成"})
+	fake.replies = append(fake.replies, &completion{Content: "完成", Reasoning: "private reasoning"})
 	err = svc.loop(context.Background(), workspace, fake, history, nil, func(Event) {})
 	if err != nil {
 		t.Fatal(err)
@@ -354,15 +439,7 @@ func TestLoopContinuesPastFortyToolRounds(t *testing.T) {
 	if loaded.Messages[90].Content != "完成" {
 		t.Fatalf("final answer missing: %+v", loaded.Messages[90])
 	}
-	checkpoints := 0
-	for _, thought := range loaded.Thoughts {
-		if thought.Kind == "checkpoint" {
-			checkpoints++
-		}
-	}
-	if checkpoints != 5 {
-		t.Fatalf("expected five checkpoints, got %d", checkpoints)
-	}
+
 }
 
 func TestLoopCanCancelAfterFortyToolRounds(t *testing.T) {
@@ -516,27 +593,6 @@ func TestCreateKeepsProjectDisplayName(t *testing.T) {
 	}
 	if loaded.Project.Name != "小涛 UI 重构" {
 		t.Fatalf("project name was not persisted: %+v", loaded.Project)
-	}
-}
-
-func TestVisibleChineseThinkingRejectsRawModelReasoning(t *testing.T) {
-	for _, value := range []string{
-		"Let me inspect the actual diff before deciding the next step.",
-		"Use rg to find README references",
-		"",
-	} {
-		if visibleChineseThinking(value) {
-			t.Fatalf("accepted non-visible reasoning: %q", value)
-		}
-	}
-	for _, value := range []string{
-		"已确认测试文件，下一步检查失败路径。",
-		"先核对 git 变更，再补充测试。",
-		"当前上下文够了，继续修改 Agent 页面。",
-	} {
-		if !visibleChineseThinking(value) {
-			t.Fatalf("rejected Chinese progress: %q", value)
-		}
 	}
 }
 

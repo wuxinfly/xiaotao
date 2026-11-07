@@ -27,6 +27,7 @@ func (s *Service) handleAntigravityWithFailover(
 	tools []map[string]any,
 	toolChoice any,
 	reasoningEffort string,
+	maxTokens int64,
 ) {
 	accounts, modelID := s.accountCandidates(model)
 	if len(accounts) == 0 {
@@ -58,7 +59,7 @@ func (s *Service) handleAntigravityWithFailover(
 		if tracker != nil && i > 0 {
 			tracker.SetAccount(acct.ID)
 		}
-		upstream := antigravityBody(msgs, tools, toolChoice, reasoningEffort)
+		upstream := antigravityBody(msgs, tools, toolChoice, reasoningEffort, maxTokens)
 		lastErr = s.runAntigravityAttempt(ctx, w, tracker, id, created, model, modelID, stream, &acct, cred, upstream)
 		if lastErr == nil || ctx.Err() != nil || !retryableAccountError(lastErr) {
 			break
@@ -103,7 +104,7 @@ func (s *Service) antigravityCredential(acct *storage.Account) (*providers.Crede
 	return &cred, nil
 }
 
-func antigravityBody(msgs []map[string]any, tools []map[string]any, toolChoice any, reasoningEffort string) map[string]any {
+func antigravityBody(msgs []map[string]any, tools []map[string]any, toolChoice any, reasoningEffort string, maxTokens int64) map[string]any {
 	body := map[string]any{"messages": msgs}
 	if choice := normalizeToolChoice(toolChoice); choice != "" {
 		body["tool_choice"] = choice
@@ -113,6 +114,9 @@ func antigravityBody(msgs []map[string]any, tools []map[string]any, toolChoice a
 	}
 	if reasoningEffort != "" {
 		body["reasoning_effort"] = reasoningEffort
+	}
+	if maxTokens > 0 {
+		body["max_tokens"] = maxTokens
 	}
 	return body
 }

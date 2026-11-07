@@ -159,7 +159,7 @@ type mockModelClient struct {
 	completeFunc func(ctx context.Context, model string, messages []map[string]any) (*completion, error)
 }
 
-func (m *mockModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, onDelta func(string)) (*completion, error) {
+func (m *mockModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, _ ModelSettings, onDelta func(string)) (*completion, error) {
 	if m.completeFunc != nil {
 		return m.completeFunc(ctx, model, messages)
 	}
@@ -389,6 +389,25 @@ func TestReviewLifecycleAndValidation(t *testing.T) {
 	}
 	if _, err := svc.GetReview(finished.ID); err == nil {
 		t.Errorf("expected deleted review not found")
+	}
+}
+
+func TestCreateReviewUsesRequestedUtilityModel(t *testing.T) {
+	svc, dir := setupTestReviewService(t)
+	defer os.RemoveAll(dir)
+	sessionID := createTestSessionWithCompletedRun(svc)
+	svc.SetModelClientForTest(&mockModelClient{completeFunc: func(_ context.Context, model string, _ []map[string]any) (*completion, error) {
+		if model != "utility/review" {
+			return nil, fmt.Errorf("unexpected model: %s", model)
+		}
+		return &completion{Content: `{"outcome":"no_issues_found","summary":"ok","issues":[],"goodPractices":[],"limitations":[]}`}, nil
+	}})
+	review, err := svc.CreateReview(sessionID, CreateReviewRequest{Model: "utility/review", ModelSettings: &ModelSettings{ContextWindow: 32000, MaxOutputTokens: 1024}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.Model != "utility/review" || review.ModelSettings == nil || review.ModelSettings.MaxOutputTokens != 1024 {
+		t.Fatalf("utility model was not snapshotted: %+v", review)
 	}
 }
 

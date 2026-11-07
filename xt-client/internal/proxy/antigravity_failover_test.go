@@ -154,6 +154,29 @@ func TestAntigravityFailoverReportsCooldown(t *testing.T) {
 	}
 }
 
+func TestAntigravityFailoverForwardsMaxTokens(t *testing.T) {
+	store := newAntigravityStore(t, "ag-first")
+	svc := New(store, storeSecret(store), "key")
+	setAntigravityRoute(t, svc)
+	var received map[string]any
+	svc.collect = func(_ context.Context, _ *providers.Credential, _ string, body map[string]any) (map[string]any, error) {
+		received = body
+		return map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}}}, nil
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(
+		`{"model":"antigravity/gemini-3.8-flash","max_tokens":2048,"messages":[{"role":"user","content":"hi"}]}`,
+	))
+	req.Header.Set("Authorization", "Bearer key")
+	w := httptest.NewRecorder()
+	svc.HandleChat(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected success, got %d %s", w.Code, w.Body.String())
+	}
+	if got := received["max_tokens"]; got != int64(2048) {
+		t.Fatalf("expected max_tokens 2048, got %#v in %#v", got, received)
+	}
+}
+
 func antigravityRequest(stream bool) *http.Request {
 	body := fmt.Sprintf(
 		`{"model":"antigravity/gemini-3.8-flash","stream":%t,"messages":[{"role":"user","content":"hi"}]}`,

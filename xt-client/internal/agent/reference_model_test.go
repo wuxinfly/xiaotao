@@ -75,7 +75,7 @@ func TestSendWithReferencesReturnsReferenceToModelAndTool(t *testing.T) {
 	if err != nil || len(loaded.Messages) != 4 || len(loaded.Messages[0].References) != 1 || !loaded.Messages[0].References[0].SourceAvailable {
 		t.Fatalf("reference message not persisted: %+v %v", loaded, err)
 	}
-	if len(loaded.Thoughts) == 0 || len(loaded.RunStats) != 1 {
+	if len(loaded.Activity) != 1 || len(loaded.RunStats) != 1 || loaded.RunStats[0].ModelRequests != 2 {
 		t.Fatalf("missing run timeline: %+v", loaded)
 	}
 }

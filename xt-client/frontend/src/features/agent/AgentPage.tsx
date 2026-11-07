@@ -19,6 +19,8 @@ import remarkBreaks from 'remark-breaks';
 import {
   ArrowUp,
   ArrowDown,
+  CircleAlert,
+  CircleCheck,
   CircleStop,
   Clock3,
   FilePenLine,
@@ -29,18 +31,19 @@ import {
   ListFilter,
   Check,
   ChevronDown,
+  ChevronRight,
   Circle,
   Folder,
-  LoaderCircle,
   MessageSquarePlus,
   Plus,
   Pencil,
-  MoreVertical,
   Search,
   Settings2,
   Trash2,
   Square,
   PanelRight,
+  Route,
+  Terminal,
   TriangleAlert,
   Wrench,
   X,
@@ -50,12 +53,16 @@ import {
   Loader2,
 } from 'lucide-react';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
-import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentImage, type AgentMessage, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
-import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
+import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentEvent, type AgentMessage, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
+import {modelConfigFor, modelLabelsKey, modelSettingsFor, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
+import {AgentSettingsModal} from './AgentSettingsModal';
+import {ProjectModal, RenameSessionModal} from './AgentModals';
+import {ReferenceModal, ReferencePicker} from './ReferencePicker';
 import {ReviewListModal} from './ReviewListModal';
 import {ReviewDetailModal} from './ReviewDetailModal';
 import {ConversationReference, conversationReferenceType} from './ConversationReference';
 import './agent.css';
+import './agent-sidebar.css';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 
 declare global { interface Window { xtPickFolder?: () => Promise<string>; xtOpenDirectory?: (kind: 'data' | 'install') => Promise<void>; } }
@@ -116,6 +123,55 @@ const thoughtKindLabel: Record<AgentThought['kind'], string> = {
   decision: '决定',
   checkpoint: '阶段',
 };
+
+type ThoughtTraceRow = {
+  id: string;
+  time: string;
+  status: 'running' | 'completed' | 'failed';
+  text: string;
+} & (
+  {kind: 'thought'; thoughtKind: AgentThought['kind']}
+  | {kind: 'activity'; activityKind: string; title: string; detail?: string; tool?: string; input?: string; output?: string; startedAt: string; endedAt?: string}
+);
+
+function traceSummary(row: ThoughtTraceRow) {
+  const source = (() => {
+    if (row.kind !== 'activity' || row.activityKind !== 'run_command') return row.text;
+    const command = row.input ? (() => {
+      try {
+        const parsed = JSON.parse(row.input) as {command?: unknown};
+        return typeof parsed.command === 'string' ? parsed.command : '';
+      } catch {
+        return '';
+      }
+    })() : '';
+    return command || row.detail || row.text;
+  })();
+  return source.replace(/\s+/g, ' ').trim();
+}
+
+function thoughtTraceIcon(row: ThoughtTraceRow) {
+  if (row.kind === 'activity') {
+    if (row.activityKind === 'write_file') return FilePenLine;
+    if (row.activityKind === 'read_file' || row.activityKind === 'list_files' || row.activityKind === 'search_files') return FileSearch;
+    return Terminal;
+  }
+  if (row.thoughtKind === 'understanding') return Route;
+  if (row.thoughtKind === 'observation') return FileSearch;
+  if (row.thoughtKind === 'decision') return Zap;
+  return CircleCheck;
+}
+
+function traceOffset(startedAt: string, time: string) {
+  const start = new Date(startedAt).getTime();
+  const current = new Date(time).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(current)) return '';
+  return `+${Math.max(0, Math.round((current - start) / 1000))}s`;
+}
+
+function traceStatusLabel(status: ThoughtTraceRow['status']) {
+  return status === 'running' ? '进行中' : status === 'failed' ? '失败' : '完成';
+}
 
 function runPhase(stats: AgentRunStats): NonNullable<AgentRunStats['phase']> {
   return stats.phase ?? (stats.endedAt ? 'completed' : 'working');
@@ -293,11 +349,10 @@ function quoteMessageContent(node: Node): HTMLElement | null {
   return content;
 }
 
-const MessageRow = memo(function MessageRow({item, followsProcess, stats, onOpenRun}: {
+const MessageRow = memo(function MessageRow({item, followsProcess, stats}: {
   item: AgentMessage;
   followsProcess: boolean;
   stats?: AgentRunStats;
-  onOpenRun?: () => void;
 }) {
   const completed = !!stats?.endedAt;
   return <article data-message-id={item.id} className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
@@ -317,46 +372,7 @@ const MessageRow = memo(function MessageRow({item, followsProcess, stats, onOpen
       <div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div>
     </div>
   </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.onOpenRun === next.onOpenRun && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
-
-function ProcessDetails({open, onClose, children, maxHeight = 220}: {open: boolean; onClose: () => void; children: React.ReactNode; maxHeight?: number}) {
-  const anchor = useRef<HTMLSpanElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
-  const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(false);
-  const [position, setPosition] = useState({left: 0, top: 0, width: 0, maxHeight: 220});
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const frame = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(frame);
-    }
-    setShown(false);
-    const timer = window.setTimeout(() => setMounted(false), 180);
-    return () => window.clearTimeout(timer);
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const update = () => {
-      const rect = anchor.current?.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      const below = window.innerHeight - rect.bottom - 12;
-      const above = rect.top - 12;
-      const upward = below < 160 && above > below;
-      const height = Math.max(0, Math.min(maxHeight, upward ? above : below));
-      setPosition({left: rect.left, top: upward ? rect.top - height - 4 : rect.bottom + 4, width: rect.width, maxHeight: height});
-    };
-    const dismiss = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor.current?.parentElement?.contains(event.target as Node)) onClose(); };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { onClose(); anchor.current?.parentElement?.querySelector<HTMLButtonElement>('button')?.focus(); } };
-    update();
-    window.addEventListener('resize', update);
-    document.addEventListener('scroll', update, true);
-    document.addEventListener('pointerdown', dismiss);
-    document.addEventListener('keydown', escape);
-    return () => { window.removeEventListener('resize', update); document.removeEventListener('scroll', update, true); document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape); };
-  }, [open, onClose, maxHeight]);
-  return <><span ref={anchor} hidden/>{mounted && createPortal(<div ref={panel} className={'agent-process-popover' + (shown && open ? ' is-visible' : '')} inert={!open} aria-hidden={!open} style={{left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight}}><ol>{children}</ol></div>, document.body)}</>;
-}
+}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
 
 // LiveStats shows the four numbers that matter while a run is streaming:
 // elapsed time, first-token latency, produced tokens and output speed.
@@ -417,141 +433,125 @@ function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, bus
   </div>;
 }
 
+function ThoughtTraceEntry({row, startedAt, index, expanded, onToggle}: {
+  row: ThoughtTraceRow; startedAt: string; index: number; expanded: boolean; onToggle: () => void;
+}) {
+  const Icon = thoughtTraceIcon(row);
+  const summary = traceSummary(row);
+  const detail = row.kind === 'activity'
+    ? [row.detail, row.tool && `工具：${row.tool}`, row.input && `参数\n${row.input}`, row.output && `结果\n${row.output}`].filter(Boolean).join('\n\n')
+    : row.text;
+  const duration = row.kind === 'activity' && row.endedAt
+    ? Math.max(0, Math.round((new Date(row.endedAt).getTime() - new Date(row.startedAt).getTime()) / 1000))
+    : null;
+  return <li className={'agent-thought-event' + (expanded ? ' is-expanded' : '')} data-kind={row.kind} data-status={row.status}>
+    <span className="agent-thought-status" role="status">{traceStatusLabel(row.status)}</span>
+    <span className="agent-thought-rail" aria-hidden="true"><i/></span>
+    <button type="button" className="agent-thought-event-toggle" aria-expanded={expanded} aria-controls={`thought-event-${row.id}`} onClick={onToggle}>
+      <span className="agent-thought-event-index">{String(index + 1).padStart(2, '0')}</span>
+      <span className="agent-thought-event-icon"><Icon aria-hidden="true"/></span>
+      <span className="agent-thought-event-copy">
+        <span className="agent-thought-event-meta"><strong>{row.kind === 'thought' ? thoughtKindLabel[row.thoughtKind] : row.title}</strong><time dateTime={row.time}>{traceOffset(startedAt, row.time)}</time></span>
+        <span className="agent-thought-event-text">{summary}</span>
+      </span>
+      <ChevronRight className="agent-thought-event-chevron" aria-hidden="true"/>
+    </button>
+    <div className="agent-thought-event-detail" id={`thought-event-${row.id}`} aria-hidden={!expanded} inert={!expanded}>
+      <div className="agent-thought-event-detail-inner">
+        <pre>{detail || summary || '暂无更多详情'}</pre>
+        {row.kind === 'activity' && (row.tool || duration !== null) && <span className="agent-thought-event-detail-meta">
+          {row.tool && <span>工具 {row.tool}</span>}
+          {duration !== null && <span>耗时 {duration} 秒</span>}
+        </span>}
+      </div>
+    </div>
+  </li>;
+}
+
+function thoughtTraceRows(runId: string, thoughts: AgentThought[], activity: AgentActivity[]): ThoughtTraceRow[] {
+  return [
+    ...(thoughts ?? []).filter(item => item.runId === runId).map(item => ({
+      id: item.id, time: item.createdAt,
+      kind: 'thought' as const, thoughtKind: item.kind, text: item.text, status: item.status,
+    })),
+    ...(activity ?? []).filter(item => item.runId === runId).map(item => ({
+      id: item.id, time: item.startedAt, kind: 'activity' as const,
+      activityKind: item.kind, title: item.title, detail: item.detail, tool: item.tool, input: item.input, output: item.output,
+      startedAt: item.startedAt, endedAt: item.endedAt, text: item.title + (item.detail ? ' · ' + item.detail : ''), status: item.status,
+    })),
+  ].sort((a, b) => a.time.localeCompare(b.time));
+}
+
 function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
   runId: string; thoughts: AgentThought[]; activity: AgentActivity[]; stats: AgentRunStats; open: boolean; onClose: () => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const [present, setPresent] = useState(open);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (open) {
+      returnFocus.current = document.activeElement as HTMLElement | null;
+      setPresent(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setPresent(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [open]);
   useEffect(() => {
     if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
+    const previous = returnFocus.current;
     close.current?.focus();
     const escape = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); onClose();}};
     document.addEventListener('keydown', escape);
     return () => {document.removeEventListener('keydown', escape); previous?.focus();};
   }, [open, onClose]);
-  const timeline = [
-    ...(thoughts ?? []).filter(item => item.runId === runId).map(item => ({id: item.id, time: item.createdAt, kind: 'thought' as const, thoughtKind: item.kind, text: item.text})),
-    ...(activity ?? []).filter(item => item.runId === runId).map(item => ({id: item.id, time: item.startedAt, kind: 'activity' as const, text: item.title + (item.detail ? ' · ' + item.detail : ''), status: item.status})),
-  ].sort((a, b) => a.time.localeCompare(b.time));
-  return createPortal(<div className={'agent-drawer-backdrop' + (open ? ' is-open' : '')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
-    <aside className="agent-thought-drawer" role="dialog" aria-modal="true" aria-label="本轮思考过程">
-      <header><div><span>思考过程</span><strong>{runDuration(stats)}</strong></div><button ref={close} type="button" onClick={onClose} aria-label="关闭思考过程" title="关闭"><X aria-hidden="true"/></button></header>
-      <div className="agent-drawer-summary"><span>读取 {stats.filesRead} 个文件</span><span>写入 {stats.filesWritten} 个文件</span><span>执行 {stats.toolCalls} 次操作</span></div>
-      <ol className="agent-drawer-timeline">{timeline.map((row, index) => <li key={row.id} data-kind={row.kind}>
-        <span className="agent-drawer-marker">{String(index + 1).padStart(2, '0')}</span>
-        <div className="agent-drawer-entry">
-          <strong>{row.kind === 'thought' ? thoughtKindLabel[row.thoughtKind] : '操作'}</strong>
-          <p>{row.text}</p>
+  useEffect(() => {
+    if (open) setExpanded(new Set());
+  }, [open, runId]);
+  const timeline = useMemo(() => thoughtTraceRows(runId, thoughts, activity), [runId, thoughts, activity]);
+  const activities = timeline.filter(row => row.kind === 'activity');
+  const thoughtCount = timeline.length - activities.length;
+  const warnings = activities.filter(row => row.status === 'failed').length;
+  const firstThought = timeline.find(row => row.kind === 'thought');
+  const lastDecision = [...timeline].reverse().find(row => row.kind === 'thought' && row.thoughtKind === 'decision');
+  const hasThought = timeline.some(row => row.kind === 'thought');
+  if (!present) return null;
+  return createPortal(<div className={'agent-drawer-backdrop' + (open ? ' is-open' : ' is-closing')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
+    <aside className="agent-thought-drawer agent-thought-map" role="dialog" aria-modal="true" aria-label="本轮思考过程">
+      <header className="agent-thought-header">
+        <div><span>思考路线</span><strong><Route aria-hidden="true"/>{runDuration(stats)}</strong></div>
+        <button ref={close} type="button" onClick={onClose} aria-label="关闭思考过程" title="关闭"><X aria-hidden="true"/></button>
+      </header>
+      <div className="agent-thought-overview">
+        <div className="agent-thought-overview-head">
+          <div><span>整体判断</span><h2>{firstThought?.text || '这轮还没有留下可读的思考节点。'}</h2></div>
+          <span className="agent-thought-count"><strong>{timeline.length}</strong> 个节点</span>
         </div>
-      </li>)}</ol>
+        {!hasThought && <p className="agent-thought-caveat">本轮模型没有输出过程说明，下面只展示实际工具操作。</p>}
+        <div className="agent-thought-narrative">
+          <p><span>最终落点</span>{lastDecision?.text || (stats.filesWritten > 0 ? `本轮完成修改，涉及 ${stats.filesWritten} 个文件。` : activities.length ? `本轮以 ${activities.length} 次操作为主，主要是在收集和执行信息。` : '本轮以模型思考为主，没有额外工具操作。')}</p>
+          <div className="agent-thought-facts">
+            <span><FileSearch aria-hidden="true"/>{stats.filesRead} 个文件读取</span>
+            <span><FilePenLine aria-hidden="true"/>{stats.filesWritten} 个文件写入</span>
+            <span><Wrench aria-hidden="true"/>{stats.toolCalls} 次操作</span>
+            {warnings > 0 && <span className="is-warning"><CircleAlert aria-hidden="true"/>{warnings} 次失败</span>}
+          </div>
+        </div>
+      </div>
+      <div className="agent-thought-timeline-head">
+        <div><span>思考链</span><small>点击任意节点展开细节</small></div>
+        <span>{thoughtCount} 思考 · {activities.length} 操作</span>
+      </div>
+      {timeline.length ? <ol className="agent-thought-timeline">
+        {timeline.map((row, index) => <ThoughtTraceEntry key={row.id} row={row} startedAt={stats.startedAt} index={index} expanded={expanded.has(row.id)} onToggle={() => setExpanded(current => {
+          const next = new Set(current);
+          if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+          return next;
+        })}/>)}
+      </ol> : <div className="agent-thought-empty"><Route aria-hidden="true"/><strong>没有可展开的过程</strong><p>这轮只有最终回答，没有留下思考节点或工具调用。</p></div>}
     </aside>
   </div>, document.body);
-}
-
-function ReferencePicker({anchor, editor, anchorAt, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
-  anchor: React.RefObject<HTMLDivElement | null>;
-  editor: Editor | null;
-  anchorAt: number;
-  query: string;
-  scope: 'project' | 'all';
-  results: AgentReferenceCandidate[];
-  index: number;
-  loading: boolean;
-  error: string;
-  onScope: (scope: 'project' | 'all') => void;
-  onChoose: (item: AgentReferenceCandidate) => void;
-  onClose: () => void;
-}) {
-  const panel = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({left: 0, top: 0, width: 360});
-  const [anchorBottom, setAnchorBottom] = useState(0);
-  const [maxHeight, setMaxHeight] = useState(320);
-  const [shown, setShown] = useState(false);
-  const [origin, setOrigin] = useState('0px 100%');
-  useLayoutEffect(() => {
-    const place = () => {
-      const rect = anchor.current?.getBoundingClientRect();
-      if (!rect) return;
-      const caret = editor?.view.coordsAtPos(Math.min(anchorAt, editor.state.doc.content.size));
-      const width = Math.min(420, Math.max(260, rect.width - 24));
-      const height = panel.current?.offsetHeight ?? 280;
-      const caretTop = caret?.top ?? rect.top;
-      const caretBottom = caret?.bottom ?? rect.top;
-      const caretLeft = caret?.left ?? rect.left + 12;
-      const above = caretTop - 8;
-      const below = window.innerHeight - caretBottom - 8;
-      const availableHeight = Math.min(height, 320);
-      const upward = above >= availableHeight || above >= below;
-      const top = upward ? Math.max(8, caretTop - Math.min(height, availableHeight) - 3)
-        : caretBottom + 3;
-      const left = Math.max(8, Math.min(rect.left + 8, window.innerWidth - width - 8));
-      setOrigin(`${Math.max(0, Math.min(width, caretLeft - left))}px ${upward ? '100%' : '0%'}`);
-      setAnchorBottom(upward ? caretTop - 3 : 0);
-      setMaxHeight(Math.max(120, Math.min(320, upward ? above : below)));
-      setPosition({left, top, width});
-    };
-    place();
-    window.addEventListener('resize', place);
-    document.addEventListener('scroll', place, true);
-    return () => {window.removeEventListener('resize', place); document.removeEventListener('scroll', place, true);};
-  }, [anchor, editor, anchorAt, results.length, loading, error]);
-  useLayoutEffect(() => {
-    const frame = requestAnimationFrame(() => setShown(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-  return createPortal(<div ref={panel} className={'agent-reference-picker' + (shown ? ' is-visible' : '')} style={{...position, bottom: anchorBottom ? window.innerHeight - anchorBottom : 'auto', maxHeight, transformOrigin: origin}} role="dialog" aria-label="引用其他对话">
-    <div className="agent-reference-picker-head"><Search aria-hidden="true"/><span>{query ? `搜索“${query}”` : '引用对话'}</span><button type="button" aria-label="关闭引用选择" title="关闭" onClick={event => {event.preventDefault(); onClose();}}><X aria-hidden="true"/></button></div>
-    <div className="agent-reference-scope" role="group" aria-label="引用搜索范围">
-      <button type="button" aria-pressed={scope === 'project'} onClick={() => onScope('project')}>当前项目</button>
-      <button type="button" aria-pressed={scope === 'all'} onClick={() => onScope('all')}>所有项目</button>
-    </div>
-    <div className="agent-reference-results" role="listbox" aria-label="可引用对话">
-      {results.map((item, itemIndex) => <button type="button" role="option" aria-selected={itemIndex === index} key={item.sessionId} onMouseDown={event => event.preventDefault()} onClick={() => onChoose(item)}>
-        <span><strong>{item.title}</strong><small>{item.project.name}</small></span>
-        <time>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</time>
-      </button>)}
-      {loading && <p><LoaderCircle className="agent-spin" aria-hidden="true"/>正在搜索…</p>}
-      {!loading && error && <p className="is-error" role="alert">{error}</p>}
-      {!loading && !error && !results.length && <p>没有匹配的对话</p>}
-    </div>
-  </div>, document.body);
-}
-
-function ReferenceModal({reference, onOpenSource, onClose}: {reference: AgentConversationReference; onOpenSource: (id: string) => void; onClose: () => void}) {
-  const [summary, setSummary] = useState(reference.summary || '');
-  const [sourceAvailable, setSourceAvailable] = useState(reference.sourceAvailable !== false);
-  const [newContent, setNewContent] = useState(!!reference.hasNewContent);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    let live = true;
-    void api.agentReference(reference.id).then(detail => {
-      if (!live) return;
-      setSummary(detail.summary);
-      setSourceAvailable(!!detail.sourceAvailable);
-      setNewContent(!!detail.reference.hasNewContent);
-    }).catch(reason => { if (live) setError(reason instanceof Error ? reason.message : String(reason)); });
-    return () => {live = false;};
-  }, [reference.id]);
-  return <>{error && <div className="agent-modal-error" role="alert">{error}</div>}<ReferenceDetailModal reference={reference} summary={summary} sourceAvailable={sourceAvailable} newContent={newContent} onOpenSource={() => onOpenSource(reference.sourceSessionId)} onClose={onClose}/></>;
-}
-
-
-const enabledModelsKey = 'xiaotao.agent.enabledModels';
-const modelLabelsKey = 'xiaotao.agent.modelLabels';
-function readModelLabels(): Record<string, string> {
-  try {
-    const value = JSON.parse(localStorage.getItem(modelLabelsKey) || '{}');
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  } catch { return {}; }
-}
-
-function readEnabledModels() {
-  try {
-    const value = JSON.parse(localStorage.getItem(enabledModelsKey) || '[]');
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
 }
 
 function inlineMarkdown(node: JSONContent): string {
@@ -761,7 +761,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [sessionMenu, setSessionMenu] = useState<{item: AgentSession; x: number; y: number} | null>(null);
   const [renaming, setRenaming] = useState<AgentSession | null>(null);
   const sessionMenuTrigger = useRef<HTMLElement | null>(null);
-  const [enabledModels, setEnabledModels] = useState<string[]>(readEnabledModels);
+  const {enabledModels, modelConfigs, defaultModels, defaultModelSettings, persist: persistModelSettings} = useAgentModelSettings();
   const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return Array.from(new Map([...readEnabledModels().map(id => ({model: id, label: labels[id] || id}))].map(item => [item.model, item])).values()); });
   const [modelsLoading, setModelsLoading] = useState(false), [modelsError, setModelsError] = useState('');
   const [modelsAttempt, setModelsAttempt] = useState(0);
@@ -789,20 +789,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     sessionMenuTrigger.current = trigger;
     setSessionMenu({item, x: Math.max(8, Math.min(x, window.innerWidth - 168)), y: Math.max(8, Math.min(y, window.innerHeight - 92))});
   }, [busy, deleting]);
-  const [error, setError] = useState(''), [openActivities, setOpenActivities] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState('');
   const [openThoughtRun, setOpenThoughtRun] = useState('');
-  const [clock, setClock] = useState(() => Date.now());
-  const wasBusy = useRef(false);
-  useEffect(() => {
-    if (wasBusy.current && !busy) setOpenActivities({});
-    wasBusy.current = busy;
-  }, [busy]);
-  useEffect(() => {
-    if (!busy) return;
-    setClock(Date.now());
-    const timer = window.setInterval(() => setClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [busy]);
   const [settingsOpen, setSettingsOpen] = useState(false), [projectOpen, setProjectOpen] = useState(false);
   const [reviewListOpen, setReviewListOpen] = useState(false);
   const [reviewDetailOpen, setReviewDetailOpen] = useState<BehaviorReview | null>(null);
@@ -842,7 +830,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     setError('');
 
     try {
-      const review = await api.createReview(targetSessionId);
+      const utility = utilityModelFor('review', defaultModels, defaultModelSettings, modelConfigs, models);
+      const review = await api.createReview(targetSessionId, undefined, utility.model, utility.settings);
       const pollTimer = window.setInterval(async () => {
         try {
           const detail = await api.getReview(review.id);
@@ -865,9 +854,9 @@ export function AgentPage({visible}: {visible: boolean}) {
           // ignore transient poll error
         }
       }, 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setReviewingSessionId(curr => (curr === targetSessionId ? null : curr));
-      setError(err?.message || '发起复盘失败');
+      setError(err instanceof Error ? err.message : '发起复盘失败');
     }
   }, [active, busy, hasCompletedRuns, reviewingSessionId]);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false), [projectQuery, setProjectQuery] = useState('');
@@ -1291,7 +1280,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     const submittedImages = composerImagesRef.current;
     const submittedQuotes = quotes;
     const quoteBlocks = submittedQuotes.map((item, index) => {
-      const quoted = item.text.split('\n').map(line => '> ' + line.replace(/[\\`*_{}\[\]<>#~|]/g, '\\$&')).join('\n');
+      const quoted = item.text.split('\n').map(line => '> ' + line.replace(/[\\`*_{}[\]<>#~|]/g, '\\$&')).join('\n');
       return `引用小涛的回复 ${index + 1}：\n\n${quoted}${item.reply.trim() ? `\n\n我的回复：${item.reply.trim()}` : ''}`;
     });
     const content = [...quoteBlocks, text].filter(Boolean).join('\n\n');
@@ -1309,7 +1298,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     let submitted = false;
     try {
       if (!session) {
-        session = await api.createAgentSession(path, model, projectName);
+        session = await api.createAgentSession(path, model, projectName, modelSettingsFor(modelConfigs, model, models));
         setActive(session);
         setSessions(current => [session!, ...current]);
       }
@@ -1321,7 +1310,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({content, model: model || session.model, references, images: submittedImages.map(image => ({data: image.data, mimeType: image.mimeType, width: image.width, height: image.height}))}),
+        body: JSON.stringify({content, model: model || session.model, modelSettings: modelSettingsFor(modelConfigs, model || session.model, models), references, images: submittedImages.map(image => ({data: image.data, mimeType: image.mimeType, width: image.width, height: image.height}))}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -1417,7 +1406,7 @@ export function AgentPage({visible}: {visible: boolean}) {
     setPending(true);
     try {
       const resolved = await api.resolveAgentProject(projectPath);
-      resetHistory(); setActive(null); setQuotes([]); setComposerImages([]); setPath(resolved.path); setProjectName(name); setError(''); setOpenActivities({});
+      resetHistory(); setActive(null); setQuotes([]); setComposerImages([]); setPath(resolved.path); setProjectName(name); setError('');
       editor?.commands.clearContent(); editor?.commands.focus();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
     finally {setPending(false);}
@@ -1437,7 +1426,6 @@ export function AgentPage({visible}: {visible: boolean}) {
     setProjectName('');
     setComposerImages([]);
     setError('');
-    setOpenActivities({});
     restoreDraft('', model);
     editor?.commands.focus();
   }
@@ -1467,7 +1455,6 @@ export function AgentPage({visible}: {visible: boolean}) {
       setError(reason instanceof Error ? reason.message : String(reason));
       return;
     } finally { setPending(false); }
-    setOpenActivities({});
     restoreDraft(session.id, session.model);
     editor?.commands.focus();
   }, [pending, active?.id, editor, model, path, projectName, quotes]);
@@ -1511,9 +1498,9 @@ export function AgentPage({visible}: {visible: boolean}) {
     }
   }, [busy, confirm]);
 
-  function saveAgentSettings(nextModels: string[]) {
-    setEnabledModels(nextModels);
-    localStorage.setItem(enabledModelsKey, JSON.stringify(nextModels));
+  function saveAgentSettings(nextConfigs: AgentModelConfig[], nextDefaults: AgentDefaultModels, nextDefaultSettings: AgentModelDefaults) {
+    const nextModels = nextConfigs.map(item => item.model);
+    persistModelSettings(nextModels, nextConfigs, nextDefaults, nextDefaultSettings);
     localStorage.setItem(modelLabelsKey, JSON.stringify(Object.fromEntries(models.filter(item => nextModels.includes(item.model)).map(item => [item.model, item.label]))));
     if (!active && !nextModels.includes(model)) setModel(nextModels[0] || '');
     setSettingsOpen(false);
@@ -1534,8 +1521,8 @@ export function AgentPage({visible}: {visible: boolean}) {
   }, [active?.id, active?.runStats?.length]);
   const contextRun = runStats.at(-1);
   const contextTokens = contextRun?.contextTokens ?? 0;
-  const currentModel = model || active?.model;
-  const contextWindow = contextRun?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
+  const currentModel = model || active?.model || '';
+  const contextWindow = contextRun?.contextWindow ?? modelConfigFor(modelConfigs, currentModel, models)?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
   const contextRatio = contextWindow > 0 ? Math.min(1, contextTokens / contextWindow) : 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
   const currentModelOption = models.find(item => item.model === (model || active?.model));
@@ -1674,7 +1661,7 @@ export function AgentPage({visible}: {visible: boolean}) {
             </ReactFragment>;
           }
           const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
-          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats} onOpenRun={entry.stats ? () => setOpenThoughtRun(entry.stats!.runId) : undefined}/>;
+          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats}/>;
         })}
         {busy && !entries.some(entry => entry.kind === 'run' || (entry.kind === 'message' && entry.stats && !entry.stats.endedAt)) && workingIndicator}
         {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
@@ -1757,7 +1744,7 @@ export function AgentPage({visible}: {visible: boolean}) {
 
     {openThoughtRun && (() => {
       const stats = runStats.find(item => item.runId === openThoughtRun);
-      return stats ? <ThoughtDrawer runId={openThoughtRun} thoughts={thoughts} activity={activity} stats={stats} open onClose={() => setOpenThoughtRun('')}/> : null;
+      return stats ? <ThoughtDrawer runId={openThoughtRun} thoughts={thoughts} activity={activity} stats={stats} open={!!openThoughtRun} onClose={() => setOpenThoughtRun('')}/> : null;
     })()}
     <Popover open={!!sidebarProjectMenu} onClose={() => setSidebarProjectMenu(null)} anchorRef={sidebarProjectTrigger} align="end" className="agent-session-menu" aria-label="项目操作"><button type="button" role="menuitem" onClick={() => {setRenamingProject(sidebarProjectMenu); setSidebarProjectMenu(null);}}><Pencil aria-hidden="true"/>重命名项目</button><button type="button" role="menuitem" onClick={() => {const project = sidebarProjectMenu; setSidebarProjectMenu(null); if (project) void api.openAgentProject(project.path).catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));}}><Folder aria-hidden="true"/>在资源管理器中打开</button></Popover>
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); setSavedProjects(current => current.map(item => matches(item.path) ? {...item, name} : item)); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
@@ -1769,7 +1756,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       <button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button>
     </Popover>
     <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>
-    <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
+    <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onGenerateTitle={signal => {const utility = utilityModelFor('title', defaultModels, defaultModelSettings, modelConfigs, models); return api.generateAgentSessionTitle(renaming.id, signal, utility.model, utility.settings).then(result => result.title);}} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
     <ModalPresence>{reviewListOpen && <ReviewListModal currentSessionId={active?.id} onClose={() => setReviewListOpen(false)} />}</ModalPresence>
     <ModalPresence>{reviewDetailOpen && <ReviewDetailModal review={reviewDetailOpen} onClose={() => setReviewDetailOpen(null)} />}</ModalPresence>
     {reviewToast && createPortal(
@@ -1782,6 +1769,9 @@ export function AgentPage({visible}: {visible: boolean}) {
     <ModalPresence>{settingsOpen && <AgentSettingsModal
       models={models}
       selected={enabledModels}
+      modelConfigs={modelConfigs}
+      defaultModels={defaultModels}
+      defaultModelSettings={defaultModelSettings}
       loading={modelsLoading}
       error={modelsError}
       onRetry={() => { refreshModelsRequested.current = true; setModelsAttempt(value => value + 1); }}

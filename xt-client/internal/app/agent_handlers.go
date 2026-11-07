@@ -238,16 +238,39 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, item)
 	})
+	mux.HandleFunc("POST /api/agent/sessions/{id}/title", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			Model         string               `json:"model"`
+			ModelSettings *agent.ModelSettings `json:"modelSettings"`
+		}
+		if r.Body != nil && r.ContentLength > 0 {
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+				apiError(w, 400, "请求格式无效")
+				return
+			}
+		}
+		title, err := svc.GenerateTitleWithModel(r.Context(), r.PathValue("id"), input.Model, input.ModelSettings)
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, map[string]string{"title": title})
+	})
 	mux.HandleFunc("POST /api/agent/sessions/{id}/messages", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
 			return
 		}
 		var input struct {
-			Content    string             `json:"content"`
-			Model      string             `json:"model"`
-			References []string           `json:"references"`
-			Images     []agent.ImageInput `json:"images"`
+			Content       string               `json:"content"`
+			Model         string               `json:"model"`
+			ModelSettings *agent.ModelSettings `json:"modelSettings"`
+			References    []string             `json:"references"`
+			Images        []agent.ImageInput   `json:"images"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20)).Decode(&input); err != nil {
 			apiError(w, 400, "消息格式无效")
@@ -266,7 +289,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, b)
 			flusher.Flush()
 		}
-		err := svc.SendWithImages(r.Context(), r.PathValue("id"), input.Content, input.Model, input.References, input.Images, write)
+		err := svc.SendWithModelSettings(r.Context(), r.PathValue("id"), input.Content, input.Model, input.ModelSettings, input.References, input.Images, write)
 		if err != nil {
 			write(agent.Event{Type: "error", SessionID: r.PathValue("id"), Error: err.Error()})
 		}

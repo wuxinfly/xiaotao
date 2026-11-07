@@ -113,6 +113,7 @@ type Session struct {
 	Project  Project       `json:"project"`
 	Title    string        `json:"title"`
 	Model    string        `json:"model"`
+	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
 	Status   string        `json:"status"`
 	Messages []Message     `json:"messages"`
 	Activity []Activity    `json:"activity"`
@@ -130,6 +131,7 @@ type Options struct {
 	ProjectPath string `json:"projectPath"`
 	ProjectName string `json:"projectName"`
 	Model       string `json:"model"`
+	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
 }
 
 type ModelOption struct {
@@ -139,6 +141,13 @@ type ModelOption struct {
 	ContextWindow  int64    `json:"contextWindow,omitempty"`
 	Model          string   `json:"model"`
 	Label          string   `json:"label"`
+}
+
+// ModelSettings is snapshotted into a session and carried through each model
+// request. ContextWindow is also the threshold for later context compaction.
+type ModelSettings struct {
+	ContextWindow   int64 `json:"contextWindow,omitempty"`
+	MaxOutputTokens int64 `json:"maxOutputTokens,omitempty"`
 }
 
 type ConversationReference struct {

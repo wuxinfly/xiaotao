@@ -23,6 +23,7 @@
 - 修改路径时同步 CI、脚本、文档链接和打包清单。
 - 调整目录不应改变 Skill 安装位置、协议和产品行为。
 - 模块职责、命令或路径发生变化时更新 README、局部 AGENTS.md 和规则源。
+- 客户端代码质量按 `docs/agent/client-code-quality.md` 检查；新增代码不得新增超限文件或函数，修改存量超限文件时不得继续变大。
 - WorkBuddy 国内原生渠道使用 www.workbuddy.cn 与 platform=workbuddy；先获取 authUrl 再返回登录会话并打开浏览器，账号身份从 token 元数据读取，模型来自 /v3/config。不得将 CodeBuddy VSCode 插件凭据视为 WorkBuddy 原生凭据；旧渠道账号需重新登录。
 - xt-client 前端模型页正文容器统一使用 style.css 的 --content-max 和 --content-gutter 控制宽度和左右留白，不在页面样式里各自写 max-width 或左右 padding。
 - 前端浮层（tooltip、modal 等 position:fixed 元素）不得依赖页面容器定位：页面或区块的入场动画不要使用会保留 transform 的 fill 模式，浮层优先用 createPortal 挂到 body，否则祖先会成为 fixed 的包含块导致浮层错位或被裁剪。
@@ -32,7 +33,7 @@
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。
 - DSH：在 xt-skills/adapters/deepseek-harness 下运行 `npm run typecheck`、`npm test`、`npm run test:package`。
 - 网站：在 website 下运行 `npm run build`。
-- 客户端：在 xt-client 下运行 `go test ./...`、`go vet ./...`；手动打包使用 `./build.ps1` 或 `./build.ps1 -Env uat`，AI 自行构建验证必须添加 `-Verify`，不得递增版本，详见局部 AGENTS.md。
+- 客户端：在 xt-client/frontend 运行 `npm run lint`、`npm run check:size`、`npm run build`，在 xt-client 运行 `node tools/check-go-size.mjs`、`go test ./...`、`go vet ./...`；手动打包使用 `./build.ps1` 或 `./build.ps1 -Env uat`，AI 自行构建验证必须添加 `-Verify`，不得递增版本，详见局部 AGENTS.md。
 - 规则：运行 `node tools/agent-rules.mjs check`；规则源变更后先运行 `render` 再运行 `check`。
 
 ## 规则演进

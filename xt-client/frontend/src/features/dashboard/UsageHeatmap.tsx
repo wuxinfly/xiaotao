@@ -61,15 +61,15 @@ export function UsageHeatmap({ heatmap }: Props) {
     const q4 = positiveValues[positiveValues.length - 1];
 
     // Ensure strict ascending order to handle repeated values
-    let t1 = q1;
-    let t2 = Math.max(q2, t1 + 1);
-    let t3 = Math.max(q3, t2 + 1);
-    let t4 = Math.max(q4, t3 + 1);
+    const t1 = q1;
+    const t2 = Math.max(q2, t1 + 1);
+    const t3 = Math.max(q3, t2 + 1);
+    const t4 = Math.max(q4, t3 + 1);
     return [t1, t2, t3, t4];
   }, [heatmap.days]);
 
   // Generate 53 weeks matrix ending at Today
-  const { weeks, monthLabels, todayStr } = useMemo(() => {
+  const { weeks, monthLabels } = useMemo(() => {
     const today = new Date();
     // Format YYYY-MM-DD in local time
     const formatYMD = (d: Date) => {

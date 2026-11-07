@@ -60,39 +60,3 @@ func TestEstimateContentBytesCountsTextOnly(t *testing.T) {
 		t.Fatalf("decoded []any must match []map[string]any: got %d want %d", estimateContentBytes(decoded), got)
 	}
 }
-
-// The progress summarizer must never receive raw base64 image data.
-func TestCheckpointContextOmitsImagePayload(t *testing.T) {
-	payload := strings.Repeat("B", 200_000)
-	messages := []map[string]any{
-		{"role": "user", "content": []map[string]any{
-			{"type": "text", "text": "帮我看看"},
-			{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64," + payload}},
-		}},
-	}
-	got := checkpointContext(messages)
-	if strings.Contains(got, payload) {
-		t.Fatalf("checkpoint context leaked the image payload")
-	}
-	if !strings.Contains(got, "帮我看看") {
-		t.Fatalf("checkpoint context lost the text: %q", got)
-	}
-	if !strings.Contains(got, "1 张图片") {
-		t.Fatalf("checkpoint context should mention the image count: %q", got)
-	}
-}
-
-// The decoded []any shape must not loop forever and must still drop payloads.
-func TestCheckpointContentHandlesDecodedShape(t *testing.T) {
-	payload := strings.Repeat("C", 100_000)
-	got := checkpointContent([]any{
-		map[string]any{"type": "text", "text": "看图"},
-		map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64," + payload}},
-	})
-	if strings.Contains(got, payload) {
-		t.Fatalf("decoded shape leaked the image payload")
-	}
-	if !strings.Contains(got, "看图") || !strings.Contains(got, "1 张图片") {
-		t.Fatalf("unexpected checkpoint content: %q", got)
-	}
-}

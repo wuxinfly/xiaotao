@@ -101,8 +101,8 @@ func HUDWindow(url, data, token, displayName string) error {
 		AutoFocus: true,
 		WindowOptions: webview.WindowOptions{
 			Title:  title,
-			Width:  340,
-			Height: 240,
+			Width:  uint(hudExpandedWidth),
+			Height: uint(hudExpandedHeight),
 		},
 	})
 	if w == nil {
@@ -112,6 +112,10 @@ func HUDWindow(url, data, token, displayName string) error {
 	cleanupHUD := configureHUDWindow(hwnd)
 	defer cleanupHUD()
 	defer w.Destroy()
+	dock := newHUDDock(hwnd, func(script string) {
+		w.Dispatch(func() { w.Eval(script) })
+	})
+	defer dock.close()
 	if err := w.Bind("xtHud", func(action string) error {
 		if action == "close" {
 			w.Dispatch(func() { w.Terminate() })
@@ -119,6 +123,9 @@ func HUDWindow(url, data, token, displayName string) error {
 		if action == "drag" {
 			win("ReleaseCapture")
 			win("SendMessageW", hwnd, 0xa1, 2, 0)
+		}
+		if action == "ready" {
+			dock.activate()
 		}
 		return nil
 	}); err != nil {
@@ -176,8 +183,8 @@ func configureHUDWindow(hwnd uintptr) func() {
 			resizeChild()
 		} // Controller first, child second.
 		if msg == 0x02e0 {
-			dpi := wp & 0xffff
-			win("SetWindowPos", h, 0, 0, 0, (340*dpi+48)/96, (240*dpi+48)/96, 0x0016)
+			dpi := uint32(wp & 0xffff)
+			win("SetWindowPos", h, 0, 0, 0, uintptr(hudPixels(hudExpandedWidth, dpi)), uintptr(hudPixels(hudExpandedHeight, dpi)), 0x0016)
 		}
 		return result
 	})
@@ -186,9 +193,9 @@ func configureHUDWindow(hwnd uintptr) func() {
 	if dpi == 0 {
 		dpi = 96
 	}
-	width, height := (340*dpi+48)/96, (240*dpi+48)/96
+	width, height := hudPixels(hudExpandedWidth, uint32(dpi)), hudPixels(hudExpandedHeight, uint32(dpi))
 	// HWND_TOPMOST must be pointer-sized -1 on Windows amd64.
-	win("SetWindowPos", hwnd, ^uintptr(0), 0, 0, width, height, 0x0032)
+	win("SetWindowPos", hwnd, ^uintptr(0), 0, 0, uintptr(width), uintptr(height), 0x0032)
 	resizeChild()
 	roundNativeWindow(hwnd)
 	win("ShowWindow", hwnd, 4) // SW_SHOWNOACTIVATE

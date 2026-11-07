@@ -22,7 +22,7 @@ func TestHTTPModelClientTranslatesErrorsAndToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &httpModelClient{endpoint: server.URL + "/v1/chat/completions", key: func() string { return "test-key" }, client: server.Client()}
-	result, err := client.Complete(context.Background(), "test/model", []map[string]any{{"role": "user", "content": "read"}}, []map[string]any{{"type": "function"}}, nil)
+	result, err := client.Complete(context.Background(), "test/model", []map[string]any{{"role": "user", "content": "read"}}, []map[string]any{{"type": "function"}}, ModelSettings{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestHTTPModelClientSurfacesBackendError(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &httpModelClient{endpoint: server.URL + "/v1/chat/completions", client: server.Client()}
-	_, err := client.Complete(context.Background(), "test/model", []map[string]any{{"role": "user", "content": "hi"}}, nil, nil)
+	_, err := client.Complete(context.Background(), "test/model", []map[string]any{{"role": "user", "content": "hi"}}, nil, ModelSettings{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "没有可用") {
 		t.Fatalf("expected backend message, got %v", err)
 	}

@@ -13,13 +13,14 @@ import (
 const maxFileBytes = 512 * 1024
 
 type Workspace struct {
-	Root     string
-	observed map[string][32]byte
+	Root       string
+	observedMu sync.Mutex
+	observed   map[string][32]byte
 }
 
 // Coordinates our file tools across sessions, including paths outside a project.
 // External editors and commands do not participate in this lock.
-var fileToolMu sync.Mutex
+var fileToolMu sync.RWMutex
 
 func fileObservationKey(target string) string {
 	if runtime.GOOS == "windows" {
@@ -56,8 +57,8 @@ func (w *Workspace) Resolve(path string) (string, error) {
 }
 
 func (w *Workspace) Read(relative string, offset, limit int) (string, error) {
-	fileToolMu.Lock()
-	defer fileToolMu.Unlock()
+	fileToolMu.RLock()
+	defer fileToolMu.RUnlock()
 	target, err := w.Resolve(relative)
 	if err != nil {
 		return "", err
@@ -66,7 +67,9 @@ func (w *Workspace) Read(relative string, offset, limit int) (string, error) {
 	if err != nil {
 		// A fresh read confirming deletion acknowledges that change.
 		if os.IsNotExist(err) {
+			w.observedMu.Lock()
 			delete(w.observed, fileObservationKey(target))
+			w.observedMu.Unlock()
 		}
 		return "", err
 	}
@@ -99,6 +102,8 @@ func (w *Workspace) Read(relative string, offset, limit int) (string, error) {
 	for i := start; i < end; i++ {
 		fmt.Fprintf(&b, "%d\t%s\n", i+1, lines[i])
 	}
+	w.observedMu.Lock()
+	defer w.observedMu.Unlock()
 	if w.observed == nil {
 		w.observed = make(map[string][32]byte)
 	}

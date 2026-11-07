@@ -37,6 +37,27 @@ jobs:
       - name: Verify generated AGENTS.md and candidates
         run: node tools/agent-rules.mjs check
 
+  client-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: xt-client/frontend
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: xt-client/frontend
+      - name: Check frontend file sizes
+        run: npm run check:size
+        working-directory: xt-client/frontend
+      - name: Check Go file sizes
+        run: node tools/check-go-size.mjs
+        working-directory: xt-client
+
   verify:
     defaults:
       run:

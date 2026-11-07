@@ -35,10 +35,6 @@ export function AccountsPage() {
   const [selectedModelProvider, setSelectedModelProvider] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showQoderRegionModal, setShowQoderRegionModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importJsonText, setImportJsonText] = useState("");
-  const [importing, setImporting] = useState(false);
-
   const pollRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const checkinRefreshRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -319,22 +315,6 @@ export function AccountsPage() {
     }
   };
 
-  const handleImportCodex = async () => {
-    if (!importJsonText.trim()) return;
-    setImporting(true);
-    try {
-      const res = await api.importCodexAuth(importJsonText.trim());
-      setShowImportModal(false);
-      setImportJsonText("");
-      toast.success("Codex 凭据导入成功: " + (res.nickname || res.accountId));
-      void load();
-    } catch (e) {
-      toast.error(String(e instanceof Error ? e.message : e));
-    } finally {
-      setImporting(false);
-    }
-  };
-
   if (flow === "waiting") {
     return (
       <section className="accounts-flow" aria-live="polite">
@@ -449,7 +429,7 @@ export function AccountsPage() {
           <AddAccountModal
             providers={providers}
             onSelectProvider={(pId, region) => startLogin(pId, region)}
-            onImportCodex={() => { setShowAddModal(false); setShowImportModal(true); }}
+            onImportCodex={() => setShowAddModal(false)}
             onClose={() => setShowAddModal(false)}
           />
         )}

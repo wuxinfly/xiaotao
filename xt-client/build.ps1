@@ -54,6 +54,10 @@ try {
       npm ci
       if ($LASTEXITCODE -ne 0) { throw 'Frontend dependencies failed' }
     }
+    npm run lint
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend lint failed' }
+    npm run check:size
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend size check failed' }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed' }
   } finally { Pop-Location }

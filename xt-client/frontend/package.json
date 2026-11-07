@@ -5,7 +5,9 @@
     "type": "module",
     "scripts": {
         "build": "tsc --noEmit && vite build",
+        "check:size": "node scripts/check-code-size.mjs",
         "dev": "node scripts/dev.mjs",
+        "lint": "eslint src",
         "test:history": "node --test tests/history.browser.test.mjs",
         "test:timeline": "node --test tests/agent-timeline.browser.test.mjs"
     },
@@ -21,10 +23,15 @@
         "remark-gfm": "^4.0.1"
     },
     "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
+        "eslint": "^10.14.0",
+        "eslint-plugin-react-hooks": "^7.1.1",
+        "globals": "^17.14.0",
         "playwright": "^1.64.1",
         "typescript": "^5.9.0",
+        "typescript-eslint": "^8.72.1",
         "vite": "^7.0.0"
     }
 }

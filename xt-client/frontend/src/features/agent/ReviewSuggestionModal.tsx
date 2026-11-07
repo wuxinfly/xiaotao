@@ -50,8 +50,8 @@ export function ReviewSuggestionModal({reviewId, issue, onClose, onSuccess}: Rev
       const link = await api.addIssueSuggestion(reviewId, issue.id, issueKey);
       onSuccess(link);
       onClose();
-    } catch (err: any) {
-      setError(err?.message || '加入建议箱失败，请重试');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '加入建议箱失败，请重试');
     } finally {
       setSubmitting(false);
     }

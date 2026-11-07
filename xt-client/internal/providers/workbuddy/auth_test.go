@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"xiaotao/xt-client/internal/providers"
 )
@@ -103,7 +104,7 @@ func TestNativeAccountAndLegacyRejection(t *testing.T) {
 }
 
 func TestNativeModelCatalog(t *testing.T) {
-	payload := `{"code":0,"data":{"models":[{"id":"native","name":"Native","supportsImages":true},{"id":"hidden"},{"id":"image","tags":["text-to-image"]}],"agents":[{"name":"other","models":["hidden"]},{"name":"cli","tags":["default"],"models":["native","native","image"]}]}}`
+	payload := `{"code":0,"data":{"models":[{"id":"native","name":"Native","supportsImages":true,"credits":"x0.15"},{"id":"zero","name":"Zero","credits":"x0.00"},{"id":"promo","name":"Promo","credits":"x0.80"},{"id":"bad","name":"Bad","credits":"unknown"},{"id":"hidden"},{"id":"image","tags":["text-to-image"]}],"agents":[{"name":"other","models":["hidden"]},{"name":"cli","tags":["default"],"models":["native","zero","promo","bad","native","image"]}],"modelPromotions":[{"modelIds":["promo"],"enabled":true,"priority":100,"discount":{"factor":0.5,"discountedCredits":"0.50x"}},{"modelIds":["zero"],"enabled":true,"priority":200,"discount":{"factor":0}}]}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v3/config" || r.Header.Get("X-IDE-Name") != "WorkBuddy" {
 			t.Errorf("wrong catalog request: %s", r.URL.Path)
@@ -114,11 +115,65 @@ func TestNativeModelCatalog(t *testing.T) {
 	restore := SetBaseURL(server.URL)
 	defer restore()
 	models, err := (Provider{}).FetchModels(context.Background(), &providers.Credential{AccessToken: "test"})
-	if err != nil || len(models) != 1 || models[0].ID != "native" || !models[0].Multimodal {
+	if err != nil || len(models) != 4 || models[0].ID != "native" || !models[0].Multimodal {
 		t.Fatalf("unexpected catalog: %+v %v", models, err)
+	}
+	if models[0].PriceFactor == nil || *models[0].PriceFactor != 0.15 || models[0].IsFree != nil {
+		t.Fatalf("lost base credits: %+v", models[0])
+	}
+	if models[1].PriceFactor == nil || *models[1].PriceFactor != 0 || models[1].IsFree == nil || !*models[1].IsFree {
+		t.Fatalf("lost free promotion: %+v", models[1])
+	}
+	if models[2].PriceFactor == nil || *models[2].PriceFactor != 0.5 || models[2].IsFree != nil {
+		t.Fatalf("lost paid promotion: %+v", models[2])
+	}
+	if models[3].PriceFactor != nil || models[3].IsFree != nil {
+		t.Fatalf("invented invalid credits: %+v", models[3])
 	}
 	payload = `{"code":0,"data":{"models":[{"id":"hidden"}]}}`
 	if _, err = (Provider{}).FetchModels(context.Background(), &providers.Credential{AccessToken: "test"}); err == nil {
 		t.Fatal("accepted missing client catalog")
 	}
+}
+
+func TestWorkBuddyPromotionScheduling(t *testing.T) {
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	promotions := []workBuddyPromotion{
+		testPromotion("always", true, 10, 0.5),
+		testPromotion("expired", true, 100, 0),
+		testPromotion("night", true, 100, 0),
+		testPromotion("disabled", false, 100, 0),
+	}
+	promotions[1].Schedule.Timezone = "Asia/Shanghai"
+	promotions[1].Schedule.ValidFrom = "2026-11-01T00:00:00+08:00"
+	promotions[1].Schedule.ValidUntil = "2026-11-07T00:00:00+08:00"
+	promotions[2].Schedule.Timezone = "Asia/Shanghai"
+	promotions[2].Schedule.Daily = append(promotions[2].Schedule.Daily, struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	}{Start: "23:00", End: "08:00"})
+	got := promotionFactors(promotions, time.Date(2026, 11, 7, 1, 0, 0, 0, location))
+	for id, want := range map[string]*float64{"always": providers.ParsePriceFactor(0.5)} {
+		if got[id] == nil || want == nil || *got[id] != *want {
+			t.Fatalf("%s=%v", id, got[id])
+		}
+	}
+	if got["expired"] != nil || got["disabled"] != nil {
+		t.Fatalf("inactive promotions applied: %+v", got)
+	}
+	if got["night"] == nil || *got["night"] != 0 {
+		t.Fatalf("cross-midnight promotion missing: %+v", got)
+	}
+	if promotionActive(promotions[2], time.Date(2026, 11, 7, 8, 0, 0, 0, location)) {
+		t.Fatal("promotion remained active at its exclusive end")
+	}
+}
+
+func testPromotion(id string, enabled bool, priority int, factor float64) workBuddyPromotion {
+	promotion := workBuddyPromotion{ModelIDs: []string{id}, Enabled: &enabled, Priority: priority}
+	promotion.Discount.Factor = factor
+	return promotion
 }

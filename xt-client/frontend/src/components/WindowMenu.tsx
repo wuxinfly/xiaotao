@@ -1,5 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
+import {Moon, Sun} from 'lucide-react';
 import {toast} from './toast';
+import {readTheme, saveTheme} from '../lib/theme';
 import './window-menu.css';
 
 declare global {
@@ -8,17 +10,28 @@ declare global {
 
 export function WindowMenu(){
  const [open,setOpen]=useState(false);
+ const [theme,setTheme]=useState(readTheme);
  const menu=useRef<HTMLDivElement>(null),trigger=useRef<HTMLButtonElement>(null);
  const timer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
  const cancelClose=()=>clearTimeout(timer.current);
  const close=()=>{cancelClose();setOpen(false)};
  useEffect(()=>{
-  const dismiss=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node))close()};
+   const dismiss=(event:PointerEvent)=>{if(!menu.current?.contains(event.target as Node)){cancelClose();setOpen(false)}};
   document.addEventListener('pointerdown',dismiss);
-  const blur=()=>close();
+   const blur=()=>{cancelClose();setOpen(false)};
   window.addEventListener('blur',blur);
   return()=>{cancelClose();document.removeEventListener('pointerdown',dismiss);window.removeEventListener('blur',blur)};
  },[]);
+ useEffect(()=>{
+  const sync=()=>setTheme(readTheme());
+  window.addEventListener('xiaotao:theme',sync);
+  return()=>window.removeEventListener('xiaotao:theme',sync);
+ },[]);
+ const toggleTheme=()=>{
+  const next=theme==='dark'?'light':'dark';
+  saveTheme(next);
+  setTheme(next);
+ };
  const openDirectory=async(kind:'install'|'data')=>{
   close();
   trigger.current?.focus();
@@ -28,8 +41,6 @@ export function WindowMenu(){
   }catch(error){toast.error(error instanceof Error?error.message:String(error))}
  };
  return <div className="window-menu" ref={menu}
-  onMouseEnter={()=>{cancelClose();setOpen(true)}}
-  onMouseLeave={()=>{cancelClose();timer.current=setTimeout(()=>{if(!menu.current?.contains(document.activeElement))setOpen(false)},180)}}
   onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))close()}}
   onKeyDown={event=>{
    if(event.key==='Escape'){event.preventDefault();close();trigger.current?.focus()}
@@ -47,6 +58,11 @@ export function WindowMenu(){
    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><circle cx="4" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="16" cy="10" r="1.5"/></svg>
   </button>
   <div id="window-more-menu" role="menu" aria-label="更多" className={'window-menu-panel'+(open?' is-open':'')} inert={!open} aria-hidden={!open}>
+   <button role="menuitem" onClick={toggleTheme}>
+    {theme==='dark'?<Sun aria-hidden="true"/>:<Moon aria-hidden="true"/>}
+    <span>{theme==='dark'?'切换到浅海主题':'切换到深海主题'}</span>
+   </button>
+   <div className="window-menu-separator" role="separator"/>
    <button role="menuitem" onClick={()=>void openDirectory('install')}>打开安装目录</button>
    <button role="menuitem" onClick={()=>void openDirectory('data')}>打开数据目录</button>
   </div>

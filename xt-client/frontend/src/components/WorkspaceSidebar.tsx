@@ -1,0 +1,32 @@
+import {ChartNoAxesColumn, Gauge, UserRoundCog} from 'lucide-react';
+import './workspace-sidebar.css';
+
+export type Page = 'agent' | 'dashboard' | 'accounts';
+type Props = {page: Page; onSelect: (page: Page) => void};
+
+const items: {page: Page; label: string; Icon: typeof ChartNoAxesColumn}[] = [
+  {page: 'agent', label: '小涛 Agent', Icon: Gauge},
+  {page: 'dashboard', label: '仪表盘', Icon: ChartNoAxesColumn},
+  {page: 'accounts', label: '账号与配额', Icon: UserRoundCog},
+];
+
+function WorkspaceNav({page, onSelect, ...props}: Props & {'aria-label'?: string}) {
+  return <nav className="workspace-nav" {...props}>
+    {items.map(({page: target, label, Icon}) => <button type="button" key={target}
+      className={page === target ? 'is-active' : undefined}
+      aria-current={page === target ? 'page' : undefined}
+      title={label} onClick={() => onSelect(target)}>
+      <Icon aria-hidden="true"/><span>{label}</span>
+    </button>)}
+  </nav>;
+}
+
+export function WorkspaceSpacer() {
+  return <aside className="workspace-sidebar" aria-hidden="true"/>;
+}
+
+export function WorkspaceDock({page, onSelect}: Props) {
+  return <div className="workspace-dock">
+    <WorkspaceNav page={page} onSelect={onSelect} aria-label="工作空间导航"/>
+  </div>;
+}

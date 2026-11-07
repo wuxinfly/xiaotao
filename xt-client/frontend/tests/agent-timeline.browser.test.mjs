@@ -28,7 +28,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     ];
     const activity = [
       {id: 'a0', runId: 'turn_1', kind: 'read_file', title: '阅读文件', detail: 'README.md', status: 'completed', startedAt: stamp(2), endedAt: stamp(3)},
-      {id: 'a1', runId: 'turn_1', kind: 'search_files', title: '搜索代码', detail: 'timeline', status: 'completed', startedAt: stamp(4), endedAt: stamp(5)},
+      {id: 'a1', runId: 'turn_1', kind: 'run_command', title: '运行命令', detail: 'npm run test:timeline', input: '{\n  "command": "npm run test:timeline"\n}', output: '1 test passed', status: 'completed', startedAt: stamp(4), endedAt: stamp(5)},
     ];
     const stats = {runId: 'turn_1', userMessageId: 'u', startedAt: stamp(1), endedAt: stamp(9), filesRead: 2, filesWritten: 0, toolCalls: 2, modelRequests: 3, outputSpeed: 21.4, outputTokens: 72, firstTokenMs: 1200, contextTokens: 24000};
     const liveStats = {...stats, endedAt: undefined, liveTokens: 64, liveSpeed: 18.2};
@@ -90,7 +90,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     await page.locator('.agent-session-select').filter({hasText: '时序交互'}).click();
     await page.locator('.agent-run-timeline').waitFor();
     assert.equal(await page.locator('.agent-run-timeline > .agent-message-avatar').count(), 1, 'live trace keeps the XiaoTao avatar');
-    assert.equal(await page.locator('.agent-run-timeline > .agent-message-avatar .agent-droplet').getAttribute('data-state'), 'reading', 'running tool avatar reflects the latest tool state');
+    assert.equal(await page.locator('.agent-run-timeline > .agent-message-avatar .agent-droplet').getAttribute('data-state'), 'tool', 'running tool avatar reflects the latest command state');
     const userBox = await page.locator('.agent-message.role-user').last().boundingBox();
     const timelineBox = await page.locator('.agent-run-timeline').boundingBox();
     assert.ok(timelineBox.y > userBox.y, 'user query stays above the live trace');
@@ -124,9 +124,44 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     await drawer.waitFor();
     assert.match(await drawer.textContent(), /已确认气泡/);
     assert.match(await drawer.textContent(), /阅读文件/);
-    assert.equal(await drawer.locator('.agent-drawer-timeline li').count(), 4);
+    assert.equal(await drawer.locator('.agent-thought-event').count(), 4);
+    assert.equal(await drawer.locator('.agent-thought-event-toggle[aria-expanded="true"]').count(), 0, 'drawer starts as a readable overview');
+    await drawer.locator('.agent-thought-event-toggle').first().click();
+    assert.equal(await drawer.locator('.agent-thought-event-toggle[aria-expanded="true"]').count(), 1);
+    const commandEvent = drawer.locator('.agent-thought-event[data-kind="activity"]').filter({hasText: 'npm run test:timeline'});
+    await commandEvent.locator('.agent-thought-event-toggle').click();
+    await commandEvent.locator('.agent-thought-event-detail').getByText('"command": "npm run test:timeline"').waitFor();
+    await commandEvent.locator('.agent-thought-event-detail').getByText('1 test passed').waitFor();
+    await drawer.locator('.agent-thought-event-toggle').first().click();
+    assert.equal(await drawer.locator('.agent-thought-event-toggle').first().getAttribute('aria-expanded'), 'false');
+    assert.equal(await commandEvent.locator('.agent-thought-event-toggle').getAttribute('aria-expanded'), 'true');
+    const drawerBox = await drawer.boundingBox();
+    assert.ok(drawerBox.width >= 500, 'desktop drawer leaves room for the overview and nested details');
+    assert.equal(await drawer.locator('.agent-thought-stages').count(), 0, 'the fabricated stage strip is removed');
     await page.keyboard.press('Escape');
-    await drawer.waitFor({state: 'detached'});
+    await page.waitForFunction(() => !document.querySelector('.agent-drawer-backdrop.is-open'));
+    await page.waitForFunction(() => !document.querySelector('.agent-drawer-backdrop'));
+    const activityOnlyPage = await browser.newPage({viewport: {width: 1200, height: 800}});
+    activityOnlyPage.on('pageerror', error => errors.push(error.message));
+    await activityOnlyPage.route('**/api/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/agent/sessions') return route.fulfill({json: {sessions: [summary]}});
+      if (url.pathname === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test', label: '测试模型', priceFactor: 1}]}});
+      if (url.pathname === '/api/agent/access-mode') return route.fulfill({json: {mode: 'safe'}});
+      if (url.pathname.endsWith('/history')) return route.fulfill({json: {session: {...terminal, thoughts: [], activity}, before: ''}});
+      return route.fulfill({json: {}});
+    });
+    await activityOnlyPage.goto('http://127.0.0.1:5191');
+    await activityOnlyPage.getByRole('button', {name: '切换会话排列方式'}).click();
+    await activityOnlyPage.getByRole('button', {name: '按会话查看'}).click();
+    await activityOnlyPage.locator('.agent-session-select').filter({hasText: '时序交互'}).click();
+    await activityOnlyPage.getByRole('button', {name: '查看思考过程'}).click();
+    const activityOnlyDrawer = activityOnlyPage.getByRole('dialog', {name: '本轮思考过程'});
+    await activityOnlyDrawer.getByText('本轮模型没有输出过程说明', {exact: false}).waitFor();
+    assert.equal(await activityOnlyDrawer.locator('.agent-thought-stages').count(), 0, 'activity-only runs do not imply thought stages');
+    assert.equal(await activityOnlyDrawer.getByText('理解', {exact: true}).count(), 0);
+    assert.equal(await activityOnlyDrawer.getByText('判断', {exact: true}).count(), 0);
+    await activityOnlyPage.close();
     const compactPage = await browser.newPage({viewport: {width: 1200, height: 800}});
     compactPage.on('pageerror', error => errors.push(error.message));
     await compactPage.route('**/api/**', async route => {

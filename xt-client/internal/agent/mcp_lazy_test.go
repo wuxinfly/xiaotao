@@ -16,7 +16,7 @@ type recordingModel struct {
 	toolSets [][]map[string]any
 }
 
-func (m *recordingModel) Complete(_ context.Context, _ string, messages []map[string]any, tools []map[string]any, _ func(string)) (*completion, error) {
+func (m *recordingModel) Complete(_ context.Context, _ string, messages []map[string]any, tools []map[string]any, _ ModelSettings, _ func(string)) (*completion, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if isSummaryRequest(messages) {
