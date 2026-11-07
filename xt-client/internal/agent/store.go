@@ -24,6 +24,9 @@ func (s *Service) openStore() (*sql.DB, error) {
 	if err != nil {
 		return fail(err)
 	}
+	if err = ensureReviewTable(db); err != nil {
+		return fail(err)
+	}
 	var done int
 	if err = db.QueryRow("SELECT count(*) FROM migration WHERE name='json-v1'").Scan(&done); err != nil {
 		return fail(err)

@@ -1,3 +1,121 @@
+export interface ReviewScope {
+  cutoffPositions: Record<string, number>;
+  runIds: string[];
+  availableCount: number;
+  includedCount: number;
+  truncation?: string[];
+}
+
+export interface ReviewEvidenceItem {
+  id: string;
+  kind: string;
+  runId: string;
+  sourceId: string;
+  summary: string;
+  truncated?: boolean;
+}
+
+export interface ReviewIssue {
+  id: string;
+  title: string;
+  problem: string;
+  impact: string;
+  speculation: string;
+  proposal: string;
+  acceptance: string;
+  evidenceIds: string[];
+}
+
+export interface ReviewGoodPractice {
+  id: string;
+  title: string;
+  description: string;
+  evidenceIds?: string[];
+}
+
+export interface ReviewResult {
+  outcome: 'issues_found' | 'no_issues_found' | 'insufficient_evidence' | string;
+  summary: string;
+  issues: ReviewIssue[];
+  goodPractices: ReviewGoodPractice[];
+  limitations: string[];
+}
+
+export interface ReviewUsage {
+  promptTokens?: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ReviewSuggestionLink {
+  issueId: string;
+  issueKey: string;
+  observationId: string;
+  linkedAt: string;
+  status: string;
+  sourcePath: string;
+}
+
+export interface BehaviorReview {
+  id: string;
+  schemaVersion: number;
+  sessionId: string;
+  projectSnapshot: string;
+  sessionTitleSnapshot: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  timezone: string;
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled';
+  requestId: string;
+  attemptOf?: string;
+  model: string;
+  clientVersion: string;
+  coreVersion: string;
+  promptVersion: string;
+  scope: ReviewScope;
+  evidenceSnapshot: ReviewEvidenceItem[];
+  result?: ReviewResult;
+  errorCode?: string;
+  errorMessage?: string;
+  usage?: ReviewUsage;
+  suggestionLinks?: ReviewSuggestionLink[];
+}
+
+export interface ReviewSummary {
+  id: string;
+  sessionId: string;
+  sessionTitleSnapshot: string;
+  projectSnapshot: string;
+  createdAt: string;
+  startedAt?: string;
+  finishedAt?: string;
+  timezone: string;
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'canceled';
+  title: string;
+  model: string;
+  attemptOf?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  outcome?: string;
+  issuesCount: number;
+}
+
+export interface ReviewListPage {
+  reviews: ReviewSummary[];
+  nextCursor?: string;
+  total: number;
+}
+
+export interface ExistingSuggestionItem {
+  issueKey: string;
+  title: string;
+  problem: string;
+  status: string;
+  observationsCount: number;
+  updatedAt: string;
+}
+
 export interface QuotaItem {
   label: string;
   used?: number | null;
@@ -418,6 +536,36 @@ export const api = {
     }),
   cancelAgentSession: (id: string) =>
     request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  createReview: (sessionId: string, requestId?: string) =>
+    request<BehaviorReview>(`/api/agent/sessions/${encodeURIComponent(sessionId)}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
+    }),
+  listReviews: (sessionId?: string, cursor?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('sessionId', sessionId);
+    if (cursor) params.set('cursor', cursor);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    return request<ReviewListPage>(`/api/agent/reviews${qs ? '?' + qs : ''}`);
+  },
+  getReview: (id: string) => request<BehaviorReview>(`/api/agent/reviews/${encodeURIComponent(id)}`),
+  cancelReview: (id: string) =>
+    request<{ ok: boolean }>(`/api/agent/reviews/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  retryReview: (id: string, requestId?: string) =>
+    request<BehaviorReview>(`/api/agent/reviews/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
+    }),
+  deleteReview: (id: string) =>
+    request<{ ok: boolean }>(`/api/agent/reviews/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  addIssueSuggestion: (id: string, issueId: string, issueKey?: string) =>
+    request<ReviewSuggestionLink>(`/api/agent/reviews/${encodeURIComponent(id)}/issues/${encodeURIComponent(issueId)}/suggestion`, {
+      method: 'POST',
+      body: JSON.stringify({ issueKey }),
+    }),
+  getReviewProjectSuggestions: (id: string) =>
+    request<{ suggestions: ExistingSuggestionItem[] }>(`/api/agent/reviews/${encodeURIComponent(id)}/suggestions`),
   subscribeDashboard: (
     onSnapshot: (snap: DashboardSnapshot) => void,
     onError?: (err: Event) => void,

@@ -84,3 +84,8 @@ func saveContract(root string) string {
 	prompt.WriteString("- 细节规范见 `references/progress-saving.md`，需要按日期检索或理解存储边界时再读。\n")
 	return prompt.String()
 }
+
+func (s *Service) CoreVersion() string {
+	digest := sha256.Sum256(coreBundle)
+	return fmt.Sprintf("%x", digest[:12])
+}

@@ -25,14 +25,18 @@ const (
 )
 
 type Service struct {
-	dataDir   string
-	endpoint  string
-	key       func() string
-	client    *http.Client
-	mu        sync.Mutex
-	runs      map[string]*run
-	models    func() []ModelOption
-	approvals map[string]*pendingApproval
+	dataDir    string
+	endpoint   string
+	key        func() string
+	client     *http.Client
+	mu         sync.Mutex
+	runs       map[string]*run
+	models     func() []ModelOption
+	approvals  map[string]*pendingApproval
+	modelCli   modelClient
+	reviewMu   sync.Mutex
+	reviewRuns map[string]context.CancelFunc
+	clientVer  string
 }
 
 type run struct {
@@ -94,15 +98,21 @@ type backendResponse struct {
 }
 
 func NewService(dataDir, endpoint string, key func() string, client *http.Client, models func() []ModelOption) *Service {
-	return &Service{
-		dataDir:   dataDir,
-		endpoint:  strings.TrimRight(endpoint, "/") + "/v1/chat/completions",
-		key:       key,
-		client:    client,
-		runs:      map[string]*run{},
-		approvals: map[string]*pendingApproval{},
-		models:    models,
+	svc := &Service{
+		dataDir:    dataDir,
+		endpoint:   strings.TrimRight(endpoint, "/") + "/v1/chat/completions",
+		key:        key,
+		client:     client,
+		runs:       map[string]*run{},
+		reviewRuns: map[string]context.CancelFunc{},
+		approvals:  map[string]*pendingApproval{},
+		models:     models,
 	}
+	if db, err := svc.openStore(); err == nil {
+		_ = recoverInterruptedReviews(db)
+		db.Close()
+	}
+	return svc
 }
 
 func (s *Service) AvailableModels() []ModelOption {
@@ -327,6 +337,9 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	text = strings.TrimSpace(text)
 	if text == "" && len(images) == 0 {
 		return fmt.Errorf("消息不能为空")
+	}
+	if activeReview, err := s.getActiveReviewForSession(sessionID); err == nil && activeReview != nil {
+		return fmt.Errorf("当前会话正在生成复盘，请稍候")
 	}
 	s.mu.Lock()
 	r, ok := s.runs[sessionID]

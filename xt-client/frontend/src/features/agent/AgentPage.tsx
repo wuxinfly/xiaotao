@@ -45,10 +45,15 @@ import {
   Wrench,
   X,
   Zap,
+  History,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
-import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentImage, type AgentMessage, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought} from '../../lib/api';
+import {api, type AgentActivity, type AgentConversationReference, type AgentEvent, type AgentImage, type AgentMessage, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
 import {AgentSettingsModal, ProjectModal, ReferenceDetailModal, RenameSessionModal} from './AgentModals';
+import {ReviewListModal} from './ReviewListModal';
+import {ReviewDetailModal} from './ReviewDetailModal';
 import {ConversationReference, conversationReferenceType} from './ConversationReference';
 import './agent.css';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
@@ -799,6 +804,72 @@ export function AgentPage({visible}: {visible: boolean}) {
     return () => window.clearInterval(timer);
   }, [busy]);
   const [settingsOpen, setSettingsOpen] = useState(false), [projectOpen, setProjectOpen] = useState(false);
+  const [reviewListOpen, setReviewListOpen] = useState(false);
+  const [reviewDetailOpen, setReviewDetailOpen] = useState<BehaviorReview | null>(null);
+  const [reviewingSessionId, setReviewingSessionId] = useState<string | null>(null);
+  const [reviewToast, setReviewToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!reviewToast) return;
+    const timer = window.setTimeout(() => setReviewToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [reviewToast]);
+
+  const hasCompletedRuns = useMemo(() => {
+    if (!active) return false;
+    if (active.runStats && active.runStats.some(r => !!r.endedAt)) return true;
+    if (active.activity && active.activity.some(a => !!a.endedAt)) return true;
+    if (active.status !== 'running' && active.messages && active.messages.some(m => m.role === 'assistant')) return true;
+    return false;
+  }, [active]);
+
+  const canStartReview = !!active && !busy && hasCompletedRuns && reviewingSessionId !== active.id;
+
+  const handleStartReview = useCallback(async () => {
+    if (!active) return;
+    if (busy) {
+      setError('任务结束后可复盘');
+      return;
+    }
+    if (!hasCompletedRuns) {
+      setError('会话中暂无已完成的 Agent 执行记录，无法进行复盘');
+      return;
+    }
+    if (reviewingSessionId === active.id) return;
+
+    const targetSessionId = active.id;
+    setReviewingSessionId(targetSessionId);
+    setError('');
+
+    try {
+      const review = await api.createReview(targetSessionId);
+      const pollTimer = window.setInterval(async () => {
+        try {
+          const detail = await api.getReview(review.id);
+          if (detail.status === 'succeeded') {
+            window.clearInterval(pollTimer);
+            setReviewingSessionId(curr => (curr === targetSessionId ? null : curr));
+            if (activeIdRef.current === targetSessionId) {
+              setReviewDetailOpen(detail);
+            } else {
+              setReviewToast('复盘已完成，可在复盘记录中查看');
+            }
+          } else if (detail.status === 'failed' || detail.status === 'canceled') {
+            window.clearInterval(pollTimer);
+            setReviewingSessionId(curr => (curr === targetSessionId ? null : curr));
+            if (detail.status === 'failed') {
+              setError(`复盘失败: ${detail.errorMessage || '未知错误'}`);
+            }
+          }
+        } catch {
+          // ignore transient poll error
+        }
+      }, 2000);
+    } catch (err: any) {
+      setReviewingSessionId(curr => (curr === targetSessionId ? null : curr));
+      setError(err?.message || '发起复盘失败');
+    }
+  }, [active, busy, hasCompletedRuns, reviewingSessionId]);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false), [projectQuery, setProjectQuery] = useState('');
   const projectTriggerRef = useRef<HTMLButtonElement>(null), projectSearchRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!visible || busy || active) setProjectMenuOpen(false); }, [visible, busy, active]);
@@ -1463,7 +1534,8 @@ export function AgentPage({visible}: {visible: boolean}) {
   const currentModelOption = models.find(item => item.model === (model || active?.model));
   const currentModelSupportsImages = currentModelOption?.supportsImages === true;
   const historyHasImages = !!active && conversationHasImages(active.messages, active.hasImages);
-  const canSend = !busy && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference || composerImages.length > 0) && (!!active || !!model) && (!(composerImages.length || historyHasImages) || currentModelSupportsImages || currentModelOption === undefined);
+  const isReviewingCurrent = !!active && reviewingSessionId === active.id;
+  const canSend = !busy && !isReviewingCurrent && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference || composerImages.length > 0) && (!!active || !!model) && (!(composerImages.length || historyHasImages) || currentModelSupportsImages || currentModelOption === undefined);
   canSendRef.current = canSend;
 
   const {entries} = useMemo(() => {
@@ -1533,9 +1605,51 @@ export function AgentPage({visible}: {visible: boolean}) {
           <AgentDroplet running={busy}/>
           <div><strong>{active ? active.title : '新会话'}</strong><small>{busy ? '小涛正在处理' : active ? 'Agent 工作台' : '准备开始'}</small></div>
         </div>
-        <button type="button" className="agent-settings-trigger" onClick={() => setSettingsOpen(true)} title="Agent 设置" aria-label="打开 Agent 设置">
-          <Settings2 aria-hidden="true"/><span>设置</span>
-        </button>
+        <div className="agent-context-actions">
+          {active && (
+            <button
+              type="button"
+              className={`agent-context-btn ${reviewingSessionId === active.id ? 'is-loading' : ''}`}
+              disabled={!canStartReview}
+              onClick={() => void handleStartReview()}
+              title={
+                busy
+                  ? '任务结束后可复盘'
+                  : !hasCompletedRuns
+                  ? '会话中暂无已完成的 Agent 执行记录，无法进行复盘'
+                  : '检查当前会话中小涛的执行行为，生成独立记录；会调用当前模型并产生正常模型用量'
+              }
+              aria-label="复盘当前会话"
+            >
+              {reviewingSessionId === active.id ? (
+                <>
+                  <Loader2 size={13} className="spin" aria-hidden="true"/>
+                  <span>复盘中…</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={13} aria-hidden="true"/>
+                  <span>复盘</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="agent-context-btn"
+            onClick={() => setReviewListOpen(true)}
+            title="查看复盘记录"
+            aria-label="打开复盘记录"
+          >
+            <History size={13} aria-hidden="true"/>
+            <span>复盘记录</span>
+          </button>
+
+          <button type="button" className="agent-settings-trigger" onClick={() => setSettingsOpen(true)} title="Agent 设置" aria-label="打开 Agent 设置">
+            <Settings2 aria-hidden="true"/><span>设置</span>
+          </button>
+        </div>
       </header>
 
       <div className="agent-feed" ref={feed} onMouseUp={captureQuoteSelection} onKeyUp={event => {if (event.shiftKey || event.key === 'Shift' || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) captureQuoteSelection();}} onScroll={event => { const el = event.currentTarget; followFeed.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; updateScrollToBottom(); if (el.scrollTop < 120 && !historyError) void loadOlder(); }}>
@@ -1642,9 +1756,22 @@ export function AgentPage({visible}: {visible: boolean}) {
     <ModalPresence>{renamingProject && <RenameSessionModal project title={renamingProject.name} onClose={() => setRenamingProject(null)} onSave={async name => {const target = renamingProject.path; await api.renameAgentProject(target, name); const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === target.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''); setSessions(current => current.map(item => matches(item.project.path) ? {...item, project:{...item.project, name}} : item)); setActive(current => current && matches(current.project.path) ? {...current, project:{...current.project, name}} : current); setSavedProjects(current => current.map(item => matches(item.path) ? {...item, name} : item)); if (matches(path)) setProjectName(name); setRenamingProject(null);}}/>}</ModalPresence>
     {visible && createPortal(<>{quoteMarks.map(mark => <ReactFragment key={mark.id}>{mark.rects.map((rect, index) => <span key={index} className="agent-quote-highlight" style={rect} aria-hidden="true"/>)}<button type="button" className="agent-quote-marker" style={{left: mark.left, top: mark.top}} aria-label={`编辑引用 ${quotes.findIndex(item => item.id === mark.id) + 1}`} title="编辑引用" onClick={() => setEditingQuote(mark.id)}>{quotes.findIndex(item => item.id === mark.id) + 1}</button></ReactFragment>)}{editingQuote && (() => {const item = quotes.find(quote => quote.id === editingQuote); if (!item) return null; const mark = quoteMarks.find(value => value.id === item.id); const left = mark ? Math.max(8, Math.min(window.innerWidth - 296, mark.left - 120)) : Math.max(8, (window.innerWidth - 288) / 2); const top = mark ? Math.max(8, Math.min(window.innerHeight - 270, mark.top + 24)) : Math.max(8, (window.innerHeight - 260) / 2); return <div className="agent-quote-editor" role="dialog" aria-label="编辑引用" style={{left, top}}><div className="agent-quote-editor-head"><strong>编辑引用 {quotes.findIndex(quote => quote.id === item.id) + 1}</strong><button type="button" aria-label="关闭引用编辑" onClick={() => setEditingQuote(null)}><X aria-hidden="true"/></button></div><label>引用文字<textarea aria-label="引用文字" value={item.text} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, text:event.target.value} : quote))}/></label><label>回复<textarea aria-label="回复" placeholder="写下对这段文字的回复（可选）" value={item.reply} onChange={event => setQuotes(current => current.map(quote => quote.id === item.id ? {...quote, reply:event.target.value} : quote))}/></label><div className="agent-quote-editor-actions"><button type="button" onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(null);}}>移除引用</button><button type="button" disabled={!item.text.trim()} onClick={() => setEditingQuote(null)}>完成</button></div></div>;})()}</>, document.body)}
     {quoteSelection && createPortal(<button type="button" className="agent-quote-selection" style={{left: quoteSelection.left, top: quoteSelection.top}} onMouseDown={event => event.preventDefault()} onClick={() => {const selected = quoteSelection; const existing = quotes.find(item => item.messageId === selected.messageId && item.start === selected.start && item.end === selected.end); if (existing) {setEditingQuote(existing.id);} else {setQuotes(current => [...current, {id: crypto.randomUUID(), messageId: selected.messageId, start: selected.start, end: selected.end, sourceText: selected.text, text: selected.text, reply: ''}]);} setQuoteSelection(null); window.getSelection()?.removeAllRanges(); editor?.commands.focus('end');}}>引用</button>, document.body)}
-    <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作"><button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button><button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button></Popover>
+    <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作">
+      <button type="button" role="menuitem" onClick={() => {if (sessionMenu) { selectSession(sessionMenu.item); setReviewListOpen(true); } setSessionMenu(null);}}><History aria-hidden="true"/>复盘记录</button>
+      <button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button>
+      <button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button>
+    </Popover>
     <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>
     <ModalPresence>{renaming && <RenameSessionModal title={renaming.title} origin={(() => {const rect = sessionMenuTrigger.current?.getBoundingClientRect(); return rect ? {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2} : undefined;})()} onClose={() => {setRenaming(null); sessionMenuTrigger.current?.focus();}} onSave={async title => {const updated = await api.renameAgentSession(renaming.id, title); setSessions(current => current.map(item => item.id === updated.id ? {...item, title: updated.title} : item)); setActive(current => current?.id === updated.id ? {...current, title: updated.title} : current); setRenaming(null); sessionMenuTrigger.current?.focus();}}/>}</ModalPresence>
+    <ModalPresence>{reviewListOpen && <ReviewListModal currentSessionId={active?.id} onClose={() => setReviewListOpen(false)} />}</ModalPresence>
+    <ModalPresence>{reviewDetailOpen && <ReviewDetailModal review={reviewDetailOpen} onClose={() => setReviewDetailOpen(null)} />}</ModalPresence>
+    {reviewToast && createPortal(
+      <div className="agent-review-toast" role="status">
+        <Sparkles size={14} aria-hidden="true"/>
+        <span>{reviewToast}</span>
+      </div>,
+      document.body
+    )}
     <ModalPresence>{settingsOpen && <AgentSettingsModal
       models={models}
       selected={enabledModels}

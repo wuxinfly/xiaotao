@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "candidate_id": "agent-project-delete-keeps-sessions",
+  "created_at": "2026-11-07T13:20:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.agent-project-delete-keeps-sessions",
+  "text": "xt-client Agent 侧边栏的项目分组与会话是两回事：项目下会话删光后项目行仍保留并显示“暂无会话”，仍可新建会话或在项目选择器中选中；只有用户删除项目才移除项目行，项目内会话被标记 project.removed 归入“最新”，消息、执行记录、工作目录都不变，重新保存同一目录时清除标记。",
+  "rationale": "2026-11-07 用户明确要求区分“删会话”和“删项目”两种操作，原实现删除项目只删 saved_projects 记录，会话仍按项目路径分组，与确认文案不一致。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/agent/project.go",
+    "xt-client/internal/agent/project_test.go",
+    "xt-client/frontend/src/features/agent/SessionList.tsx",
+    "xt-client/frontend/src/features/agent/AgentPage.tsx",
+    "docs/plans/2026-11-07-agent-saved-projects.md"
+  ]
+}

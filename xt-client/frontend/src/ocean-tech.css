@@ -240,12 +240,14 @@
 }
 
 .agent-settings-trigger,
+.agent-context-btn,
 .agent-project-trigger {
   border-color: rgba(103, 170, 195, 0.22);
   color: #9ebdc8;
 }
 
-.agent-settings-trigger:hover:not(:disabled) {
+.agent-settings-trigger:hover:not(:disabled),
+.agent-context-btn:hover:not(:disabled) {
   border-color: rgba(88, 227, 213, 0.34);
   background: rgba(22, 82, 99, 0.58);
   color: #efffff;

@@ -155,6 +155,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, proxySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
 		return agentModelsForAccounts(store.Accounts(), proxySvc.AccountModels)
 	})
+	agentSvc.SetClientVersion(Version)
 	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
 	if err != nil {
 		return nil, err
