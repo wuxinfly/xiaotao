@@ -22,7 +22,7 @@ test('live stats bar shows elapsed, first token, tokens and speed while running'
     const liveStats = {
       runId: 'turn_live', userMessageId: 'u', startedAt,
       filesRead: 0, filesWritten: 0, toolCalls: 1, modelRequests: 1,
-      firstTokenMs: 1500, liveTokens: 320, liveSpeed: 42.5, contextTokens: 900,
+      firstTokenMs: 1500, inputKnown: true, inputTokens: 900, liveTokens: 320, liveSpeed: 42.5, contextTokens: 900,
     };
     const session = {
       id: 'live', title: '实时指标', model: 'test', status: 'running',
@@ -43,9 +43,12 @@ test('live stats bar shows elapsed, first token, tokens and speed while running'
     await page.locator('.agent-session-select').filter({hasText: '实时指标'}).click();
     const bar = page.locator('.agent-live-stats');
     await bar.waitFor();
-    assert.equal(await bar.locator('> span').count(), 4, 'live bar renders all four metrics');
+    assert.equal(await bar.locator('> span').count(), 5, 'live bar renders both token counts');
     assert.match(await bar.textContent(), /首 token 1\.5s/, 'first-token latency is visible');
     assert.match(await bar.textContent(), /320 tok/, 'produced tokens are visible');
+    assert.match(await bar.locator('[title^="累计输入"]').textContent(), /900 tok/);
+    assert.equal(await bar.locator('[title^="累计输入"] .lucide-arrow-up').count(), 1);
+    assert.equal(await bar.locator('[title^="累计输出"] .lucide-arrow-down').count(), 1);
     assert.match(await bar.textContent(), /42\.5\s*tok\/s/, 'output speed is visible');
     const first = await bar.textContent();
     await page.waitForTimeout(1200);

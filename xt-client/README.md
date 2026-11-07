@@ -204,7 +204,7 @@ Agent 工作台使用水滴状态精灵和 Lucide 线性图标，布局和响应
 
 回归入口：在 frontend 运行 `node --test tests/agent-concurrency.browser.test.mjs`；使用隔离的本地 SSE 服务验证双会话、后台回复、独立停止、草稿和确认队列，不访问真实账号。桌面 WebView2 和真实账号并发限流仍待新包人工验收。
 
-Agent 输入框粘贴时，如果整段内容被 ` ```markdown ` 或 ` ```md ` 围栏包裹，会去掉最外层围栏并按 Markdown 格式插入；其中的代码块仍会保留。带代码样式 HTML 的粘贴按纯文本插入，使用硬换行保留行结构；在代码块内的粘贴沿用原有行为。可在 `frontend` 运行 `node --test tests/markdown-paste.browser.test.mjs` 验证，默认使用 `/usr/bin/chromium`，也可通过 `XIAOTAO_TEST_BROWSER_PATH` 指定浏览器。
+Agent 输入框粘贴时，如果整段内容被 ` ```markdown ` 或 ` ```md ` 围栏包裹，会去掉最外层围栏并按 Markdown 格式插入；其中的代码块仍会保留。单行 Windows 路径按原文插入，不自动转换成链接；普通网址仍可识别为链接。带代码样式 HTML 的粘贴按纯文本插入，使用硬换行保留行结构；在代码块内的粘贴沿用原有行为。可在 `frontend` 运行 `node --test tests/markdown-paste.browser.test.mjs` 验证，默认使用 `/usr/bin/chromium`，也可通过 `XIAOTAO_TEST_BROWSER_PATH` 指定浏览器。
 
 输入框支持 `@` 引用其他对话：默认搜索当前项目，可切换到所有项目；支持标题搜索、方向键、Enter、Escape 和关闭按钮。引用标签保存在 Tiptap inline node 中，发送时提交结构化会话 ID，正文保留可读的 `@标题`；只放引用标签也可以发送。一条消息最多引用 5 个对话，来源只读取用户和助手文字，不计工具原始输出；单个来源最多 64 KiB，所有来源合计 128 KiB。发送时冻结来源边界，来源后来更新时消息显示“有新内容”，旧消息仍使用旧快照；来源删除后已保存摘要仍可查看。正式版与 UAT 的引用和快照数据继续隔离。
 
@@ -241,7 +241,9 @@ Agent 页首屏为简洁的聊天空状态，使用戴耳机、拿奶茶的透�
 
 Agent 已内置完整 `xt-skills/xiaotao` Core。新会话首次发送注入完整 SKILL.md，后续使用精简守卫，参考文档与脚本按当前步骤读取；已有会话下次发送也能访问完整 Core。资源在当前环境 Agent 数据目录的 `core/<资源摘要>/` 下释放，正式版与 UAT 独立。
 
-每次发送都会内联「阶段保存契约」：Core 内 \scripts/save_progress.py\ 的绝对路径、stdin JSON 字段（equest_id\、\	opic_id\、\	itle\、\summary\、\details\、\alidation\、ext_steps\）、触发时机与跳过条件。模型无需再读 eferences/progress-saving.md\ 即可在交付前保存一次阶段记忆；详细规范仍以该文档为准。
+每次发送都会内联「阶段保存契约」：Core 内 `scripts/save_progress.py` 的绝对路径、stdin JSON 字段（`request_id`、`topic_id`、`title`、`summary`、`details`、`validation`、`next_steps`）、触发时机与跳过条件。模型无需再读 `references/progress-saving.md` 即可在交付前保存一次阶段记忆；详细规范仍以该文档为准。
+
+命令执行在 Windows 上先注入 UTF-8 前置：PowerShell 的 `[Console]::OutputEncoding` 和 `$OutputEncoding` 都设为无 BOM 的 UTF-8，内置搜索按 UTF-8 读取，子进程带 `PYTHONIOENCODING=utf-8`。默认控制台代码页 936 时，中文经管道传给 `save_progress.py` 会在到达脚本前就变成问号，2026-11-07 的两条记忆记录因此损坏；文件读取仍沿用系统默认编码，避免破坏 GBK 旧文件；需要按 UTF-8 读文件时要显式传 `-Encoding UTF8`。回归测试见 `internal/agent/encoding_test.go`。
 
 这不会增加独立 Worker、Hook 或后台恢复能力；不支持的能力会明确降级。记忆保存脚本需要本机 Python，不保证仅注入规则就已完成记忆保存。构建前自动从唯一源目录刷新资源；开发时改动 Skill 后运行 `node tools/bundle-core.mjs` 或 `go generate ./internal/agent`。新功能需要运行更新后的客户端生效，当前已启动实例不会热更新。
 
@@ -355,6 +357,7 @@ WorkBuddy、Antigravity、Codex 当前接入没有明确的同类消耗倍率来
 前端回归：在 frontend 执行 node --test tests/model-pricing.browser.test.mjs，全部 API 使用隔离合成数据，覆盖付费、免费优惠、零值、未知值、三处列表、窄窗口及浅海主题。桌面壳和真实账号倍率变化尚待新包验收。
 
 Agent 执行期间展示最新四条摘要或操作，完整过程在右侧抽屉手动打开；回答完成后收起轨迹并展开 Markdown 气泡。抽屉支持 Escape 关闭，结束后可通过“查看过程”再次打开。
+执行统计的首 token 显示最新模型请求从开始到首次输出的延迟，包括推理和工具调用；新请求开始时重新等待。上箭头显示本轮上游已返回的累计输入 token，下箭头显示累计输出 token，流式正文的输出量和速度为估算；完成的请求使用上游返回的输出 token 和实际输出时长计算。缺少输入用量或有效速度时显示未知。
 
 ## WorkBuddy 原生登录（2026-11-06）
 

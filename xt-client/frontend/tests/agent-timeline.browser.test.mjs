@@ -102,7 +102,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
     assert.equal(await page.locator('.agent-run-scroll li').count(), 4, 'live trace renders available events without placeholder rows');
     const liveBar = page.locator('.agent-live-stats');
     await liveBar.waitFor();
-    assert.equal(await liveBar.locator('> span').count(), 4, 'live bar shows elapsed, first token, tokens and speed');
+    assert.equal(await liveBar.locator('> span').count(), 5, 'live bar shows elapsed, first token, input, output and speed');
     assert.match(await liveBar.textContent(), /首 token 1.2s/, 'live bar shows the first-token latency');
     assert.match(await liveBar.textContent(), /64 tok/, 'live bar shows the produced tokens');
     assert.match(await liveBar.textContent(), /18.2\s*tok\/s/, 'live bar shows the rolling output speed');

@@ -96,12 +96,16 @@ func TestSavedProjectsRemainAfterSessionsAndRenamePersist(t *testing.T) {
 	}
 }
 
-func TestDeleteProjectOnlyRemovesSavedCategory(t *testing.T) {
+func TestDeleteProjectSendsSessionsToRecent(t *testing.T) {
 	data := t.TempDir()
 	svc := NewService(data, "http://localhost", nil, nil, nil)
 	root := t.TempDir()
 	session, err := svc.Create(Options{ProjectPath: root, Model: "test"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	session.Messages = []Message{{ID: "m", Role: "user", Content: "keep history"}}
+	if err = svc.saveSession(session); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.SaveProject(root, "项目"); err != nil {
@@ -110,16 +114,18 @@ func TestDeleteProjectOnlyRemovesSavedCategory(t *testing.T) {
 	if err := svc.DeleteProject(root); err != nil {
 		t.Fatal(err)
 	}
+	// The session keeps its working directory and history but is flagged as
+	// recent so the sidebar stops showing a project group for it.
 	loaded, err := svc.Get(session.ID)
-	if err != nil || loaded.Project.Path != root || loaded.Project.Saved {
-		t.Fatalf("session must remain under its project path: %+v %v", loaded, err)
+	if err != nil || loaded.Project.Path != root || loaded.Project.Saved || !loaded.Project.Removed {
+		t.Fatalf("session must stay under its project path but move to recent: %+v %v", loaded.Project, err)
 	}
-	if loaded.Project.Name != filepath.Base(root) {
-		t.Fatalf("deleted saved category must not change session display name: %+v", loaded.Project)
+	if len(loaded.Messages) != 1 || loaded.Messages[0].Content != "keep history" {
+		t.Fatal("history changed by project deletion")
 	}
 	projects, err := svc.ListProjects()
-	if err != nil || len(projects) != 1 || projects[0].Path != root || projects[0].Saved {
-		t.Fatalf("remaining sessions keep project visible: %+v %v", projects, err)
+	if err != nil || len(projects) != 0 {
+		t.Fatalf("deleted project must disappear from the project list: %+v %v", projects, err)
 	}
 	if _, err := os.Stat(root); err != nil {
 		t.Fatal("project folder must remain")
@@ -137,7 +143,44 @@ func TestDeleteProjectOnlyRemovesSavedCategory(t *testing.T) {
 	if err = json.Unmarshal([]byte(raw), &stored); err != nil {
 		t.Fatal("session project path changed unexpectedly")
 	}
-	if !strings.EqualFold(filepath.Clean(stored.Project.Path), filepath.Clean(root)) {
-		t.Fatal("session project path changed unexpectedly")
+	if !strings.EqualFold(filepath.Clean(stored.Project.Path), filepath.Clean(root)) || !stored.Project.Removed {
+		t.Fatal("stored session must keep its path and the recent flag")
+	}
+	// Saving the project again brings its sessions back into the group.
+	if err = svc.SaveProject(root, "项目"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = svc.Get(session.ID)
+	if err != nil || loaded.Project.Removed {
+		t.Fatalf("re-saving the project must reclaim its sessions: %+v %v", loaded.Project, err)
+	}
+	projects, err = svc.ListProjects()
+	if err != nil || len(projects) != 1 || !projects[0].Saved || projects[0].Path != root {
+		t.Fatalf("re-saved project missing: %+v %v", projects, err)
+	}
+}
+
+// Sessions created under a deleted project stay in the recent list until the
+// project is saved again.
+func TestCreateAfterProjectDeleteStaysRecent(t *testing.T) {
+	data := t.TempDir()
+	svc := NewService(data, "http://localhost", nil, nil, nil)
+	root := t.TempDir()
+	if err := svc.SaveProject(root, "项目"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DeleteProject(root); err != nil {
+		t.Fatal(err)
+	}
+	session, err := svc.Create(Options{ProjectPath: root, Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Project.Removed || session.Project.Saved {
+		t.Fatalf("a new session belongs to the project again: %+v", session.Project)
+	}
+	projects, err := svc.ListProjects()
+	if err != nil || len(projects) != 1 || projects[0].Saved || projects[0].Path != root {
+		t.Fatalf("session-backed project listed once: %+v %v", projects, err)
 	}
 }

@@ -829,6 +829,7 @@
 .agent-session-window-row .agent-session-select > .agent-session-title { flex: 1; min-width: 0; }
 .agent-session-window-row .agent-session-select > small { flex: none; }
 .agent-session-window-row .agent-group-label { height: 34px; }
+.agent-session-empty { margin: 0; padding: 2px 8px 8px 27px; color: #688694; font-size: 11.5px; }
 .agent-history-load { flex: none; text-align: center; margin-bottom: 16px; overflow-anchor: none; }
 .agent-history-load button { border: 1px solid var(--agent-line); border-radius: 7px; padding: 6px 12px; color: var(--agent-muted); background: var(--agent-panel); transition: color 160ms, background-color 160ms; }
 .agent-history-load button:hover { color: var(--agent-text); background: var(--agent-panel-raised); }

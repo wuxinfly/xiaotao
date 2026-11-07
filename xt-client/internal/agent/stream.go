@@ -33,7 +33,8 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 		Usage struct {
-			CompletionTokens int64 `json:"completion_tokens"`
+			CompletionTokens int64  `json:"completion_tokens"`
+			PromptTokens     *int64 `json:"prompt_tokens"`
 		} `json:"usage"`
 	}
 	type assembled struct{ id, name, args string }
@@ -42,6 +43,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	var calls []*assembled
 	var firstOutputAt *time.Time
 	var outputTokens int64
+	var inputTokens *int64
 	byIndex := map[int]*assembled{}
 	byID := map[string]*assembled{}
 	done, finished := false, false
@@ -86,6 +88,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 				if firstOutputAt == nil {
 					at := time.Now()
 					firstOutputAt = &at
+					if onDelta != nil {
+						onDelta("")
+					}
 				}
 				reasoning.WriteString(choice.Delta.ReasoningContent)
 			}
@@ -93,6 +98,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 				if firstOutputAt == nil {
 					at := time.Now()
 					firstOutputAt = &at
+					if onDelta != nil {
+						onDelta("")
+					}
 				}
 				var call *assembled
 				if part.Index != nil {
@@ -128,6 +136,9 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		if frame.Usage.CompletionTokens > 0 {
 			outputTokens = frame.Usage.CompletionTokens
 		}
+		if frame.Usage.PromptTokens != nil {
+			inputTokens = frame.Usage.PromptTokens
+		}
 		return nil
 	}
 	for scanner.Scan() {
@@ -160,6 +171,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		Content:       text.String(),
 		Reasoning:     reasoning.String(),
 		OutputTokens:  outputTokens,
+		InputTokens:   inputTokens,
 		FirstOutputAt: firstOutputAt,
 	}
 	ids := map[string]bool{}

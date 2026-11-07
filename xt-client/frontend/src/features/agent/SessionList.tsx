@@ -13,7 +13,9 @@ type Props = {
   onSelect: (session: AgentSession) => void;
   onMenu: (session: AgentSession, x: number, y: number, trigger: HTMLElement) => void;
 };
-type Row = {key: string; top: number; height: number} & ({kind: 'session'; item: AgentSession} | {kind: 'group'; name: string; path: string});
+type Row = {key: string; top: number; height: number} & ({kind: 'session'; item: AgentSession} | {kind: 'group'; name: string; path: string} | {kind: 'empty'; name: string});
+
+const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
 
 export const SessionList = memo(function SessionList(props: Props) {
   const {activeId, view, loading, busy, deleting, menuId, onSelect, onMenu} = props;
@@ -24,26 +26,32 @@ export const SessionList = memo(function SessionList(props: Props) {
   const [viewport, setViewport] = useState({top: 0, height: 600});
   const [focusedKey, setFocusedKey] = useState('');
   const sorted = useMemo(() => [...sessions].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)), [sessions]);
+  const savedKeys = useMemo(() => new Set((props.savedProjects ?? []).map(project => projectKey(project.path))), [props.savedProjects]);
   const rows = useMemo(() => {
     const result: Row[] = [];
     let top = 0;
     const addSession = (item: AgentSession) => { result.push({kind:'session', key:item.id, item, top, height:38}); top += 38; };
     if (view === 'session') sorted.forEach(addSession);
     else {
+      // Sessions of a deleted project keep their working directory but are
+      // listed under "最新" like sessions without a project.
       const groups = new Map<string, {name: string; path: string; items: AgentSession[]}>();
       sorted.forEach(item => {
-        const path = item.project.isDefault ? '' : item.project.path;
-        const key = path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
+        const path = item.project.isDefault || item.project.removed ? '' : item.project.path;
+        const key = projectKey(path);
         const group = groups.get(key) ?? {name:path ? item.project.name : '最新', path, items:[]};
         group.items.push(item); groups.set(key, group);
       });
       const ordered = [...groups.entries()].filter(([key]) => key !== '');
-      (props.savedProjects ?? []).filter(project => !groups.has(project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''))).forEach(project => ordered.push([project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), {name: project.name, path: project.path, items: []}]));
+      (props.savedProjects ?? []).filter(project => !groups.has(projectKey(project.path))).forEach(project => ordered.push([projectKey(project.path), {name: project.name, path: project.path, items: []}]));
       if (groups.has('')) ordered.push(['', groups.get('')!]);
       ordered.forEach(([key, group]) => {
         if (result.length) top += 16;
         result.push({kind:'group', key:'group:'+key, name:group.name, path:group.path, top, height:34}); top += 34;
-        if (!collapsed.has(key)) group.items.forEach(addSession);
+        if (collapsed.has(key)) return;
+        // A saved project without sessions stays visible so it can still host a new chat.
+        if (!group.items.length) { result.push({kind:'empty', key:'empty:'+key, name:group.name, top, height:30}); top += 30; return; }
+        group.items.forEach(addSession);
       });
     }
     return result;
@@ -91,14 +99,14 @@ export const SessionList = memo(function SessionList(props: Props) {
       requestAnimationFrame(() => el.querySelector<HTMLElement>(`[data-row-index="${next}"] button`)?.focus());
     }}>
     {loading && <p>正在读取…</p>}
-    {!loading && !sessions.length && <p>还没有会话</p>}
+    {!loading && !sessions.length && !(view === 'project' && props.savedProjects?.length) && <p>还没有会话</p>}
     <div className={'agent-session-window' + (props.exitingId ? ' is-removing' : '')} style={{height}}>{visible.map(row => <div key={row.key} data-row-index={rowIndices.get(row.key)} inert={row.key === props.exitingId || undefined} className={'agent-session-window-row' + (row.key === props.exitingId ? ' is-exiting' : '')} style={{top:row.top, height:row.height}} onFocus={() => setFocusedKey(row.key)}>
       {row.kind === 'group' ? <div className={'agent-session-group' + (!collapsed.has(row.key.slice(6)) ? ' is-open' : '')}>
         <button type="button" className={'agent-group-label' + (!row.path ? ' agent-group-label-recent' : '')} title={row.path || row.name} aria-expanded={!collapsed.has(row.key.slice(6))} onClick={() => setCollapsed(current => {const next = new Set(current); const key = row.key.slice(6); if (next.has(key)) next.delete(key); else next.add(key); return next;})}>
           {row.path && <Folder aria-hidden="true"/>}<span>{row.name}</span>{!row.path && <ChevronDown className="agent-group-chevron" aria-hidden="true"/>}
         </button>
-        {row.path && <div className="agent-group-actions">{(props.savedProjects ?? []).some(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === row.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '')) && <button type="button" aria-label={'删除项目 '+row.name} disabled={busy} onClick={() => props.onDeleteProject?.({path: row.path, name: row.name})}><Trash2 aria-hidden="true"/></button>}<button type="button" aria-label={'项目操作 '+row.name} aria-haspopup="menu" aria-expanded={menuId === row.key} disabled={busy} onClick={event => props.onProjectMenu(row.path, row.name, event.currentTarget, row.key)}><MoreHorizontal aria-hidden="true"/></button><button type="button" aria-label={'在 '+row.name+' 中新建会话'} title="新建会话" disabled={busy} onClick={() => props.onNewProjectChat(row.path, row.name)}><SquarePen aria-hidden="true"/></button></div>}
-      </div> : <div className="agent-session-row" onContextMenu={event => {event.preventDefault(); onMenu(row.item, event.clientX, event.clientY, event.currentTarget.querySelector('button')!);}}>
+        {row.path && <div className="agent-group-actions">{savedKeys.has(projectKey(row.path)) && <button type="button" aria-label={'删除项目 '+row.name} disabled={busy} onClick={() => props.onDeleteProject?.({path: row.path, name: row.name})}><Trash2 aria-hidden="true"/></button>}<button type="button" aria-label={'项目操作 '+row.name} aria-haspopup="menu" aria-expanded={menuId === row.key} disabled={busy} onClick={event => props.onProjectMenu(row.path, row.name, event.currentTarget, row.key)}><MoreHorizontal aria-hidden="true"/></button><button type="button" aria-label={'在 '+row.name+' 中新建会话'} title="新建会话" disabled={busy} onClick={() => props.onNewProjectChat(row.path, row.name)}><SquarePen aria-hidden="true"/></button></div>}
+      </div> : row.kind === 'empty' ? <p className="agent-session-empty" aria-label={row.name + ' 暂无会话'}>暂无会话</p> : <div className="agent-session-row" onContextMenu={event => {event.preventDefault(); onMenu(row.item, event.clientX, event.clientY, event.currentTarget.querySelector('button')!);}}>
         <button type="button" disabled={busy} className={'agent-session-select ' + (row.item.id === activeId ? 'is-active' : '')} title={row.item.title} aria-current={row.item.id === activeId ? 'true' : undefined} onClick={() => onSelect(row.item)}>
           {(row.item.status === 'running' || unread[row.item.id]) && <span className={'agent-session-indicator is-' + (row.item.status === 'running' ? 'running' : unread[row.item.id])} role="img" aria-label={row.item.status === 'running' ? '运行中' : unread[row.item.id] === 'failed' ? '执行失败，未查看' : '回答完成，未查看'} title={row.item.status === 'running' ? '运行中' : unread[row.item.id] === 'failed' ? '执行失败，未查看' : '回答完成，未查看'}/>}
           <span className="agent-session-title">{row.item.title}</span>

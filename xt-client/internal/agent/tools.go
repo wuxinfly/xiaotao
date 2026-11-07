@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -216,11 +215,11 @@ func (w *Workspace) searchWindows(relative, query string) (string, error) {
 	script := `$ErrorActionPreference='SilentlyContinue'; $q=$env:XIAOTAO_QUERY; ` +
 		`Get-ChildItem -LiteralPath $env:XIAOTAO_SEARCH_ROOT -Recurse -File | ` +
 		`Where-Object { $_.FullName -notmatch '[\\/](node_modules|vendor|dist|\\.git)[\\/]' -and $_.Length -le 1048576 } | ` +
-		`Select-String -SimpleMatch $q -List | Select-Object -First 80 | ForEach-Object { $_.Path + ':' + $_.LineNumber + ': ' + $_.Line.Trim() }`
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+		`Select-String -SimpleMatch $q -List -Encoding UTF8 | Select-Object -First 80 | ForEach-Object { $_.Path + ':' + $_.LineNumber + ': ' + $_.Line.Trim() }`
+	cmd := shellCommand(nil, script)
 	hideCommandWindow(cmd)
 	cmd.Dir = w.Root
-	cmd.Env = append(cmd.Environ(), "XIAOTAO_SEARCH_ROOT="+target, "XIAOTAO_QUERY="+query)
+	cmd.Env = childUTF8Env(append(cmd.Environ(), "XIAOTAO_SEARCH_ROOT="+target, "XIAOTAO_QUERY="+query))
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("搜索失败: %w", err)
@@ -246,14 +245,10 @@ func (w *Workspace) runCommand(parent context.Context, command string, timeoutSe
 	ctx, cancel := context.WithTimeout(parent, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command)
-	} else {
-		cmd = exec.CommandContext(ctx, "/bin/sh", "-lc", command)
-	}
+	cmd := shellCommand(ctx, command)
 	hideCommandWindow(cmd)
 	cmd.Dir = w.Root
+	cmd.Env = childUTF8Env(cmd.Environ())
 	var output cappedBuffer
 	cmd.Stdout = &output
 	cmd.Stderr = &output

@@ -84,6 +84,17 @@ func TestRunStatsCountModelRequestsAndMeasuredOutputSpeed(t *testing.T) {
 	}
 }
 
+func TestCompletionStatsReportToolOnlyOutputBeforeRunEnds(t *testing.T) {
+	start := time.Now().Add(-3 * time.Second)
+	first := start.Add(time.Second)
+	stats := RunStats{StartedAt: start, firstRequestAt: start}
+	var seconds float64
+	recordCompletionStats(&stats, &completion{OutputTokens: 100, FirstOutputAt: &first, RequestEndedAt: first.Add(2 * time.Second)}, &seconds)
+	if stats.FirstTokenMs != 1000 || stats.OutputSpeed != 50 {
+		t.Fatalf("expected first output and speed during the run, got %+v", stats)
+	}
+}
+
 // streamingModel replays deltas so the run can measure live output.
 type streamingModel struct {
 	mu      sync.Mutex

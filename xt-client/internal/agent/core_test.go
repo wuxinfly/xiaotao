@@ -77,7 +77,7 @@ func TestSaveContractIsInlinedInEveryPrompt(t *testing.T) {
 		}
 		root := filepath.Join(data, "core", entries[0].Name())
 		script := filepath.Join(root, "scripts", "save_progress.py")
-		for _, want := range []string{"save_progress.py", script, "request_id", "topic_id", "summary", "validation", "next_steps", "已启用 XiaoTao 的项目"} {
+		for _, want := range []string{"save_progress.py", script, "request_id", "topic_id", "summary", "validation", "next_steps", "已启用 XiaoTao 的项目", "Get-Content -LiteralPath <文件> -Raw -Encoding UTF8"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("initial=%v: prompt missing %q", initial, want)
 			}

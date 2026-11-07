@@ -56,6 +56,7 @@ type completion struct {
 	Reasoning        string
 	ToolCalls        []toolCall
 	OutputTokens     int64
+	InputTokens      *int64
 	RequestStartedAt time.Time
 	FirstOutputAt    *time.Time
 	RequestEndedAt   time.Time
@@ -87,7 +88,8 @@ type backendResponse struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Usage struct {
-		CompletionTokens int64 `json:"completion_tokens"`
+		CompletionTokens int64  `json:"completion_tokens"`
+		PromptTokens     *int64 `json:"prompt_tokens"`
 	} `json:"usage"`
 }
 
@@ -422,7 +424,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, sourc
 	if len(attachments) > 0 {
 		introContext += fmt.Sprintf("\n用户同时提供了 %d 张图片。", len(attachments))
 	}
-	intro := s.describeRun(runCtx, client, history.Model, introContext, introPrompt, &stats, &outputSeconds)
+	intro := s.describeRun(runCtx, client, history.Model, introContext, introPrompt, &stats, &outputSeconds, emit, sessionID)
 	if !visibleChineseThinking(intro) {
 		intro = "我先理解你的需求，再决定下一步怎么做。"
 	}
@@ -528,20 +530,22 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 		}
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		stats.ModelRequests++
-		// The first-token metric is measured from the start of the run, so the
-		// progress summarizer before the answer counts towards the latency the
-		// user actually waits for.
-		if stats.firstRequestAt.IsZero() {
-			stats.firstRequestAt = stats.StartedAt
-		}
+		stats.firstRequestAt = time.Now()
+		stats.FirstTokenMs = 0
+		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		var requestChars int
 		var requestFirstOutputAt time.Time
 		var lastEmit time.Time
+		var emittedSpeed bool
 		result, err := client.Complete(ctx, history.Model, requestMessages, tools, func(delta string) {
+			now := time.Now()
+			if stats.FirstTokenMs == 0 {
+				stats.FirstTokenMs = max(int64(1), now.Sub(stats.firstRequestAt).Milliseconds())
+				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
+			}
 			if delta == "" {
 				return
 			}
-			now := time.Now()
 			if requestFirstOutputAt.IsZero() {
 				requestFirstOutputAt = now
 			}
@@ -558,8 +562,9 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			piece.Content = delta
 			emit(Event{Type: "message_delta", SessionID: history.ID, Message: &piece})
 			updateLiveOutput(stats, completedTokens, requestChars, requestFirstOutputAt, now)
-			if now.Sub(lastEmit) >= liveStatsInterval {
+			if now.Sub(lastEmit) >= liveStatsInterval || (!emittedSpeed && stats.LiveSpeed > 0) {
 				lastEmit = now
+				emittedSpeed = stats.LiveSpeed > 0
 				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 			}
 		})
@@ -577,7 +582,7 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			return fmt.Errorf("模型调用失败: %w", err)
 		}
 		if readableReasoning(result.Reasoning) != "" {
-			observation := s.describeRun(ctx, client, history.Model, reasoningContext(result.Reasoning), observationPrompt, stats, outputSeconds)
+			observation := s.describeRun(ctx, client, history.Model, reasoningContext(result.Reasoning), observationPrompt, stats, outputSeconds, emit, history.ID)
 			if visibleChineseThinking(observation) {
 				step := ThoughtStep{
 					ID: "thought_" + randomID(5), RunID: runID, Kind: "observation",
@@ -716,7 +721,7 @@ func (s *Service) loopWithRun(ctx context.Context, workspace *Workspace, client 
 			}
 		}
 		if toolsSinceCheckpoint >= stageToolLimit {
-			checkpoint := s.describeRun(ctx, client, history.Model, checkpointContext(messages), checkpointPrompt, stats, outputSeconds)
+			checkpoint := s.describeRun(ctx, client, history.Model, checkpointContext(messages), checkpointPrompt, stats, outputSeconds, emit, history.ID)
 			if !visibleChineseThinking(checkpoint) {
 				checkpoint = "已经完成一批检查，我会根据当前结果继续下一步。"
 			}
@@ -745,7 +750,7 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-func (s *Service) describeRun(ctx context.Context, client modelClient, model, contextText, instruction string, stats *RunStats, outputSeconds *float64) string {
+func (s *Service) describeRun(ctx context.Context, client modelClient, model, contextText, instruction string, stats *RunStats, outputSeconds *float64, emit func(Event), sessionID string) string {
 	if ctx.Err() != nil {
 		return ""
 	}
@@ -753,12 +758,23 @@ func (s *Service) describeRun(ctx context.Context, client modelClient, model, co
 	defer cancel()
 	if stats != nil {
 		stats.ModelRequests++
+		stats.firstRequestAt = time.Now()
+		stats.FirstTokenMs = 0
+		emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: stats})
 	}
 	result, err := client.Complete(callCtx, model, []map[string]any{
 		{"role": "system", "content": "你是小涛的进度摘要器。只写可展示给用户的简短判断，不输出分析过程、Markdown 或前缀。"},
 		{"role": "user", "content": contextText + "\n\n" + instruction},
-	}, nil, nil)
+	}, nil, func(_ string) {
+		if stats != nil && stats.FirstTokenMs == 0 {
+			stats.FirstTokenMs = max(int64(1), time.Since(stats.firstRequestAt).Milliseconds())
+			emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: stats})
+		}
+	})
 	recordCompletionStats(stats, result, outputSeconds)
+	if stats != nil {
+		emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: stats})
+	}
 	if err != nil || result == nil {
 		return ""
 	}
@@ -781,6 +797,9 @@ func updateLiveOutput(stats *RunStats, completedTokens int64, requestChars int, 
 	}
 	liveTokens := int64(requestChars) / 3
 	stats.LiveTokens = completedTokens + liveTokens
+	if requestFirstOutputAt.IsZero() {
+		stats.LiveSpeed = 0
+	}
 	if !requestFirstOutputAt.IsZero() {
 		if elapsed := now.Sub(requestFirstOutputAt).Seconds(); elapsed > 0 {
 			stats.LiveSpeed = math.Round(float64(liveTokens)/elapsed*10) / 10
@@ -793,10 +812,22 @@ func recordCompletionStats(stats *RunStats, result *completion, outputSeconds *f
 		return
 	}
 	stats.OutputTokens += result.OutputTokens
+	if result.InputTokens != nil {
+		stats.InputTokens += *result.InputTokens
+		stats.InputKnown = true
+	}
+	if stats.FirstTokenMs == 0 && result.FirstOutputAt != nil && !stats.firstRequestAt.IsZero() {
+		if elapsed := result.FirstOutputAt.Sub(stats.firstRequestAt).Milliseconds(); elapsed > 0 {
+			stats.FirstTokenMs = elapsed
+		}
+	}
 	if result.FirstOutputAt != nil && !result.RequestEndedAt.IsZero() {
 		if elapsed := result.RequestEndedAt.Sub(*result.FirstOutputAt).Seconds(); elapsed >= 0.05 {
 			*outputSeconds += elapsed
 		}
+	}
+	if stats.OutputTokens > 0 && *outputSeconds > 0 {
+		stats.OutputSpeed = math.Round(float64(stats.OutputTokens) / *outputSeconds * 10) / 10
 	}
 }
 
@@ -1022,6 +1053,7 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		Content:          message.Content,
 		Reasoning:        message.ReasoningContent,
 		OutputTokens:     body.Usage.CompletionTokens,
+		InputTokens:      body.Usage.PromptTokens,
 		RequestStartedAt: startedAt,
 		RequestEndedAt:   time.Now(),
 	}

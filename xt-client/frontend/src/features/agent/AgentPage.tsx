@@ -363,7 +363,8 @@ function LiveStats({stats}: {stats: AgentRunStats}) {
   return <div className="agent-live-stats" aria-live="polite" aria-label="实时执行统计">
     <span title="已执行时长"><Clock3 aria-hidden="true"/><span>{formatElapsed(elapsed)}</span></span>
     <span title="首 token 延迟"><Zap aria-hidden="true"/><span>首 token {firstToken}</span></span>
-    <span title="已返回 token 数"><Gauge aria-hidden="true"/><span>{formatCompactTokens(tokens)} tok</span></span>
+    <span title="累计输入 token 数（已返回用量）"><ArrowUp aria-hidden="true"/><span>{stats.inputKnown ? formatCompactTokens(stats.inputTokens ?? 0) : '--'} tok</span></span>
+    <span title="累计输出 token 数"><ArrowDown aria-hidden="true"/><span>{formatCompactTokens(tokens)} tok</span></span>
     <span title="实时输出速度"><span className="agent-live-speed-val">{speed > 0 ? speed.toFixed(1).replace(/\.0$/, '') : '--'}</span><span className="agent-live-speed-unit">tok/s</span></span>
   </div>;
 }
@@ -992,6 +993,11 @@ export function AgentPage({visible}: {visible: boolean}) {
         if (hasActiveNode(view.state, ['codeBlock'])) return false;
         const text = event.clipboardData?.getData('text/plain').replace(/\r\n?/g, '\n');
         const match = text?.match(/^\s*(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*\s*$/i);
+        if (text && !match && !text.includes('\n') && /\\/.test(text) && !/^[a-z][a-z\d+.-]*:\/\//i.test(text)) {
+          view.dispatch(view.state.tr.insertText(text).setMeta('preventAutolink', true).scrollIntoView());
+          event.preventDefault();
+          return true;
+        }
         const html = event.clipboardData?.getData('text/html') ?? '';
         const source = new DOMParser().parseFromString(html, 'text/html');
         const codeContainer = source.body.querySelector('pre') || Array.from(source.body.querySelectorAll<HTMLElement>('[style]')).find(element => element.style.whiteSpace === 'pre');
@@ -1414,10 +1420,13 @@ export function AgentPage({visible}: {visible: boolean}) {
 
   const deleteProject = useCallback(async (item: {path: string; name: string}) => {
     if (busy) return;
-    if (!await confirm({title: '删除项目？', description: `项目“${item.name}”会从项目列表移除；里面的会话会回到“最新”，不会被删除。`, confirmLabel: '删除项目'})) return;
+    if (!await confirm({title: '删除项目？', description: `项目“${item.name}”会从项目列表移除，里面的会话回到“最新”，不会被删除。`, confirmLabel: '删除项目'})) return;
+    const matches = (value: string) => value.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') === item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
     try {
       await api.deleteAgentProject(item.path);
-      setSavedProjects(current => current.filter(project => project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '') !== item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '')));
+      setSavedProjects(current => current.filter(project => !matches(project.path)));
+      setSessions(current => current.map(session => matches(session.project.path) ? {...session, project: {...session.project, removed: true}} : session));
+      setActive(current => current && matches(current.project.path) ? {...current, project: {...current.project, removed: true}} : current);
       setError('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));

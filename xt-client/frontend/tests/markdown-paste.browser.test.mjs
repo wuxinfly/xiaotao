@@ -16,6 +16,16 @@ test('Markdown wrapper pastes formatted content while ordinary code stays code',
     const editor = page.getByRole('textbox', {name: '给小涛发消息'});
     await editor.click();
     const paste = text => editor.evaluate((element, value) => { const data = new DataTransfer(); data.setData('text/plain', value); element.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true})); }, text);
+    const path = 'docs\\plans\\2026-11-07-agent-behavior-review\\.md';
+    await paste(path);
+    assert.equal(await editor.innerText(), path);
+    assert.equal(await editor.locator('a').count(), 0);
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
+    await paste('https://example.com');
+    assert.equal(await editor.locator('a').getAttribute('href'), 'https://example.com');
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Backspace');
     await paste('```markdown\n# 标题\n\n- **一项**\n\n```js\nconst x = 1;\n```\n```');
     assert.equal(await editor.locator('h1').innerText(), '标题');
     assert.equal(await editor.locator('li strong').innerText(), '一项');

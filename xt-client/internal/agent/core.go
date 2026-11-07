@@ -80,6 +80,7 @@ func saveContract(root string) string {
 	prompt.WriteString("- 触发时机：得到结论、改动文件、完成一次调查或阶段交付前，合并成一次保存；连续修改和验证只保存一次，同一阶段不重复调用。\n")
 	prompt.WriteString("- 跳过条件：纯寒暄、没有新事实、或用户明确要求不保存；此时不要调用脚本，也不要声称已保存。\n")
 	prompt.WriteString("- 判定：返回 `saved` / `duplicate` / `unchanged` 表示已落盘；`failed` 时如实说明哪部分没存。保存成功后回读确认，不要凭记忆宣称已保存。\n")
+	prompt.WriteString("- 传参：先把 JSON 用 write_file 写到临时文件，再用 `Get-Content -LiteralPath <文件> -Raw -Encoding UTF8 | python <脚本> --project-root <项目根目录>` 管道传入；避免在命令行内直接拼中文 JSON。\n")
 	prompt.WriteString("- 细节规范见 `references/progress-saving.md`，需要按日期检索或理解存储边界时再读。\n")
 	return prompt.String()
 }

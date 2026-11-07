@@ -60,6 +60,8 @@ test('project actions prefill, rename and open folders', {timeout:60000}, async 
     await page.getByRole('button',{name:'使用这个项目'}).click();
     assert.equal(await page.getByRole('button',{name:'删除项目 未保存项目'}).count(),0);
     const emptyGroup=page.locator('.agent-session-group').filter({hasText:'空项目'});
+    // A saved project without sessions stays visible with an empty hint.
+    assert.equal(await page.getByLabel('空项目 暂无会话').innerText(),'暂无会话');
     await emptyGroup.hover(); await emptyGroup.getByRole('button',{name:'项目操作 空项目'}).click();
     await page.getByRole('menuitem',{name:'重命名项目'}).click();
     await page.getByRole('dialog', {name:'重命名项目'}).getByLabel('项目名称').fill('空项目新名');
@@ -80,12 +82,11 @@ test('project actions prefill, rename and open folders', {timeout:60000}, async 
     await renamedGroup.hover(); await page.getByRole('button',{name:'删除项目 重命名项目'}).click();
     await page.getByRole('alertdialog', {name:'删除项目？'}).getByRole('button',{name:'删除项目',exact:true}).click();
     assert.equal(deleted,'E:/fixture');
-    await page.getByRole('button',{name:'删除项目 重命名项目'}).waitFor({state:'detached'});
-    await renamedGroup.hover();
-    await page.getByRole('button',{name:'项目操作 重命名项目'}).waitFor();
-    await page.reload(); await page.locator('.agent-group-label').filter({hasText:'重命名项目'}).waitFor();
-    await page.emulateMedia({reducedMotion:'reduce'});
-    await page.locator('.agent-group-label').filter({hasText:'重命名项目'}).click();
-    assert.equal(await page.locator('.agent-session-row').count(),0);
+    // The project group disappears; its session moves under "最新".
+    await page.locator('.agent-group-label').filter({hasText:'重命名项目'}).waitFor({state:'detached'});
+    const recent=page.locator('.agent-group-label-recent');
+    await recent.waitFor();
+    assert.equal(await page.locator('.agent-session-row').count(),1);
+    assert.equal(await page.locator('.agent-session-title').innerText(),'历史会话');
   } finally {await browser?.close();server.kill();}
 });

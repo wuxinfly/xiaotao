@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "windows-powershell-utf8-pipe",
+  "created_at": "2026-11-07T10:40:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.windows-powershell-utf8-pipe",
+  "text": "中文 Windows 的 PowerShell 默认 $OutputEncoding 是 US-ASCII、控制台代码页 936，把中文经管道传给原生子进程时每个非 ASCII 字符都会变成 ?；xt-client 的 run_command 和内置搜索已在命令前注入 UTF-8 前置、给子进程设 PYTHONIOENCODING=utf-8，内置搜索显式按 UTF-8 读文件，写记忆等管道传 JSON 的命令必须显式加 -Encoding UTF8。",
+  "rationale": "2026-11-07 两条项目记忆记录的标题与正文中文全部变成问号，恢复日志里的原始输入快照同样损坏，证明损坏发生在 stdin 管道而非脚本写入；Go 侧探针分别验证了修复前后的字节，并补了回归测试。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/agent/command.go",
+    "xt-client/internal/agent/tools.go",
+    "xt-client/internal/agent/encoding_test.go",
+    ".xiaotao/memory/timeline/years/2026/11/07/details/client-save-contract.md"
+  ]
+}

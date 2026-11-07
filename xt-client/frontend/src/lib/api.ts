@@ -162,6 +162,9 @@ export interface DashboardSnapshot {
 export interface AgentProject {
   isDefault?: boolean;
   saved?: boolean;
+  // Set when the project entry was deleted: the session keeps its working
+  // directory but is grouped under the recent list.
+  removed?: boolean;
   path: string;
   name: string;
 }
@@ -262,6 +265,8 @@ export interface AgentRunStats {
   toolCalls: number;
   modelRequests?: number;
   outputTokens?: number;
+  inputTokens?: number;
+  inputKnown?: boolean;
   outputSpeed?: number;
   firstTokenMs?: number;
   liveTokens?: number;

@@ -183,7 +183,23 @@ func (s *Service) SaveProject(path, name string) error {
 	if existing != nil {
 		createdAt = existing.CreatedAt
 	}
-	return s.saveSavedProject(SavedProject{Name: name, Path: path, CreatedAt: createdAt, UpdatedAt: now})
+	if err = s.saveSavedProject(SavedProject{Name: name, Path: path, CreatedAt: createdAt, UpdatedAt: now}); err != nil {
+		return err
+	}
+	db, err := s.openStore()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err = setProjectSessionsRemoved(tx, normalizeProjectPath(path), false); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) ListProjects() ([]Project, error) {
@@ -205,7 +221,7 @@ func (s *Service) ListProjects() ([]Project, error) {
 	}
 	for _, item := range summaries {
 		s.markDefault(item)
-		if item.Project.IsDefault || item.Project.Path == "" || seen[normalizeProjectPath(item.Project.Path)] {
+		if item.Project.IsDefault || item.Project.Path == "" || item.Project.Removed || seen[normalizeProjectPath(item.Project.Path)] {
 			continue
 		}
 		out = append(out, Project{Path: item.Project.Path, Name: item.Project.Name, IsDefault: false})
@@ -227,7 +243,12 @@ func (s *Service) DeleteProject(path string) error {
 		return err
 	}
 	defer db.Close()
-	result, err := db.Exec("DELETE FROM saved_projects WHERE path=?", normalized)
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.Exec("DELETE FROM saved_projects WHERE path=?", normalized)
 	if err != nil {
 		return err
 	}
@@ -237,6 +258,53 @@ func (s *Service) DeleteProject(path string) error {
 	}
 	if count == 0 {
 		return fmt.Errorf("项目未保存或不存在")
+	}
+	if err = setProjectSessionsRemoved(tx, normalized, true); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// setProjectSessionsRemoved flags every session of a project so the sidebar
+// keeps it under the recent list instead of a project group. The working
+// directory, messages and run history are never touched.
+func setProjectSessionsRemoved(tx *sql.Tx, normalized string, removed bool) error {
+	rows, err := tx.Query("SELECT id, metadata FROM sessions")
+	if err != nil {
+		return err
+	}
+	var pending []struct{ id, raw string }
+	for rows.Next() {
+		var id, raw string
+		if err = rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		var item Session
+		if err = json.Unmarshal([]byte(raw), &item); err != nil {
+			rows.Close()
+			return err
+		}
+		if item.Project.IsDefault || item.Project.Path == "" || item.Project.Removed == removed || normalizeProjectPath(item.Project.Path) != normalized {
+			continue
+		}
+		item.Project.Removed = removed
+		item.Messages, item.Activity, item.Thoughts, item.RunStats = nil, nil, nil, nil
+		updated, marshalErr := json.Marshal(item)
+		if marshalErr != nil {
+			rows.Close()
+			return marshalErr
+		}
+		pending = append(pending, struct{ id, raw string }{id, string(updated)})
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for _, entry := range pending {
+		if _, err = tx.Exec("UPDATE sessions SET metadata=? WHERE id=?", entry.raw, entry.id); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -15,6 +15,9 @@ type Project struct {
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault,omitempty"`
 	Saved     bool   `json:"saved,omitempty"`
+	// Removed marks sessions whose project entry was deleted: they keep their
+	// working directory but are grouped under the recent list instead.
+	Removed bool `json:"removed,omitempty"`
 }
 
 type SavedProject struct {
@@ -84,6 +87,10 @@ type RunStats struct {
 	ModelRequests int        `json:"modelRequests,omitempty"`
 	OutputTokens  int64      `json:"outputTokens,omitempty"`
 	OutputSpeed   float64    `json:"outputSpeed,omitempty"`
+	// InputTokens accumulates prompt tokens reported by the upstream usage
+	// block; InputKnown stays false when no request reported usage.
+	InputTokens int64 `json:"inputTokens,omitempty"`
+	InputKnown  bool  `json:"inputKnown,omitempty"`
 	// FirstTokenMs is the delay from the first model request of this run to
 	// its first visible token. It stays 0 until that first token arrives.
 	FirstTokenMs int64 `json:"firstTokenMs,omitempty"`
