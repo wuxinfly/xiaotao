@@ -41,6 +41,7 @@ type catalogSnapshot struct {
 	revision string
 	models   []providers.ModelInfo
 	at       time.Time
+	source   string
 }
 
 func New(store *storage.Store, secret func(id string) ([]byte, error), apiKey string) *Service {
@@ -133,69 +134,16 @@ func (s *Service) AccountModels(acct storage.Account) []providers.ModelInfo {
 	return models
 }
 
-// AccountModelCatalog also reports whether the catalog was fetched live.
+// AccountModelCatalog reads the shared catalog, fetching only when absent.
 func (s *Service) AccountModelCatalog(acct storage.Account) ([]providers.ModelInfo, string) {
-	if p, err := providers.Get(acct.Provider); err == nil {
-		if fetcher, ok := p.(providers.ModelFetcher); ok {
-			models, source, _ := s.dynamicCatalog(acct, fetcher, false)
-			return models, source
-		}
-	}
-	fallback := listProviderModels(acct)
-	if acct.Provider != "trae" && acct.Provider != "antigravity" {
-		return fallback, "builtin"
-	}
-	raw, err := s.secret(acct.ID)
-	if err != nil {
-		return fallback, "builtin"
-	}
-	var cred providers.Credential
-	if json.Unmarshal(raw, &cred) != nil {
-		return fallback, "builtin"
-	}
-	cred.Region, cred.UID = acct.Region, acct.UID
-	if cred.ExpiresAt > 0 && cred.ExpiresAt-time.Now().Unix() < 300 {
-		if s.store == nil || s.refreshCredential(&acct, &cred) != nil {
-			return fallback, "builtin"
-		}
-	}
-	var models []providers.ModelInfo
-	source := "live"
-	if acct.Provider == "antigravity" {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		models, err = antigravity.FetchModels(ctx, &cred)
-		source = "merged"
-	} else {
-		models, err = trae.FetchUpstreamModels(&cred, acct.MachineID, acct.DeviceID)
-	}
-	if err != nil {
-		s.mu.Lock()
-		previous, ok := s.catalogs[acct.ID]
-		s.mu.Unlock()
-		if ok {
-			return previous.models, "cached"
-		}
-		return fallback, "builtin"
-	}
-	s.mu.Lock()
-	if s.catalogs == nil {
-		s.catalogs = map[string]catalogSnapshot{}
-	}
-	s.catalogs[acct.ID] = catalogSnapshot{models: models, at: time.Now()}
-	s.mu.Unlock()
+	models, source, _ := s.accountModelCatalog(acct, false)
 	return models, source
 }
 
 func (s *Service) chatModelRoutes(acct storage.Account) map[string]string {
-	s.mu.Lock()
-	snapshot, ok := s.catalogs[acct.ID]
-	s.mu.Unlock()
-	if !ok || time.Since(snapshot.at) > 5*time.Minute {
-		snapshot.models, _ = s.AccountModelCatalog(acct)
-	}
+	models := s.AccountModels(acct)
 	routes := map[string]string{}
-	for _, m := range snapshot.models {
+	for _, m := range models {
 		if m.UpstreamID != "" {
 			routes[m.ID] = m.UpstreamID
 		}

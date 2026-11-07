@@ -747,9 +747,21 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		send(w, map[string]any{"key": proxySvc.APIKey()})
 	})
-	mux.HandleFunc("POST /api/proxy/models", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/agent/models/refresh", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
+			return
+		}
+		models, failures := refreshAgentModelsForAccounts(store.Accounts(), proxySvc.RefreshAccountModelCatalog)
+		send(w, map[string]any{"models": models, "errors": failures})
+	})
+	mux.HandleFunc("/api/proxy/models", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		if id := r.URL.Query().Get("accountId"); id != "" {
@@ -758,10 +770,17 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 				apiError(w, 404, "account not found")
 				return
 			}
-			models, source, catalogErr := proxySvc.RefreshAccountModelCatalog(acct)
+			var models []providers.ModelInfo
+			var source string
+			var catalogErr error
+			if r.Method == http.MethodPost {
+				models, source, catalogErr = proxySvc.RefreshAccountModelCatalog(acct)
+			} else {
+				models, source = proxySvc.AccountModelCatalog(acct)
+			}
 			message := ""
-			if catalogErr != nil {
-				message = "模型目录刷新失败"
+			if catalogErr != nil || source == "error" {
+				message = "模型目录获取失败，可点击刷新重试"
 			}
 			send(w, map[string]any{"models": models, "source": source, "error": message})
 			return
@@ -773,11 +792,22 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		byID := map[string]providers.ModelInfo{}
 		names := []string{}
+		failures := []string{}
 		for _, a := range accs {
 			if !a.Enabled {
 				continue
 			}
-			for _, m := range proxySvc.AccountModels(*a) {
+			var catalog []providers.ModelInfo
+			if r.Method == http.MethodPost {
+				var catalogErr error
+				catalog, _, catalogErr = proxySvc.RefreshAccountModelCatalog(*a)
+				if catalogErr != nil {
+					failures = append(failures, a.Provider+": 模型目录刷新失败")
+				}
+			} else {
+				catalog = proxySvc.AccountModels(*a)
+			}
+			for _, m := range catalog {
 				full := a.Provider + "/" + m.ID
 				if _, ok := byID[full]; !ok {
 					byID[full] = m
@@ -789,7 +819,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		for _, name := range names {
 			models = append(models, byID[name])
 		}
-		send(w, map[string]any{"models": models})
+		send(w, map[string]any{"models": models, "errors": failures})
 	})
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		send(w, map[string]any{"version": Version, "url": s.URL, "pid": s.PID, "uptime": int(time.Since(started).Seconds()), "dataDir": data, "modelReady": false})

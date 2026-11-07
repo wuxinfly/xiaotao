@@ -176,6 +176,7 @@ export interface AgentModelOption extends ModelPricing {
 }
 
 export interface AgentMessage {
+  toolCalls?: Array<Record<string, unknown>>;
   id: string;
   role: 'user' | 'assistant' | 'tool';
   content: string;
@@ -183,6 +184,7 @@ export interface AgentMessage {
   toolName?: string;
   references?: AgentConversationReference[];
   createdAt: string;
+  runId?: string;
 }
 
 export interface AgentConversationReference {
@@ -214,6 +216,7 @@ export interface AgentConversationReferenceDetail {
 
 export interface AgentActivity {
   id: string;
+  runId?: string;
   kind: string;
   title: string;
   detail?: string;
@@ -225,6 +228,28 @@ export interface AgentActivity {
   endedAt?: string;
 }
 
+export interface AgentThought {
+  id: string;
+  runId: string;
+  kind: 'understanding' | 'observation' | 'decision' | 'checkpoint';
+  text: string;
+  status: 'running' | 'completed';
+  createdAt: string;
+}
+
+export interface AgentRunStats {
+  phase?: 'working' | 'completed' | 'failed' | 'canceled';
+  runId: string;
+  userMessageId: string;
+  startedAt: string;
+  endedAt?: string;
+  filesRead: number;
+  filesWritten: number;
+  toolCalls: number;
+  contextTokens: number;
+  contextWindow: number;
+}
+
 export interface AgentSession {
   id: string;
   project: AgentProject;
@@ -233,17 +258,24 @@ export interface AgentSession {
   status: 'idle' | 'running' | 'completed' | 'failed' | 'canceled';
   messages: AgentMessage[];
   activity: AgentActivity[];
+  thoughts: AgentThought[];
+  runStats: AgentRunStats[];
+  streamDrafts?: AgentMessage[];
   error?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AgentEvent {
-  type: 'session' | 'message' | 'message_delta' | 'activity' | 'status' | 'error' | 'approval';
+  runId?: string;
+  messageId?: string;
+  type: 'answer_end' | 'session' | 'message' | 'message_delta' | 'activity' | 'thought' | 'run_stats' | 'status' | 'error' | 'approval';
   approval?: {id: string; tool: string; detail: string};
   sessionId: string;
   message?: AgentMessage;
   activity?: AgentActivity;
+  thought?: AgentThought;
+  runStats?: AgentRunStats;
   status?: AgentSession['status'];
   error?: string;
 }
@@ -299,7 +331,7 @@ export const api = {
   agentMCP: (signal?: AbortSignal) => request<MCPSettings>('/api/agent/mcp', {signal}),
   saveAgentMCP: (settings: MCPSettings) => request<{ok: boolean}>('/api/agent/mcp', {method:'PUT', body:JSON.stringify(settings)}),
   testAgentMCP: (server: MCPServer, signal?: AbortSignal) => request<{tools: string[]}>('/api/agent/mcp/test', {method:'POST', body:JSON.stringify(server), signal}),
-  accountModels: (id: string) => request<ModelCatalog>(`/api/proxy/models?accountId=${encodeURIComponent(id)}`, { method: 'POST' }),
+  accountModels: (id: string, refresh = false) => request<ModelCatalog>(`/api/proxy/models?accountId=${encodeURIComponent(id)}`, { method: refresh ? 'POST' : 'GET' }),
   providers: () => request<{ providers: ProviderInfo[] }>('/api/providers'),
   accounts: () => request<{ accounts: Account[] }>('/api/accounts'),
   startLogin: (provider = 'trae', region = 'cn') => request<LoginSession>(`/api/auth/${provider}`, { method: 'POST', body: JSON.stringify({ region }) }),
@@ -336,7 +368,7 @@ export const api = {
   openAgentProject: (path: string) => request('/api/agent/project/open', {method: 'POST', body: JSON.stringify({path})}),
   renameAgentSession: (id: string, title: string) => request<AgentSession>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'PATCH', body: JSON.stringify({title})}),
   deleteAgentSession: (id: string) => request<{ok: boolean}>('/api/agent/sessions/' + encodeURIComponent(id), {method: 'DELETE'}),
-  agentModels: (signal?: AbortSignal) => request<{ models: AgentModelOption[] }>('/api/agent/models', {signal}),
+  agentModels: (signal?: AbortSignal, refresh = false) => request<{ models: AgentModelOption[]; errors?: string[] }>(refresh ? '/api/agent/models/refresh' : '/api/agent/models', {signal, method: refresh ? 'POST' : 'GET'}),
   agentHistory: (id: string, before = '') => request<{session: AgentSession; before: string}>(`/api/agent/sessions/${encodeURIComponent(id)}/history?before=${encodeURIComponent(before)}`),
   agentReferenceSessions: (query: string, scope: 'project' | 'all', projectPath: string, exclude: string[] = []) => {
     const params = new URLSearchParams({query, scope, projectPath});

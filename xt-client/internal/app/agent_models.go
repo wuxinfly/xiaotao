@@ -7,6 +7,29 @@ import (
 	"xiaotao/xt-client/internal/storage"
 )
 
+// Aggregate the refresh results directly: reading again would retry an empty,
+// failed catalog and make one click send two upstream requests.
+func refreshAgentModelsForAccounts(accounts []*storage.Account, refresh func(storage.Account) ([]providers.ModelInfo, string, error)) ([]agent.ModelOption, []string) {
+	var mu sync.Mutex
+	failed := map[string]bool{}
+	models := agentModelsForAccounts(accounts, func(acct storage.Account) []providers.ModelInfo {
+		models, _, err := refresh(acct)
+		if err != nil {
+			mu.Lock()
+			failed[acct.ID] = true
+			mu.Unlock()
+		}
+		return models
+	})
+	errors := []string{}
+	for _, acct := range accounts {
+		if failed[acct.ID] {
+			errors = append(errors, acct.Provider+": 模型目录刷新失败，已保留原有目录")
+		}
+	}
+	return models, errors
+}
+
 func agentModelsForAccounts(accounts []*storage.Account, fetch func(storage.Account) []providers.ModelInfo) []agent.ModelOption {
 	results := make([][]agent.ModelOption, len(accounts))
 	var wg sync.WaitGroup

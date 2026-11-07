@@ -1,11 +1,47 @@
 package app
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/storage"
 )
+
+func TestRefreshAgentModelsCoversEnabledSourcesOnceAndKeepsStale(t *testing.T) {
+	accounts := []*storage.Account{
+		{ID: "one", Provider: "first", Enabled: true},
+		{ID: "two", Provider: "second", Enabled: true},
+		{ID: "disabled", Provider: "third"},
+	}
+	var mu sync.Mutex
+	calls := map[string]int{}
+	models, failures := refreshAgentModelsForAccounts(accounts, func(a storage.Account) ([]providers.ModelInfo, string, error) {
+		mu.Lock()
+		calls[a.ID]++
+		mu.Unlock()
+		if a.ID == "two" {
+			return []providers.ModelInfo{{ID: "old"}}, "stale", fmt.Errorf("offline")
+		}
+		return []providers.ModelInfo{{ID: "new"}}, "live", nil
+	})
+	if calls["one"] != 1 || calls["two"] != 1 || calls["disabled"] != 0 {
+		t.Fatal(calls)
+	}
+	if len(models) != 2 || models[0].Model != "first/new" || models[1].Model != "second/old" || len(failures) != 1 {
+		t.Fatalf("models=%+v failures=%v", models, failures)
+	}
+	_, failures = refreshAgentModelsForAccounts(accounts, func(a storage.Account) ([]providers.ModelInfo, string, error) {
+		mu.Lock()
+		calls[a.ID]++
+		mu.Unlock()
+		return nil, "error", fmt.Errorf("offline")
+	})
+	if calls["one"] != 2 || calls["two"] != 2 || len(failures) != 2 {
+		t.Fatalf("refresh retried empty failures: %v %v", calls, failures)
+	}
+}
 
 func TestAgentModelsFetchConcurrentlyAndKeepAccountOrder(t *testing.T) {
 	started := make(chan string, 2)

@@ -21,7 +21,9 @@ func TestAccountModelsCatalogAndFallback(t *testing.T) {
 	old := http.DefaultClient
 	defer func() { http.DefaultClient = old }()
 	status := 200
+	calls := 0
 	http.DefaultClient = &http.Client{Transport: catalogTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
 		if r.URL.Path != "/api/ide/v1/get_detail_param" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
@@ -46,6 +48,13 @@ func TestAccountModelsCatalogAndFallback(t *testing.T) {
 	}
 	if len(models) != 1 || models[0].ID != "new-model" {
 		t.Fatalf("lost previous catalog: %+v", models)
+	}
+	if calls != 1 {
+		t.Fatalf("viewing Trae fetched %d times", calls)
+	}
+	models, source, refreshErr := svc.RefreshAccountModelCatalog(acct)
+	if refreshErr == nil || source != "stale" || len(models) != 1 || calls != 2 {
+		t.Fatalf("Trae refresh failed to retain cache: %s %+v %v calls=%d", source, models, refreshErr, calls)
 	}
 	other := acct
 	other.ID = "other-account"

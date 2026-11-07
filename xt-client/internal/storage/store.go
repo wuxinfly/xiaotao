@@ -60,9 +60,10 @@ type Account struct {
 }
 
 type fileData struct {
-	Version  int               `json:"version"`
-	Accounts []*Account        `json:"accounts"`
-	Secrets  map[string]string `json:"secrets"`
+	Version       int                          `json:"version"`
+	Accounts      []*Account                   `json:"accounts"`
+	Secrets       map[string]string            `json:"secrets"`
+	ModelCatalogs map[string]ModelCatalogCache `json:"modelCatalogs,omitempty"`
 }
 
 type Store struct {
@@ -158,8 +159,17 @@ func (s *Store) ReplaceSecret(id, revision string, plain []byte, enc func([]byte
 		return fmt.Errorf("account credential changed during refresh")
 	}
 	s.data.Secrets[id] = secretPrefix + base64.StdEncoding.EncodeToString(blob)
+	previousCatalog, hadCatalog := s.data.ModelCatalogs[id]
+	if hadCatalog && previousCatalog.Revision == revision {
+		catalog := previousCatalog
+		catalog.Revision = fmt.Sprintf("%x", sha256.Sum256([]byte(s.data.Secrets[id])))
+		s.data.ModelCatalogs[id] = catalog
+	}
 	if err := s.save(); err != nil {
 		s.data.Secrets[id] = current
+		if hadCatalog {
+			s.data.ModelCatalogs[id] = previousCatalog
+		}
 		return err
 	}
 	return nil
@@ -366,6 +376,7 @@ func (s *Store) DeleteAccount(id string) error {
 	}
 	s.data.Accounts = kept
 	delete(s.data.Secrets, id)
+	delete(s.data.ModelCatalogs, id)
 	return s.save()
 }
 

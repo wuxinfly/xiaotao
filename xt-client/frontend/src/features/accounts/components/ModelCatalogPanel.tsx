@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {ModelPriceBadge} from '../../../components/ModelPriceBadge';
 import { api, type Account, type ModelCatalog } from '../../../lib/api';
 import { toast } from '../../../components/toast';
@@ -9,13 +9,27 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const refreshRequested = useRef(false);
   const [copied, setCopied] = useState('');
   const selectedId = accounts.some(a => a.id === accountId) ? accountId : accounts[0]?.id ?? '';
 
   useEffect(() => {
     let active = true;
-    setLoading(true); setError(''); setCatalog(null);
-    api.accountModels(selectedId).then(data => { if (active) { setCatalog(data); setError(data.error ?? ""); } })
+    const refresh = refreshRequested.current;
+    refreshRequested.current = false;
+    setLoading(true); setError('');
+    if (!refresh) setCatalog(null);
+    const request = refresh
+      ? Promise.allSettled(accounts.map(account => api.accountModels(account.id, true)))
+        .then(results => {
+          const selected = results[accounts.findIndex(account => account.id === selectedId)];
+          if (selected.status === 'rejected') throw selected.reason;
+          const data = selected.value;
+          const failures = results.filter(result => result.status === 'rejected' || result.value.error).length;
+          return failures ? { ...data, error: `${failures} 个账号模型目录刷新失败，已保留原有目录` } : data;
+        })
+      : api.accountModels(selectedId);
+    request.then(data => { if (active) { setCatalog(data); setError(data.error ?? ""); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -41,7 +55,7 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
         </select>
       </label>
       <span className="model-catalog-source">{loading ? '正在获取…' : catalog ? `${({ live: '实时获取', builtin: '内置目录', merged: '实时 + 内置目录', cached: '账号缓存', stale: '刷新失败 · 上次目录', error: '目录不可用' }[catalog.source])} · ${(catalog.models?.length ?? 0)} 个模型` : '获取失败'}</span>
-      <button type="button" className="group-add-btn" disabled={loading} onClick={() => setRevision(n => n + 1)}>
+      <button type="button" className="group-add-btn" disabled={loading} onClick={() => { refreshRequested.current = true; setRevision(n => n + 1); }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <polyline points="23 4 23 10 17 10" />
           <polyline points="1 20 1 14 7 14" />
