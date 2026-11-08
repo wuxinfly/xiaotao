@@ -44,17 +44,32 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.workspace-dock').evaluate(element => getComputedStyle(element).position), 'fixed');
     assert.ok(parseFloat(await page.locator('.agent-session-list').evaluate(element => getComputedStyle(element).paddingBottom)) >= footer.height, 'session history must reserve space above the dock');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
-    assert.deepEqual(await footerButtons.allTextContents(), ['小涛 Agent', '仪表盘', '账号与配额']);
+    assert.deepEqual(await footerButtons.allTextContents(), ['仪表盘', '账号与配额']);
+    assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
+    await page.locator('.agent-workspace').waitFor();
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();
     await page.locator('.dashboard-page').waitFor();
-    await page.locator('.workspace-dock').getByRole('button', {name: '小涛 Agent', exact: true}).click();
+    assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'secondary pages must not reserve the left sidebar');
+    assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
+    const titlebar = await page.locator('.titlebar').boundingBox();
+    const dashboardBack = await page.getByRole('button', {name: '返回小涛', exact: true}).boundingBox();
+    assert.ok(dashboardBack.x < 20 && dashboardBack.y >= titlebar.y && dashboardBack.y + dashboardBack.height <= titlebar.y + titlebar.height, 'back button must sit at the upper-left of the title bar');
+    assert.equal(await page.locator('.workspace-back-row').count(), 0, 'secondary pages must not keep a content back row');
+    const dashboardView = await page.locator('.workspace-page-view').boundingBox();
+    assert.ok(dashboardView.x < 1 && dashboardView.width >= 1200, 'dashboard must use the full content width');
+    await page.screenshot({path: join(tmpdir(), 'xiaotao-dashboard-secondary.png')});
+    await page.getByRole('button', {name: '返回小涛', exact: true}).click();
     await page.locator('.agent-workspace').waitFor();
+    assert.equal(await page.locator('.workspace-dock .workspace-nav button.is-active').count(), 0);
 
     await page.locator('.workspace-dock').getByRole('button', {name: '账号与配额', exact: true}).click();
     await page.getByText('管理不同接入来源的账号与模型调用额度').waitFor();
-    const side = await page.locator('.workspace-sidebar').boundingBox();
-    assert.ok(side.x < 20 && side.height > 700, 'model pages keep the same left navigation rail');
-    await page.locator('.workspace-dock').getByRole('button', {name: '小涛 Agent', exact: true}).click();
+    assert.equal(await page.locator('.workspace-sidebar').count(), 0);
+    assert.equal(await page.locator('.workspace-dock').count(), 0);
+    const accountsView = await page.locator('.workspace-page-view').boundingBox();
+    assert.ok(accountsView.x < 1 && accountsView.width >= 1200, 'accounts page must use the full content width');
+    await page.screenshot({path: join(tmpdir(), 'xiaotao-accounts-secondary.png')});
+    await page.getByRole('button', {name: '返回小涛', exact: true}).click();
     await page.locator('.agent-workspace').waitFor();
 
     await page.getByRole('button', {name: '更多', exact: true}).click();
@@ -66,8 +81,16 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.setViewportSize({width: 540, height: 800});
     assert.equal(await page.locator('.agent-sidebar').evaluate(element => getComputedStyle(element).display), 'flex');
     assert.ok(await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).isVisible());
+    await page.locator('.workspace-dock').getByRole('button', {name: '账号与配额', exact: true}).click();
+    await page.getByRole('button', {name: '返回小涛', exact: true}).waitFor();
+    assert.equal(await page.locator('.workspace-dock').count(), 0);
+    await page.setViewportSize({width: 420, height: 800});
+    const narrowBack = await page.getByRole('button', {name: '返回小涛', exact: true}).boundingBox();
+    assert.ok(narrowBack.x < 20, 'back button remains at the upper-left in narrow windows');
+    await page.getByRole('button', {name: '返回小涛', exact: true}).click();
+    await page.locator('.agent-workspace').waitFor();
     const trigger = await page.getByRole('button', {name: '更多', exact: true}).boundingBox();
-    assert.ok(trigger.x + trigger.width <= 540, 'more menu remains in the narrow title bar');
+    assert.ok(trigger.x + trigger.width <= 420, 'more menu remains in the narrow title bar');
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

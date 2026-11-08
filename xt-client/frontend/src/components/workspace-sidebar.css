@@ -54,14 +54,6 @@
   min-height: 100%;
 }
 
-.workspace-sidebar {
-  width: 244px;
-  flex: none;
-  border-right: 1px solid rgba(119, 186, 214, .11);
-  background: linear-gradient(180deg, rgba(7, 27, 41, .68), rgba(5, 21, 33, .56));
-  backdrop-filter: blur(10px);
-}
-
 .workspace-dock {
   position: fixed;
   z-index: 20;
@@ -89,9 +81,54 @@
   min-width: 0;
 }
 
-[data-theme='light'] .workspace-sidebar {
-  border-color: var(--line);
-  background: linear-gradient(180deg, #e9f3f6e6, #edf5f7d9);
+.titlebar .titlebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  flex: none;
+  margin-left: 10px;
+  padding: 0 10px 0 8px;
+  border-color: rgba(119, 186, 214, .2);
+  border-radius: 7px;
+  background: rgba(13, 48, 66, .54);
+  color: #b8dce7;
+  font-size: 12px;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.titlebar .titlebar-back:hover,
+.titlebar .titlebar-back:focus-visible {
+  border-color: rgba(89, 223, 221, .42);
+  background: rgba(24, 88, 99, .72);
+  color: #f3ffff;
+}
+
+.titlebar .titlebar-back svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 150ms ease;
+}
+
+.titlebar .titlebar-back:hover svg,
+.titlebar .titlebar-back:focus-visible svg {
+  transform: translateX(-1px);
+}
+
+.titlebar-back + .brand {
+  padding-left: 12px;
+}
+
+.workspace-page-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-page-content > * {
+  flex: 1;
+  min-width: 0;
 }
 
 [data-theme='light'] .workspace-nav button {
@@ -117,23 +154,20 @@
   box-shadow: 0 14px 34px #244d6320;
 }
 
-@media (max-width: 850px) {
-  .workspace-sidebar {
-    width: 206px;
-  }
+[data-theme='light'] .titlebar .titlebar-back {
+  border-color: #c8dfe5;
+  background: #edf5f7;
+  color: #316371;
 }
 
-@media (max-width: 700px) {
-  .workspace-sidebar {
-    width: 172px;
-  }
+[data-theme='light'] .titlebar .titlebar-back:hover,
+[data-theme='light'] .titlebar .titlebar-back:focus-visible {
+  border-color: #94c8d3;
+  background: #dfedf2;
+  color: #086570;
 }
 
 @media (max-width: 540px) {
-  .workspace-sidebar {
-    width: 56px;
-  }
-
   .workspace-dock {
     width: 42px;
     left: 7px;
@@ -164,7 +198,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-nav button {
+  .workspace-nav button,
+  .titlebar .titlebar-back,
+  .titlebar .titlebar-back svg {
     transition: none;
+  }
+
+  .titlebar .titlebar-back:hover svg,
+  .titlebar .titlebar-back:focus-visible svg {
+    transform: none;
   }
 }

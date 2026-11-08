@@ -11,7 +11,7 @@ import {ConfirmProvider} from './components/confirm/ConfirmProvider';
 import './navigation.css';
 import './ocean-tech.css';
 import './shallow-sea.css';
-import {WorkspaceSpacer, WorkspaceDock, type Page} from './components/WorkspaceSidebar';
+import {WorkspaceDock, WorkspaceBack, type Page} from './components/WorkspaceSidebar';
 
 declare global {interface Window {xtWindow?: (action:string)=>Promise<void>}}
 
@@ -53,6 +53,7 @@ function App(){
   {desktop&&['n','s','w','e','nw','ne','sw','se'].map(edge=><div key={edge} aria-hidden="true" className={'resize-edge resize-'+edge} onPointerDown={e=>{if(e.button===0){e.preventDefault();window.xtWindow?.('resize-'+edge)}}}/>)}
   <div className="workspace-shell">
   <header className="titlebar">
+   {page !== 'agent' && <WorkspaceBack onBack={() => setPage('agent')}/>}
    <div className="brand drag" onPointerDown={e=>{if(!desktop||e.button!==0)return;const x=e.screenX,y=e.screenY;const move=(event:PointerEvent)=>{if(Math.hypot(event.screenX-x,event.screenY-y)>5){cleanup();window.xtWindow?.('drag')}};const cleanup=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',cleanup);window.removeEventListener('pointercancel',cleanup)};window.addEventListener('pointermove',move);window.addEventListener('pointerup',cleanup);window.addEventListener('pointercancel',cleanup)}} onDoubleClick={()=>desktop&&window.xtWindow?.('maximize')}><img src="/mascot.png" alt=""/><strong>小涛</strong><span>你的 AI 工作空间</span></div>
    <div className="title-right">
     <WindowMenu/>
@@ -63,15 +64,16 @@ function App(){
    <div className="page-view" style={{display: page === 'agent' ? undefined : 'none'}}>
     <AgentPage visible={page === 'agent'} />
    </div>
-   {page !== 'agent' && <div className="workspace-page-layout">
-    <WorkspaceSpacer/>
+  {page !== 'agent' && <div className="workspace-page-layout">
     <div key={page} className="page-view workspace-page-view">
-     {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
-     {page === 'accounts' && <AccountsPage />}
+     <div className="workspace-page-content">
+      {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
+      {page === 'accounts' && <AccountsPage />}
+     </div>
     </div>
    </div>}
   </main>
-  <WorkspaceDock page={page} onSelect={select}/>
+  {page === 'agent' && <WorkspaceDock page={page} onSelect={select}/>}
   </div>
   <ToastContainer />
  </div>
