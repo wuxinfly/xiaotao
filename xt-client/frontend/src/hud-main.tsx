@@ -1,4 +1,4 @@
-import {useEffect, useRef} from 'react';
+import {useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import {RequestHud} from './features/dashboard/RequestHud';
 import {DashboardDataProvider} from './features/dashboard/DashboardData';
@@ -15,7 +15,6 @@ declare global {
 
 function HudApp() {
   const desktop = typeof window.xtHud === 'function';
-  const ready = useRef(false);
   useEffect(() => {
     if (!desktop) return;
     const drag = (event: PointerEvent) => {
@@ -27,15 +26,6 @@ function HudApp() {
     const header = document.querySelector<HTMLElement>('.request-hud-header');
     header?.addEventListener('pointerdown', drag as EventListener);
     return () => header?.removeEventListener('pointerdown', drag as EventListener);
-  }, [desktop]);
-  useEffect(() => {
-    if (!desktop || ready.current) return;
-    const frame = window.requestAnimationFrame(() => {
-      if (ready.current) return;
-      ready.current = true;
-      void window.xtHud?.('ready');
-    });
-    return () => window.cancelAnimationFrame(frame);
   }, [desktop]);
   return (
     <DashboardDataProvider enabled>

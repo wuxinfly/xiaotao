@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Activity, Settings, X } from 'lucide-react';
 import type { Account, RequestSummary } from '../../lib/api';
 import { useDashboardData } from './DashboardData';
@@ -11,12 +11,6 @@ interface RequestHudProps {
   dashboardPage: boolean;
   onOpen: () => void;
   onClose: () => void;
-}
-
-declare global {
-  interface Window {
-    xtHudCollapsed?: (collapsed: boolean) => void;
-  }
 }
 
 function formatCompactNumber(value: number): string {
@@ -52,7 +46,6 @@ function speedText(request: RequestSummary): string {
 export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose }: RequestHudProps) {
   const { snap, accounts, connected, loading, error, nowMs } = useDashboardData();
   const restoreRef = useRef<HTMLButtonElement>(null);
-  const [collapsed, setCollapsed] = useState(false);
   const requests = snap ? [...new Map(
     [...snap.activeRequests, ...snap.recentRequests].map(request => [request.id, request]),
   ).values()].sort((a, b) => {
@@ -71,14 +64,6 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [enabled, onClose]);
-  useEffect(() => {
-    if (!enabled) return;
-    window.xtHudCollapsed = (next) => flushSync(() => setCollapsed(next));
-    return () => {
-      delete window.xtHudCollapsed;
-    };
-  }, [enabled]);
-
   const connectionText = snap
     ? connected
       ? '实时连接'
@@ -105,15 +90,11 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
         </button>
       )}
       <aside
-        className={`request-hud${agentPage ? ' is-agent' : ''}${dashboardPage ? ' is-dashboard' : ''}${collapsed ? ' is-collapsed' : ''}`}
+        className={`request-hud${agentPage ? ' is-agent' : ''}${dashboardPage ? ' is-dashboard' : ''}`}
         aria-label="实时请求浮窗"
         aria-hidden={!enabled}
         inert={!enabled}
-        data-collapsed={collapsed && enabled ? 'true' : undefined}
       >
-        <div className="request-hud-collapsed-mark" aria-hidden="true" title="移入展开">
-          <Activity />
-        </div>
         <header className="request-hud-header">
           <Activity className="request-hud-icon" aria-hidden="true" />
           <strong>小涛</strong>

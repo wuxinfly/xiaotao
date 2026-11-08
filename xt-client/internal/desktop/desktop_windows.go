@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	windowWidth  = 1280
-	windowHeight = 800
+	windowWidth     = 1280
+	windowHeight    = 800
+	hudWindowWidth  = 260
+	hudWindowHeight = 170
 )
 
 func Lock(name string) (func(), error) {
@@ -101,8 +103,8 @@ func HUDWindow(url, data, token, displayName string) error {
 		AutoFocus: true,
 		WindowOptions: webview.WindowOptions{
 			Title:  title,
-			Width:  uint(hudExpandedWidth),
-			Height: uint(hudExpandedHeight),
+			Width:  hudWindowWidth,
+			Height: hudWindowHeight,
 		},
 	})
 	if w == nil {
@@ -112,10 +114,6 @@ func HUDWindow(url, data, token, displayName string) error {
 	cleanupHUD := configureHUDWindow(hwnd)
 	defer cleanupHUD()
 	defer w.Destroy()
-	dock := newHUDDock(hwnd, func(script string) {
-		w.Dispatch(func() { w.Eval(script) })
-	})
-	defer dock.close()
 	if err := w.Bind("xtHud", func(action string) error {
 		if action == "close" {
 			w.Dispatch(func() { w.Terminate() })
@@ -123,9 +121,6 @@ func HUDWindow(url, data, token, displayName string) error {
 		if action == "drag" {
 			win("ReleaseCapture")
 			win("SendMessageW", hwnd, 0xa1, 2, 0)
-		}
-		if action == "ready" {
-			dock.activate()
 		}
 		return nil
 	}); err != nil {
@@ -184,7 +179,7 @@ func configureHUDWindow(hwnd uintptr) func() {
 		} // Controller first, child second.
 		if msg == 0x02e0 {
 			dpi := uint32(wp & 0xffff)
-			win("SetWindowPos", h, 0, 0, 0, uintptr(hudPixels(hudExpandedWidth, dpi)), uintptr(hudPixels(hudExpandedHeight, dpi)), 0x0016)
+			win("SetWindowPos", h, 0, 0, 0, uintptr(hudPixels(hudWindowWidth, dpi)), uintptr(hudPixels(hudWindowHeight, dpi)), 0x0016)
 		}
 		return result
 	})
@@ -193,7 +188,7 @@ func configureHUDWindow(hwnd uintptr) func() {
 	if dpi == 0 {
 		dpi = 96
 	}
-	width, height := hudPixels(hudExpandedWidth, uint32(dpi)), hudPixels(hudExpandedHeight, uint32(dpi))
+	width, height := hudPixels(hudWindowWidth, uint32(dpi)), hudPixels(hudWindowHeight, uint32(dpi))
 	// HWND_TOPMOST must be pointer-sized -1 on Windows amd64.
 	win("SetWindowPos", hwnd, ^uintptr(0), 0, 0, uintptr(width), uintptr(height), 0x0032)
 	resizeChild()
@@ -201,6 +196,11 @@ func configureHUDWindow(hwnd uintptr) func() {
 	win("ShowWindow", hwnd, 4) // SW_SHOWNOACTIVATE
 	return func() { win("SetWindowLongPtrW", hwnd, uintptr(uint32(0xfffffffc)), old) }
 }
+
+func hudPixels(value, dpi uint32) uint32 {
+	return (value*dpi + 48) / 96
+}
+
 func disableHUD(url, token string) {
 	request, err := http.NewRequest("POST", url+"/api/request-hud", bytes.NewBufferString(`{"enabled":false}`))
 	if err != nil {

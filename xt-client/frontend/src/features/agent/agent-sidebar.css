@@ -19,10 +19,11 @@
 .agent-session-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: auto; }
 .agent-session-list { padding-bottom: 160px; }
 .agent-session-list p { margin: 5px 8px; color: #688694; font-size: 12px; }
+/* Colours and border only: row geometry (single line, indent, height) lives in
+   agent.css so this file's import order cannot override the windowed row layout. */
 .agent-session-list .agent-session-select {
-  display: flex; flex-direction: column; gap: 3px; width: 100%;
-  text-align: left; border: 1px solid transparent; border-radius: 7px;
-  padding: 9px 9px 8px; background: transparent; color: #b8d0da;
+  width: 100%; text-align: left; border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: #b8d0da;
 }
 .agent-session-list .agent-session-select:hover { background: rgba(26, 62, 80, .55); color: #e6f5f8; }
 .agent-session-list .agent-session-select.is-active { background: rgba(31, 75, 93, .78); border-color: rgba(86, 166, 186, .2); color: #edf9fb; }
