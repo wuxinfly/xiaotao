@@ -1712,9 +1712,9 @@ export function AgentPage({visible}: {visible: boolean}) {
                 <button type="button" role="menuitemradio" aria-checked={accessMode === 'full'} onClick={() => void changeAccessMode('full')}><span>完全访问 · 自主执行</span>{accessMode === 'full' && <Check aria-hidden="true"/>}</button>
               </Popover>
             </div>
-            <ContextMeter stats={contextRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
             </div>
             <div className="agent-composer-actions">
+              <ContextMeter stats={contextRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
               <div className="agent-model-picker">
                 <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
                   <span>{availablePickerModels.find(item => item.model === (model || active?.model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>

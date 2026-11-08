@@ -117,7 +117,7 @@ export function ContextDetailPopover({
       onClose={onClose}
       anchorRef={anchorRef}
       side="top"
-      align="start"
+      align="end"
       className="agent-context-detail-popover"
       aria-label="上下文与用量详情"
       role="dialog"
