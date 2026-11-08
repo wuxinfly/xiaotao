@@ -1,6 +1,7 @@
 import {normaliseImage} from './imageNormalise';
 import {AgentDroplet, activityState, type DropletState} from './AgentDroplet';
 import {Popover} from '../../components/popover/Popover';
+import {ContextMeter} from './ContextDetailPopover';
 import {ModalPresence} from '../../components/modal/ModalFrame';
 import {Fragment as ReactFragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {SessionList} from './SessionList';
@@ -1520,10 +1521,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     return () => observer.disconnect();
   }, [active?.id, active?.runStats?.length, updateScrollToBottom]);
   const contextRun = runStats.at(-1);
-  const contextTokens = contextRun?.contextTokens ?? 0;
   const currentModel = model || active?.model || '';
   const contextWindow = contextRun?.contextWindow ?? modelConfigFor(modelConfigs, currentModel, models)?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
-  const contextRatio = contextWindow > 0 ? Math.min(1, contextTokens / contextWindow) : 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
   const currentModelOption = models.find(item => item.model === (model || active?.model));
   const currentModelSupportsImages = currentModelOption?.supportsImages === true;
@@ -1713,10 +1712,7 @@ export function AgentPage({visible}: {visible: boolean}) {
                 <button type="button" role="menuitemradio" aria-checked={accessMode === 'full'} onClick={() => void changeAccessMode('full')}><span>完全访问 · 自主执行</span>{accessMode === 'full' && <Check aria-hidden="true"/>}</button>
               </Popover>
             </div>
-            {contextTokens > 0 && <button type="button" className="agent-context-meter" aria-label={contextWindow > 0 ? `上下文用量 ${Math.round(contextRatio * 100)}%` : `上下文用量，约 ${contextTokens} tokens，上限未知`} title={contextWindow > 0 ? `已用约 ${contextTokens} / ${contextWindow} tokens` : '已用约 ' + contextTokens + ' tokens · 模型上下文上限未知'}>
-              <span className={contextWindow > 0 ? 'agent-context-ring' : 'agent-context-dot'} aria-hidden="true" style={{'--context-ratio': contextRatio} as React.CSSProperties}><i/></span>
-              <span>{contextWindow > 0 ? `ctx ${Math.round(contextRatio * 100)}%` : `ctx ${formatCompactTokens(contextTokens)}`}</span>
-            </button>}
+            <ContextMeter stats={contextRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
             </div>
             <div className="agent-composer-actions">
               <div className="agent-model-picker">

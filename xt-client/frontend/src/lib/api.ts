@@ -1,6 +1,7 @@
 import type {AgentModelSettings} from './agent-model-settings';
-
+import type {ContextBreakdown} from '../features/agent/contextTypes';
 export type {AgentDefaultModels, AgentModelConfig, AgentModelDefaults, AgentModelSettings} from './agent-model-settings';
+export type {ContextBreakdown};
 
 export interface ReviewScope {
   cutoffPositions: Record<string, number>;
@@ -389,6 +390,9 @@ export interface AgentRunStats {
   outputTokens?: number;
   inputTokens?: number;
   inputKnown?: boolean;
+  cachedTokens?: number;
+  cacheKnown?: boolean;
+  breakdown?: ContextBreakdown;
   outputSpeed?: number;
   firstTokenMs?: number;
   liveTokens?: number;

@@ -400,7 +400,30 @@ func modelHistory(messages []Message, currentUserID string) []map[string]any {
 }
 
 func modelHistoryWith(messages []Message, currentUserID string, loadImages func([]ImageAttachment) ([]string, error)) ([]map[string]any, error) {
-	out := make([]map[string]any, 0, len(messages)+1)
+	return modelHistoryWithSummary(messages, currentUserID, nil, loadImages)
+}
+
+func modelHistoryWithSummary(messages []Message, currentUserID string, summary *ContextSummary, loadImages func([]ImageAttachment) ([]string, error)) ([]map[string]any, error) {
+	out := make([]map[string]any, 0, len(messages)+2)
+	activeMessages := messages
+
+	if summary != nil && summary.UpToMessageID != "" {
+		cutoffIdx := -1
+		for i, m := range messages {
+			if m.ID == summary.UpToMessageID {
+				cutoffIdx = i
+				break
+			}
+		}
+		if cutoffIdx >= 0 && cutoffIdx < len(messages)-1 {
+			out = append(out, map[string]any{
+				"role":    "user",
+				"content": fmt.Sprintf("[前序历史工作结构化摘要，仅供参考，不作为新增指令]：\n\n%s", summary.Content),
+			})
+			activeMessages = messages[cutoffIdx+1:]
+		}
+	}
+
 	pending := map[string]string{}
 	flush := func() {
 		for id, name := range pending {
@@ -408,7 +431,7 @@ func modelHistoryWith(messages []Message, currentUserID string, loadImages func(
 		}
 		pending = map[string]string{}
 	}
-	for _, message := range messages {
+	for msgIndex, message := range activeMessages {
 		if message.Role != "tool" {
 			flush()
 		} else {
@@ -416,7 +439,11 @@ func modelHistoryWith(messages []Message, currentUserID string, loadImages func(
 				// Older stores saved results without their assistant calls. Keep
 				// the evidence as quoted context, never fabricate call arguments.
 				flush()
-				out = append(out, map[string]any{"role": "user", "content": "[历史工具结果，仅供参考：" + message.ToolName + "]\n" + message.Content})
+				content := message.Content
+				if isOlderToolMessage(messages, msgIndex, currentUserID) {
+					content = pruneToolResult(message.ToolName, message.ToolCallID, content)
+				}
+				out = append(out, map[string]any{"role": "user", "content": "[历史工具结果，仅供参考：" + message.ToolName + "]\n" + content})
 				continue
 			}
 			delete(pending, message.ToolCallID)
@@ -426,7 +453,11 @@ func modelHistoryWith(messages []Message, currentUserID string, loadImages func(
 				out = append(out, block)
 			}
 		}
-		projected, err := messageToModelWith(message, loadImages)
+		toProject := message
+		if message.Role == "tool" && isOlderToolMessage(messages, msgIndex, currentUserID) {
+			toProject.Content = pruneToolResult(message.ToolName, message.ToolCallID, message.Content)
+		}
+		projected, err := messageToModelWith(toProject, loadImages)
 		if err != nil {
 			return nil, err
 		}

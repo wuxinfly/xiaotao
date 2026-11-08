@@ -91,6 +91,9 @@ type RunStats struct {
 	// block; InputKnown stays false when no request reported usage.
 	InputTokens int64 `json:"inputTokens,omitempty"`
 	InputKnown  bool  `json:"inputKnown,omitempty"`
+	// CachedTokens accumulates prompt cache hits reported by upstream usage.
+	CachedTokens int64 `json:"cachedTokens,omitempty"`
+	CacheKnown   bool  `json:"cacheKnown,omitempty"`
 	// FirstTokenMs is the delay from the first model request of this run to
 	// its first visible token. It stays 0 until that first token arrives.
 	FirstTokenMs int64 `json:"firstTokenMs,omitempty"`
@@ -100,9 +103,10 @@ type RunStats struct {
 	LiveTokens int64 `json:"liveTokens,omitempty"`
 	// LiveSpeed is the rolling output speed of the request currently
 	// streaming, in tokens per second.
-	LiveSpeed     float64 `json:"liveSpeed,omitempty"`
-	ContextTokens int64   `json:"contextTokens"`
-	ContextWindow int64   `json:"contextWindow,omitempty"`
+	LiveSpeed     float64           `json:"liveSpeed,omitempty"`
+	ContextTokens int64             `json:"contextTokens"`
+	ContextWindow int64             `json:"contextWindow,omitempty"`
+	Breakdown     *ContextBreakdown `json:"breakdown,omitempty"`
 	// firstRequestAt is when the first model request of this run started.
 	// It is process-local bookkeeping and never leaves the service.
 	firstRequestAt time.Time
@@ -120,6 +124,7 @@ type Session struct {
 	Thoughts []ThoughtStep `json:"thoughts"`
 	RunStats []RunStats    `json:"runStats"`
 	Error    string        `json:"error,omitempty"`
+	Summary  *ContextSummary `json:"summary,omitempty"`
 	// HasImages lets the composer enforce image capability even when the
 	// image message is outside the bounded history page.
 	HasImages bool      `json:"hasImages,omitempty"`

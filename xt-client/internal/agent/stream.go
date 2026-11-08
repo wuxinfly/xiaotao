@@ -33,8 +33,12 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 		Usage struct {
-			CompletionTokens int64  `json:"completion_tokens"`
-			PromptTokens     *int64 `json:"prompt_tokens"`
+			CompletionTokens    int64  `json:"completion_tokens"`
+			PromptTokens        *int64 `json:"prompt_tokens"`
+			CachedTokens        *int64 `json:"cached_tokens"`
+			PromptTokensDetails *struct {
+				CachedTokens *int64 `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
 		} `json:"usage"`
 	}
 	type assembled struct{ id, name, args string }
@@ -44,6 +48,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 	var firstOutputAt *time.Time
 	var outputTokens int64
 	var inputTokens *int64
+	var cachedTokens *int64
 	byIndex := map[int]*assembled{}
 	byID := map[string]*assembled{}
 	done, finished := false, false
@@ -62,58 +67,35 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		}
 		var frame chunk
 		if err := json.Unmarshal([]byte(data), &frame); err != nil {
-			return fmt.Errorf("模型流格式无效: %w", err)
+			return fmt.Errorf("解析模型事件失败: %w", err)
 		}
-		if frame.Error != nil {
-			return fmt.Errorf("模型流错误: %s", frame.Error.Message)
+		if frame.Error != nil && frame.Error.Message != "" {
+			return fmt.Errorf("%s", frame.Error.Message)
 		}
 		for _, choice := range frame.Choices {
 			if choice.FinishReason != nil {
 				finished = true
-				if *choice.FinishReason == "length" || *choice.FinishReason == "content_filter" {
-					return fmt.Errorf("模型回复未完成（%s）", *choice.FinishReason)
-				}
+			}
+			if choice.Delta.ReasoningContent != "" {
+				reasoning.WriteString(choice.Delta.ReasoningContent)
 			}
 			if choice.Delta.Content != "" {
 				if firstOutputAt == nil {
-					at := time.Now()
-					firstOutputAt = &at
+					now := time.Now()
+					firstOutputAt = &now
 				}
 				text.WriteString(choice.Delta.Content)
 				if onDelta != nil {
 					onDelta(choice.Delta.Content)
 				}
 			}
-			if choice.Delta.ReasoningContent != "" {
-				if firstOutputAt == nil {
-					at := time.Now()
-					firstOutputAt = &at
-					if onDelta != nil {
-						onDelta("")
-					}
-				}
-				reasoning.WriteString(choice.Delta.ReasoningContent)
-			}
 			for _, part := range choice.Delta.ToolCalls {
-				if firstOutputAt == nil {
-					at := time.Now()
-					firstOutputAt = &at
-					if onDelta != nil {
-						onDelta("")
-					}
-				}
 				var call *assembled
 				if part.Index != nil {
 					call = byIndex[*part.Index]
 				}
 				if call == nil && part.ID != "" {
 					call = byID[part.ID]
-				}
-				if call == nil && part.Index == nil && part.ID == "" {
-					if len(calls) != 1 {
-						return fmt.Errorf("模型工具调用缺少索引")
-					}
-					call = calls[0]
 				}
 				if call == nil {
 					call = &assembled{}
@@ -138,6 +120,11 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		}
 		if frame.Usage.PromptTokens != nil {
 			inputTokens = frame.Usage.PromptTokens
+		}
+		if frame.Usage.CachedTokens != nil {
+			cachedTokens = frame.Usage.CachedTokens
+		} else if frame.Usage.PromptTokensDetails != nil && frame.Usage.PromptTokensDetails.CachedTokens != nil {
+			cachedTokens = frame.Usage.PromptTokensDetails.CachedTokens
 		}
 		return nil
 	}
@@ -172,6 +159,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		Reasoning:     reasoning.String(),
 		OutputTokens:  outputTokens,
 		InputTokens:   inputTokens,
+		CachedTokens:  cachedTokens,
 		FirstOutputAt: firstOutputAt,
 	}
 	ids := map[string]bool{}

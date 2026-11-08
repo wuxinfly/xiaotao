@@ -53,6 +53,7 @@ type completion struct {
 	ToolCalls        []toolCall
 	OutputTokens     int64
 	InputTokens      *int64
+	CachedTokens     *int64
 	RequestStartedAt time.Time
 	FirstOutputAt    *time.Time
 	RequestEndedAt   time.Time
@@ -84,8 +85,12 @@ type backendResponse struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Usage struct {
-		CompletionTokens int64  `json:"completion_tokens"`
-		PromptTokens     *int64 `json:"prompt_tokens"`
+		CompletionTokens    int64  `json:"completion_tokens"`
+		PromptTokens        *int64 `json:"prompt_tokens"`
+		CachedTokens        *int64 `json:"cached_tokens"`
+		PromptTokensDetails *struct {
+			CachedTokens *int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	} `json:"usage"`
 }
 
@@ -477,7 +482,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
 	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions}}
-	modelMessages, err := modelHistoryWith(history.Messages, userMessage.ID, s.imageDataURLs)
+	modelMessages, err := modelHistoryWithSummary(history.Messages, userMessage.ID, history.Summary, s.imageDataURLs)
 	if err != nil {
 		return err
 	}
@@ -486,7 +491,9 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	stats := RunStats{Phase: "working", RunID: runID, UserMessageID: userMessage.ID, StartedAt: now}
 	stats.ContextWindow = effectiveContextWindow(effectiveSettings, s.contextWindow(history.Model))
 	var outputSeconds float64
-	stats.ContextTokens = estimateContextTokens(messages)
+	initialBreakdown := calculateContextBreakdown(messages, nil)
+	stats.Breakdown = &initialBreakdown
+	stats.ContextTokens = initialBreakdown.TotalTokens
 	history.RunStats = append(history.RunStats, stats)
 	emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: &stats})
 	err = s.loopWithRunSettings(runCtx, workspace, client, history, messages, references, runID, &stats, &outputSeconds, effectiveSettings, emit)
@@ -563,6 +570,14 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			return err
 		}
 	}
+	if shouldAutoCompact(stats, history.Messages) {
+		if summary, err := s.tryAutoCompact(ctx, client, history, stats, emit); err == nil && summary != nil {
+			history.Summary = summary
+			if fresh, err := modelHistoryWithSummary(history.Messages, stats.UserMessageID, summary, s.imageDataURLs); err == nil && len(messages) > 0 {
+				messages = append([]map[string]any{messages[0]}, fresh...)
+			}
+		}
+	}
 	var completedTokens int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -575,16 +590,22 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		if len(references) > 0 {
 			tools = append(append([]map[string]any{}, tools...), referenceToolDefinition)
 		}
+		if hasPrunedToolResults(history.Messages, stats.UserMessageID) {
+			tools = append(append([]map[string]any{}, tools...), historicalToolLookupDefinition)
+		}
 		tools = append(append([]map[string]any{}, tools...), mcpState.definitions()...)
 		var streamed *Message
 		requestMessages := append([]map[string]any{}, messages...)
 		if len(requestMessages) > 0 && requestMessages[0]["role"] == "system" {
 			requestMessages[0] = map[string]any{"role": "system", "content": fmt.Sprint(messages[0]["content"]) + "\n执行中的说明用于进度；完成任务后直接给出最终回答。\n" + s.concurrentTaskContext(history.ID, history.Project.Path)}
 		}
-		stats.ContextTokens = estimateContextTokens(requestMessages)
+		breakdown := calculateContextBreakdown(requestMessages, tools)
+		stats.Breakdown = &breakdown
+		stats.ContextTokens = breakdown.TotalTokens
 		for i := range history.RunStats {
 			if history.RunStats[i].RunID == runID {
 				history.RunStats[i].ContextTokens = stats.ContextTokens
+				history.RunStats[i].Breakdown = stats.Breakdown
 			}
 		}
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
@@ -733,6 +754,8 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 				}
 			} else if call.Name == "read_conversation_reference" {
 				output, toolErr = s.readConversationReference(call.Arguments, references)
+			} else if call.Name == "read_historical_tool_result" {
+				output, toolErr = s.readHistoricalToolResult(call.Arguments, history.Messages)
 			} else if workspace != nil {
 				toolErr = s.waitApproval(ctx, history.ID, workspace, call, emit)
 				if toolErr == nil {
@@ -880,51 +903,7 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-// liveStatsInterval throttles run_stats updates while a model response streams.
-const liveStatsInterval = 200 * time.Millisecond
 
-// updateLiveOutput keeps the run statistics usable while a response is still
-// streaming: finished requests contribute their reported usage and the
-// in-flight request contributes an estimate of what it produced so far.
-func updateLiveOutput(stats *RunStats, completedTokens int64, requestChars int, requestFirstOutputAt, now time.Time) {
-	if stats == nil {
-		return
-	}
-	liveTokens := int64(requestChars) / 3
-	stats.LiveTokens = completedTokens + liveTokens
-	if requestFirstOutputAt.IsZero() {
-		stats.LiveSpeed = 0
-	}
-	if !requestFirstOutputAt.IsZero() {
-		if elapsed := now.Sub(requestFirstOutputAt).Seconds(); elapsed > 0 {
-			stats.LiveSpeed = math.Round(float64(liveTokens)/elapsed*10) / 10
-		}
-	}
-}
-
-func recordCompletionStats(stats *RunStats, result *completion, outputSeconds *float64) {
-	if stats == nil || result == nil || outputSeconds == nil {
-		return
-	}
-	stats.OutputTokens += result.OutputTokens
-	if result.InputTokens != nil {
-		stats.InputTokens += *result.InputTokens
-		stats.InputKnown = true
-	}
-	if stats.FirstTokenMs == 0 && result.FirstOutputAt != nil && !stats.firstRequestAt.IsZero() {
-		if elapsed := result.FirstOutputAt.Sub(stats.firstRequestAt).Milliseconds(); elapsed > 0 {
-			stats.FirstTokenMs = elapsed
-		}
-	}
-	if result.FirstOutputAt != nil && !result.RequestEndedAt.IsZero() {
-		if elapsed := result.RequestEndedAt.Sub(*result.FirstOutputAt).Seconds(); elapsed >= 0.05 {
-			*outputSeconds += elapsed
-		}
-	}
-	if stats.OutputTokens > 0 && *outputSeconds > 0 {
-		stats.OutputSpeed = math.Round(float64(stats.OutputTokens) / *outputSeconds * 10) / 10
-	}
-}
 
 func readableThought(value string) string {
 	value = strings.TrimSpace(strings.Join(strings.Fields(value), " "))
@@ -936,74 +915,7 @@ func readableThought(value string) string {
 	return value
 }
 
-func estimateContextTokens(messages []map[string]any) int64 {
-	var bytes int64
-	for _, message := range messages {
-		bytes += estimateContentBytes(message["content"])
-	}
-	if bytes == 0 {
-		return 0
-	}
-	// UTF-8 bytes are deterministic across desktop and browser hosts, while
-	// Chinese, English and code have different token densities. This estimate
-	// remains an estimate until an upstream prompt token count is available.
-	return (bytes + 2) / 3
-}
 
-// estimatedImageTokens approximates what one inline image costs in the
-// upstream prompt. Vision encoders price images by pixel area, not by the size
-// of the base64 payload, so a large PNG and a thumbnail of the same image cost
-// roughly the same. Counting a flat allowance per image keeps the context
-// meter from treating encoded bytes as if they were prompt text.
-const estimatedImageTokens = 1500
-
-func estimateContentBytes(value any) int64 {
-	switch content := value.(type) {
-	case string:
-		return int64(len(content))
-	case []any:
-		var total int64
-		for _, part := range content {
-			if item, ok := part.(map[string]any); ok {
-				if item["type"] == "image_url" {
-					total += estimatedImageTokens * 3
-					continue
-				}
-				total += estimateContentBytes(item["text"])
-			}
-		}
-		return total
-	case []map[string]any:
-		// Multipart content built by messageToModelWith. Text parts count as
-		// text; image parts count as one flat image allowance instead of
-		// their base64 payload.
-		var total int64
-		for _, item := range content {
-			if item["type"] == "image_url" {
-				total += estimatedImageTokens * 3
-				continue
-			}
-			total += estimateContentBytes(item["text"])
-		}
-		return total
-	default:
-		return int64(len(fmt.Sprint(content)))
-	}
-}
-
-func effectiveContextWindow(settings *ModelSettings, catalogWindow int64) int64 {
-	if settings != nil && settings.ContextWindow > 0 {
-		return settings.ContextWindow
-	}
-	return catalogWindow
-}
-
-func derefModelSettings(settings *ModelSettings) ModelSettings {
-	if settings == nil {
-		return ModelSettings{}
-	}
-	return *settings
-}
 
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, settings ModelSettings, onDelta func(string)) (*completion, error) {
 	startedAt := time.Now()
@@ -1058,11 +970,18 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, fmt.Errorf("模型没有返回结果")
 	}
 	message := body.Choices[0].Message
+	var cachedTokens *int64
+	if body.Usage.CachedTokens != nil {
+		cachedTokens = body.Usage.CachedTokens
+	} else if body.Usage.PromptTokensDetails != nil && body.Usage.PromptTokensDetails.CachedTokens != nil {
+		cachedTokens = body.Usage.PromptTokensDetails.CachedTokens
+	}
 	out := &completion{
 		Content:          message.Content,
 		Reasoning:        message.ReasoningContent,
 		OutputTokens:     body.Usage.CompletionTokens,
 		InputTokens:      body.Usage.PromptTokens,
+		CachedTokens:     cachedTokens,
 		RequestStartedAt: startedAt,
 		RequestEndedAt:   time.Now(),
 	}
@@ -1187,6 +1106,8 @@ func activityTitle(name string) string {
 		return "更新文件"
 	case "run_command":
 		return "运行命令"
+	case "read_historical_tool_result":
+		return "回查历史工具输出"
 	case mcpEnableToolName:
 		return "启用浏览器工具"
 	default:
