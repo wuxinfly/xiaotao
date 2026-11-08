@@ -92,12 +92,17 @@ func shouldAutoCompact(stats *RunStats, messages []Message) bool {
 		return false
 	}
 
+	var threshold int64
 	if stats.ContextWindow > 0 {
-		threshold := int64(float64(stats.ContextWindow) * compactionThresholdRatio)
-		return stats.ContextTokens >= threshold
+		threshold = int64(float64(stats.ContextWindow) * compactionThresholdRatio)
+	} else {
+		threshold = fallbackWindowCompactionTokens
 	}
-
-	return stats.ContextTokens >= fallbackWindowCompactionTokens
+	if stats.ContextTokens >= threshold {
+		logCompactionTriggered("", stats.ContextTokens, threshold, preserveRecentCompactionTurns)
+		return true
+	}
+	return false
 }
 
 // generateHistorySummary calls the model to produce a structured summary of messages up to cutoff.
@@ -167,6 +172,7 @@ func (s *Service) tryAutoCompact(ctx context.Context, client modelClient, histor
 
 	summaryContent, err := generateHistorySummary(ctx, client, history.Model, messagesToSummarize)
 	if err != nil {
+		logCompactionFailed(history.ID, err)
 		return nil, err
 	}
 

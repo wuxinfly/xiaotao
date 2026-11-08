@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
@@ -56,6 +57,29 @@ func (f catalogFetcher) FetchModels(ctx context.Context, cred *providers.Credent
 	return f(ctx, cred)
 }
 
+// cachedAccountModels returns an already-loaded catalog without fetching the
+// upstream, so routing can validate live-only models without adding latency.
+func (s *Service) cachedAccountModels(acct storage.Account) ([]providers.ModelInfo, bool) {
+	s.mu.Lock()
+	snapshot, ok := s.catalogs[acct.ID]
+	s.mu.Unlock()
+	if ok && snapshot.region == acct.Region {
+		return snapshot.models, true
+	}
+	if s.store == nil {
+		return nil, false
+	}
+	cache, exists := s.store.ModelCatalog(acct.ID)
+	if !exists || cache.Provider != acct.Provider || cache.Region != acct.Region || cache.UID != acct.UID {
+		return nil, false
+	}
+	models, err := decodeCatalog(cache.Models)
+	if err != nil {
+		return nil, false
+	}
+	return models, true
+}
+
 func (s *Service) accountModelCatalog(acct storage.Account, force bool) ([]providers.ModelInfo, string, error) {
 	p, err := providers.Get(acct.Provider)
 	if err != nil {
@@ -82,6 +106,7 @@ func (s *Service) accountModelCatalog(acct storage.Account, force bool) ([]provi
 
 // No TTL: fetch only for a missing catalog or an explicit refresh.
 func (s *Service) dynamicCatalog(acct storage.Account, fetcher providers.ModelFetcher, force bool) ([]providers.ModelInfo, string, error) {
+	start := time.Now()
 	value, _ := catalogLocks.LoadOrStore(catalogKey{s.store, acct.ID, acct.Region}, &sync.Mutex{})
 	lock := value.(*sync.Mutex)
 	lock.Lock()
@@ -137,6 +162,13 @@ func (s *Service) dynamicCatalog(acct storage.Account, fetcher providers.ModelFe
 		return nil
 	}
 	fail := func(err error) ([]providers.ModelInfo, string, error) {
+		dur := time.Since(start)
+		logProxyWarn("model catalog refresh failed",
+			logging.F("provider", acct.Provider),
+			logging.F("account", acct.ID),
+			logging.F("duration_ms", dur.Milliseconds()),
+			logging.F("error", logging.Redact(err.Error(), 200)),
+		)
 		if ok && previous.source != "builtin" {
 			return previous.models, "stale", err
 		}
@@ -184,6 +216,14 @@ func (s *Service) dynamicCatalog(acct storage.Account, fetcher providers.ModelFe
 	if err := save(models, "live"); err != nil {
 		return fail(err)
 	}
+	dur := time.Since(start)
+	logProxyInfo("model catalog refreshed",
+		logging.F("provider", acct.Provider),
+		logging.F("account", acct.ID),
+		logging.F("source", "live"),
+		logging.F("count", len(models)),
+		logging.F("duration_ms", dur.Milliseconds()),
+	)
 	return models, "live", nil
 }
 

@@ -46,48 +46,54 @@ func pruneToolResult(toolName, callID, content string) string {
 	}
 
 	totalLen := len(runes)
+	var res string
 	switch toolName {
 	case "run_command":
 		// Retain initial command startup (first 400 runes) and critical trailing errors (last 1000 runes).
 		head := string(runes[:400])
 		tail := string(runes[totalLen-1000:])
-		return fmt.Sprintf("%s\n\n...[命令输出已精简，共 %d 字符。关键结尾见下文；若需完整细节可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
+		res = fmt.Sprintf("%s\n\n...[命令输出已精简，共 %d 字符。关键结尾见下文；若需完整细节可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
 
 	case "read_file":
 		lines := strings.Split(content, "\n")
 		if len(lines) > 40 {
 			head := strings.Join(lines[:20], "\n")
 			tail := strings.Join(lines[len(lines)-15:], "\n")
-			return fmt.Sprintf("%s\n\n...[文件读取已精简：共 %d 行 (%d 字符)。代码仍存在于项目文件；细节可重新读取或调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, len(lines), totalLen, callID, tail)
+			res = fmt.Sprintf("%s\n\n...[文件读取已精简：共 %d 行 (%d 字符)。代码仍存在于项目文件；细节可重新读取或调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, len(lines), totalLen, callID, tail)
+		} else {
+			head := string(runes[:400])
+			tail := string(runes[totalLen-600:])
+			res = fmt.Sprintf("%s\n\n...[内容已精简，共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
 		}
-		// If few lines but very long lines:
-		head := string(runes[:400])
-		tail := string(runes[totalLen-600:])
-		return fmt.Sprintf("%s\n\n...[内容已精简，共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
 
 	case "search_files":
 		lines := strings.Split(content, "\n")
 		if len(lines) > 15 {
 			head := strings.Join(lines[:12], "\n")
-			return fmt.Sprintf("%s\n\n...[搜索结果已精简：展示前 12 项，共 %d 项匹配。建议缩小关键词重新搜索，或调用 read_historical_tool_result(tool_call_id=%q)]", head, len(lines), callID)
+			res = fmt.Sprintf("%s\n\n...[搜索结果已精简：展示前 12 项，共 %d 项匹配。建议缩小关键词重新搜索，或调用 read_historical_tool_result(tool_call_id=%q)]", head, len(lines), callID)
+		} else {
+			head := string(runes[:600])
+			res = fmt.Sprintf("%s\n\n...[搜索结果已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]", head, totalLen, callID)
 		}
-		head := string(runes[:600])
-		return fmt.Sprintf("%s\n\n...[搜索结果已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]", head, totalLen, callID)
 
 	case "list_files":
 		lines := strings.Split(content, "\n")
 		if len(lines) > 30 {
 			head := strings.Join(lines[:25], "\n")
-			return fmt.Sprintf("%s\n\n...[目录列表已精简：展示前 25 项，共 %d 项。可调用 read_historical_tool_result(tool_call_id=%q)]", head, len(lines), callID)
+			res = fmt.Sprintf("%s\n\n...[目录列表已精简：展示前 25 项，共 %d 项。可调用 read_historical_tool_result(tool_call_id=%q)]", head, len(lines), callID)
+		} else {
+			head := string(runes[:600])
+			res = fmt.Sprintf("%s\n\n...[目录列表已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]", head, totalLen, callID)
 		}
-		head := string(runes[:600])
-		return fmt.Sprintf("%s\n\n...[目录列表已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]", head, totalLen, callID)
 
 	default:
 		head := string(runes[:400])
 		tail := string(runes[totalLen-400:])
-		return fmt.Sprintf("%s\n\n...[工具结果已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
+		res = fmt.Sprintf("%s\n\n...[工具结果已精简：共 %d 字符。可调用 read_historical_tool_result(tool_call_id=%q)]...\n\n%s", head, totalLen, callID, tail)
 	}
+
+	recordPrune(currentSession(), len(content)-len(res))
+	return res
 }
 
 // isOlderToolMessage determines if a tool message is old enough to prune.

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 	"strings"
 	"time"
 
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 )
 
@@ -59,7 +59,10 @@ func requestShape(body map[string]any) string {
 func logChannelRejection(err error, before, after string) {
 	var upstream *providers.UpstreamError
 	if errors.As(err, &upstream) && strings.Contains(upstream.Message, "（11128）") {
-		log.Printf("workbuddy 11128 request shape: before={%s} after={%s}", before, after)
+		logging.Default().For(logging.ModuleProxy).Warn("channel rejected",
+			logging.F("upstream_reject", 11128),
+			logging.F("shape", fmt.Sprintf("before={%s} after={%s}", before, after)),
+		)
 	}
 }
 

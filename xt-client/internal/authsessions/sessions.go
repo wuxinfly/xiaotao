@@ -8,10 +8,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/trae"
@@ -60,6 +60,7 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 	for _, old := range s.sessions {
 		if old.Provider == providerID && old.Region == region && old.Status == "waiting" {
 			old.Status = "cancelled"
+			logging.Default().For(logging.ModuleAuth).Info("cancelled previous session", logging.F("provider", providerID), logging.F("old_session", old.ID))
 			if old.cancel != nil {
 				old.cancel()
 			}
@@ -93,10 +94,13 @@ func (s *Service) Start(providerID, region string) (Session, error) {
 					sess.Status = "succeeded"
 					sess.Credential = login.Credential()
 					s.mu.Unlock()
+					durMs := (time.Now().Unix() - sess.CreatedAt) * 1000
+					logging.Default().For(logging.ModuleAuth).Info("login succeeded", logging.F("provider", sess.Provider), logging.F("session", sess.ID), logging.F("duration_ms", durMs))
 					return
 				}
 			}
 		}()
+		logging.Default().For(logging.ModuleAuth).Info("login started", logging.F("provider", sess.Provider), logging.F("region", sess.Region), logging.F("session", sess.ID))
 		return *sess, nil
 	}
 	if providerID == "workbuddy" {
@@ -170,18 +174,22 @@ func (s *Service) finishWorkBuddyLogin(sess *Session, uid string, cred *provider
 	if sess.Status != "waiting" {
 		return
 	}
+	durMs := (time.Now().Unix() - sess.CreatedAt) * 1000
 	if err != nil {
 		sess.Status = "failed"
-		sess.Error = redact(err.Error())
+		sess.Error = logging.Redact(err.Error(), 200)
+		logging.Default().For(logging.ModuleAuth).Warn("login failed", logging.F("provider", sess.Provider), logging.F("session", sess.ID), logging.F("error", sess.Error))
 		return
 	}
 	if uid == "" || cred == nil {
 		sess.Status = "failed"
 		sess.Error = "login response missing account identity"
+		logging.Default().For(logging.ModuleAuth).Warn("login failed", logging.F("provider", sess.Provider), logging.F("session", sess.ID), logging.F("error", sess.Error))
 		return
 	}
 	sess.Status = "succeeded"
 	sess.Credential = cred
+	logging.Default().For(logging.ModuleAuth).Info("login succeeded", logging.F("provider", sess.Provider), logging.F("session", sess.ID), logging.F("duration_ms", durMs))
 }
 
 func newUUID() string {
@@ -240,6 +248,8 @@ func (s *Service) handleCallback(sess *Session, w http.ResponseWriter, r *http.R
 	s.mu.Lock()
 	sess.Status = "succeeded"
 	sess.Credential = cred
+	durMs := (time.Now().Unix() - sess.CreatedAt) * 1000
+	logging.Default().For(logging.ModuleAuth).Info("login succeeded", logging.F("provider", sess.Provider), logging.F("session", sess.ID), logging.F("duration_ms", durMs))
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte("<!doctype html><meta charset='utf-8'><title>登录成功</title><body style='background:#0b1622;color:#dce8f5;font-family:system-ui;text-align:center;padding-top:20vh'><h2>登录成功</h2><p>可以回到小涛查看账号状态。</p></body>"))
@@ -280,6 +290,7 @@ func (s *Service) Cancel(id string) {
 	defer s.mu.Unlock()
 	if sess, ok := s.sessions[id]; ok && sess.Status == "waiting" {
 		sess.Status = "cancelled"
+		logging.Default().For(logging.ModuleAuth).Info("login cancelled", logging.F("provider", sess.Provider), logging.F("session", sess.ID))
 		if sess.cancel != nil {
 			sess.cancel()
 		}
@@ -344,11 +355,5 @@ func defaultRegionOf(p providers.Provider) string {
 }
 
 func redact(s string) string {
-	low := strings.ToLower(s)
-	for _, key := range []string{"token", "credential", "userjwt"} {
-		if i := strings.Index(low, key); i >= 0 {
-			return s[:i] + key + "=<redacted>"
-		}
-	}
-	return s
+	return logging.Redact(s, 200)
 }

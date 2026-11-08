@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/storage"
 )
@@ -25,24 +26,46 @@ func (s *Service) SelectAccount(model string) (storage.Account, string, bool) {
 	return accounts[0], modelID, true
 }
 
-func (s *Service) accountCandidates(model string) ([]storage.Account, string) {
+func (s *Service) accountCandidatesWithReasons(model string) ([]storage.Account, []SkipReason) {
 	providerID, modelID := splitModelID(model)
 	accounts := []storage.Account{}
+	var skips []SkipReason
 	for _, acct := range s.store.Accounts() {
-		if !acct.Enabled || acct.Provider != providerID {
+		if acct.Provider != providerID {
+			continue
+		}
+		if !acct.Enabled {
+			skips = append(skips, SkipReason{Account: acct.ID, Provider: acct.Provider, Model: model, Reason: "disabled"})
 			continue
 		}
 		if !s.supportsAccountModel(*acct, modelID) {
+			skips = append(skips, SkipReason{Account: acct.ID, Provider: acct.Provider, Model: model, Reason: "model_unsupported"})
 			continue
 		}
 		if acct.Provider != "qoder" && quotaExhausted(acct.Quota) {
+			skips = append(skips, SkipReason{Account: acct.ID, Provider: acct.Provider, Model: model, Reason: "quota_exhausted"})
 			continue
 		}
 		if s.accountCooling(acct.ID) {
+			skips = append(skips, SkipReason{Account: acct.ID, Provider: acct.Provider, Model: model, Reason: "cooling"})
 			continue
 		}
 		accounts = append(accounts, *acct)
 	}
+	for _, skip := range skips {
+		logProxyInfo("account skipped",
+			logging.F("model", skip.Model),
+			logging.F("provider", skip.Provider),
+			logging.F("account", skip.Account),
+			logging.F("reason", skip.Reason),
+		)
+	}
+	return accounts, skips
+}
+
+func (s *Service) accountCandidates(model string) ([]storage.Account, string) {
+	_, modelID := splitModelID(model)
+	accounts, _ := s.accountCandidatesWithReasons(model)
 	return accounts, modelID
 }
 
@@ -76,6 +99,11 @@ func (s *Service) markAccountCooling(id string, quota bool) {
 	}
 	s.cooldowns[id] = until
 	s.mu.Unlock()
+	logProxyInfo("account cooling set",
+		logging.F("account", id),
+		logging.F("until", until.Format(time.RFC3339)),
+		logging.F("quota", quota),
+	)
 }
 
 func (s *Service) accountCooling(id string) bool {
@@ -89,6 +117,7 @@ func (s *Service) accountCooling(id string) bool {
 		return true
 	}
 	delete(s.cooldowns, id)
+	logProxyInfo("account cooling expired", logging.F("account", id))
 	return false
 }
 
@@ -105,14 +134,25 @@ func (s *Service) supportsAccountModel(acct storage.Account, modelID string) boo
 		return false
 	}
 	if _, ok := p.(providers.ModelFetcher); ok {
-		for _, m := range s.AccountModels(acct) {
-			if m.ID == modelID {
-				return true
-			}
-		}
-		return false
+		return modelInCatalog(s.AccountModels(acct), modelID)
+	}
+	// Trae and Antigravity build their catalogs through a wrapper rather than
+	// the ModelFetcher interface. Routing must honour the cached catalog, or
+	// live-only variants such as the "-max" context models are rejected as
+	// unsupported even though the UI lists them.
+	if models, ok := s.cachedAccountModels(acct); ok {
+		return modelInCatalog(models, modelID)
 	}
 	return supportsModel(acct, modelID)
+}
+
+func modelInCatalog(models []providers.ModelInfo, modelID string) bool {
+	for _, m := range models {
+		if m.ID == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 func splitModelID(model string) (string, string) {

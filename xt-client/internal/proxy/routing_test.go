@@ -29,6 +29,26 @@ func TestSelectAccountRoutesByModelPrefix(t *testing.T) {
 	}
 }
 
+func TestSelectAccountRoutesTraeMaxVariantFromCachedCatalog(t *testing.T) {
+	store := newRoutingStore(t,
+		storage.Account{ID: "trae-max", Provider: "trae", Region: "cn", Enabled: true},
+	)
+	svc := routingService(t, store)
+	svc.catalogs["trae-max"] = catalogSnapshot{
+		region: "cn",
+		at:     time.Now(),
+		models: []providers.ModelInfo{
+			{ID: "glm-5.3", UpstreamID: "GLM-5.3"},
+			{ID: "glm-5.3-max", UpstreamID: "GLM-5.3__max"},
+		},
+	}
+
+	acct, model, ok := svc.SelectAccount("trae/glm-5.3-max")
+	if !ok || acct.ID != "trae-max" || model != "glm-5.3-max" {
+		t.Fatalf("max variant rejected: ok=%v acct=%s model=%s", ok, acct.ID, model)
+	}
+}
+
 func TestSelectAccountUsesStoreOrder(t *testing.T) {
 	store := newRoutingStore(t,
 		storage.Account{ID: "wb-first", Provider: "workbuddy", Enabled: true},
@@ -177,6 +197,50 @@ func TestSelectAccountRejectsUnknownProvider(t *testing.T) {
 
 	if _, _, ok := svc.SelectAccount("qoder/gpt-4"); ok {
 		t.Fatal("expected unknown provider to have no account")
+	}
+}
+
+func TestAccountCandidatesWithReasons(t *testing.T) {
+	rem := 0.0
+	exhausted := storage.QuotaSnapshot{
+		Status: "ok",
+		Items: []storage.QuotaItem{
+			{Remaining: &rem},
+		},
+	}
+	store := newRoutingStore(t,
+		storage.Account{ID: "acct-disabled", Provider: "workbuddy", Enabled: false},
+		storage.Account{ID: "acct-unsupported", Provider: "workbuddy", Enabled: true},
+		storage.Account{ID: "acct-exhausted", Provider: "workbuddy", Enabled: true, Quota: &exhausted},
+		storage.Account{ID: "acct-cooling", Provider: "workbuddy", Enabled: true},
+		storage.Account{ID: "acct-valid", Provider: "workbuddy", Enabled: true},
+	)
+	svc := routingService(t, store)
+	rev, _ := store.SecretRevision("acct-unsupported")
+	svc.catalogs["acct-unsupported"] = catalogSnapshot{region: "", revision: rev, source: "cached", at: time.Now(), models: []providers.ModelInfo{{ID: "other-model"}}}
+	// Mark acct-cooling as cooling
+	svc.markAccountCooling("acct-cooling", false)
+
+	candidates, reasons := svc.accountCandidatesWithReasons("workbuddy/glm-5.3-flash")
+	if len(candidates) != 1 || candidates[0].ID != "acct-valid" {
+		t.Fatalf("expected only acct-valid, got %v", candidates)
+	}
+
+	foundReasons := map[string]string{}
+	for _, r := range reasons {
+		foundReasons[r.Account] = r.Reason
+	}
+	if foundReasons["acct-disabled"] != "disabled" {
+		t.Errorf("expected disabled, got %s", foundReasons["acct-disabled"])
+	}
+	if foundReasons["acct-unsupported"] != "model_unsupported" {
+		t.Errorf("expected model_unsupported, got %s", foundReasons["acct-unsupported"])
+	}
+	if foundReasons["acct-exhausted"] != "quota_exhausted" {
+		t.Errorf("expected quota_exhausted, got %s", foundReasons["acct-exhausted"])
+	}
+	if foundReasons["acct-cooling"] != "cooling" {
+		t.Errorf("expected cooling, got %s", foundReasons["acct-cooling"])
 	}
 }
 

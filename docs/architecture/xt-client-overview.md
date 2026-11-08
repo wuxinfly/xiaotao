@@ -109,6 +109,17 @@
 
 两个目录的具体路径、是否允许用户自选路径、卸载与数据清理方式尚未确定。安装状态和版本信息应与账号凭据区分，凭据保护方案待详细设计。
 
+### 模块化日志与跨层追踪（2026-11-08）
+
+运行日志按业务模块拆分为 5 个独立子目录，每日自动轮换并保留 14 天滚动历史（历史单文件日志自动归档至 `logs/archive/`）：
+- `logs/client/client-YYYY-MM-DD.log`：服务启动、端口监听、同源校验及 HTTP 访问日志；
+- `logs/proxy/proxy-YYYY-MM-DD.log`：代理请求、渠道路由、账号选择与降级冷却；
+- `logs/agent/agent-YYYY-MM-DD.log`：Agent 任务生命周期、单轮模型调用、上下文精简与工具执行；
+- `logs/auth/auth-YYYY-MM-DD.log`：登录流程、凭据保存、Token 刷新与配额同步；
+- `logs/usage/usage-YYYY-MM-DD.log`：用量落盘、统计聚合、队列状态与清理任务。
+
+日志遵循严格隐私红线：绝不记录用户 prompt、对话正文、工具详细参数与输出全文，所有 Authorization、Token、Cookie 等敏感凭据统一经 `logging.Redact` 掩码。跨模块通过 `req_id`（HTTP 链路）、`chatcmpl-`（代理与用量）、`session_id`/`run_id`（Agent 会话）串联全链路排查。支持通过环境变量 `XIAOTAO_LOG_LEVEL`（debug/info/warn/error，默认 info）动态调节日志级别。
+
 开发阶段正式版与 UAT 版使用同一源码、不同编译身份。正式版为 `xiaotao.exe`，默认数据目录 `%LOCALAPPDATA%\XiaoTao`，优先端口 `5455`；UAT 版为 `xiaotao-uat.exe`，默认数据目录 `%LOCALAPPDATA%\XiaoTao-uat`，优先端口 `5456`。两套环境的服务锁、窗口锁、窗口标题和桌面快捷方式也彼此独立，允许同时运行。UAT 首次启动时从正式版只读导入一次已登录的模型账号，并在 UAT 密钥环内重新加密保存；代理密钥、用量、配额、配置、Agent 会话、日志和运行时状态不共享。导入完成后两套账号独立维护，正式版文件不被 UAT 修改。会轮换 refresh token 的来源在两侧同时刷新时存在登录态互斥风险。该区分用于开发验收，不替代正式安装启动器与版本升级设计。
 
 ## 5. 服务接口与生命周期

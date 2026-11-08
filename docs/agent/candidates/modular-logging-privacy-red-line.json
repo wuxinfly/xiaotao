@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "modular-logging-privacy-red-line",
+  "created_at": "2026-11-08T06:55:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.modular-logging-privacy-red-line",
+  "text": "xt-client 运行日志统一按 client/proxy/agent/auth/usage 5 个子目录分模块记录并按天轮转保留 14 天；日志严格遵守隐私红线，仅记录元数据与结构化字段，严禁输出用户对话正文、工具调用详细参数及输出全文，敏感凭据与 Token 统一使用 logging.Redact 掩码。",
+  "rationale": "历史日志单文件曾记录完整请求正文带来凭据和隐私泄露隐患，且排查问题困难；拆分 5 个子目录并建立 req_id / chatcmpl- / session_id 关联串联全链路，同时从架构层杜绝正文与敏感凭据入日志。",
+  "observations": 2,
+  "source_refs": [
+    "xt-client/internal/logging/logging.go",
+    "xt-client/internal/logging/redact.go",
+    "docs/plans/2026-11-08-modular-logging.md",
+    "xt-client/README.md"
+  ]
+}

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/providers/trae"
@@ -45,10 +46,12 @@ func NewAccountService(store *storage.Store, secret func(id string) ([]byte, err
 func (a *AccountService) decodeCred(id string) (*providers.Credential, error) {
 	b, err := a.secret(id)
 	if err != nil {
+		logging.Default().For(logging.ModuleAuth).Warn("credential decode failed", logging.F("account", id), logging.F("error", logging.Redact(err.Error(), 200)))
 		return nil, err
 	}
 	var cred providers.Credential
 	if err := jsonUnmarshal(b, &cred); err != nil {
+		logging.Default().For(logging.ModuleAuth).Warn("credential decode failed", logging.F("account", id), logging.F("error", logging.Redact(err.Error(), 200)))
 		return nil, fmt.Errorf("invalid credential: %w", err)
 	}
 	if acct, ok := a.Store.Account(id); ok {
@@ -61,6 +64,9 @@ func (a *AccountService) decodeCred(id string) (*providers.Credential, error) {
 }
 
 func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) {
+	start := time.Now()
+	provider := a.providerID(id)
+	logging.Default().For(logging.ModuleAuth).Info("refresh quota started", logging.F("account", id), logging.F("provider", provider))
 	a.mu.Lock()
 	if ch, ok := a.refresh[id]; ok {
 		a.mu.Unlock()
@@ -81,6 +87,7 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 	}()
 	cred, err := a.decodeCred(id)
 	if err != nil {
+		logging.Default().For(logging.ModuleAuth).Warn("refresh quota failed", logging.F("account", id), logging.F("provider", provider), logging.F("duration_ms", time.Since(start).Milliseconds()), logging.F("error", logging.Redact(err.Error(), 200)))
 		return storage.QuotaSnapshot{}, err
 	}
 	if cred.ExpiresAt > 0 && cred.ExpiresAt-time.Now().Unix() < 300 {
@@ -88,10 +95,11 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 			a.Store.UpdateAccount(id, func(acct *storage.Account) {
 				acct.AuthState = "expired"
 			})
+			logging.Default().For(logging.ModuleAuth).Warn("refresh quota failed", logging.F("account", id), logging.F("provider", provider), logging.F("duration_ms", time.Since(start).Milliseconds()), logging.F("error", logging.Redact(err.Error(), 200)))
 			return storage.QuotaSnapshot{}, err
 		}
 	}
-	snap, err := providerQuota(context.Background(), a.providerID(id), cred)
+	snap, err := providerQuota(context.Background(), provider, cred)
 	if err != nil {
 		a.Store.UpdateAccount(id, func(acct *storage.Account) {
 			if acct.Quota == nil {
@@ -101,6 +109,7 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 			acct.Quota.Error = redactText(err.Error())
 			acct.Quota.FetchedAt = time.Now().Unix()
 		})
+		logging.Default().For(logging.ModuleAuth).Warn("refresh quota failed", logging.F("account", id), logging.F("provider", provider), logging.F("duration_ms", time.Since(start).Milliseconds()), logging.F("error", logging.Redact(err.Error(), 200)))
 		return storage.QuotaSnapshot{}, err
 	}
 	_ = a.Store.UpdateAccount(id, func(acct *storage.Account) {
@@ -110,11 +119,12 @@ func (a *AccountService) RefreshQuota(id string) (storage.QuotaSnapshot, error) 
 	a.mu.Lock()
 	a.quotaAt[id] = time.Now().Unix()
 	a.mu.Unlock()
-	if a.providerID(id) == "trae" || a.providerID(id) == "workbuddy" || a.providerID(id) == "qoder" {
+	if provider == "trae" || provider == "workbuddy" || provider == "qoder" {
 		go func() {
 			_, _ = a.FetchCheckin(id)
 		}()
 	}
+	logging.Default().For(logging.ModuleAuth).Info("refresh quota finished", logging.F("account", id), logging.F("provider", provider), logging.F("status", snap.Status), logging.F("duration_ms", time.Since(start).Milliseconds()))
 	return *snap, nil
 }
 
@@ -180,6 +190,12 @@ func (a *AccountService) FetchCheckin(id string) (storage.CheckinStatus, error) 
 	_ = a.Store.UpdateAccount(id, func(acct *storage.Account) {
 		acct.Checkin = &st
 	})
+	logging.Default().For(logging.ModuleAuth).Info("fetch checkin finished",
+		logging.F("account", id),
+		logging.F("provider", provider),
+		logging.F("checked", st.CheckedIn),
+		logging.F("streak", st.StreakDays),
+	)
 	return st, nil
 }
 
@@ -251,6 +267,13 @@ func (a *AccountService) ClaimCheckin(id string) (CheckinClaimResult, error) {
 			_, _ = a.RefreshQuota(id)
 		}()
 	}
+	logging.Default().For(logging.ModuleAuth).Info("claim checkin finished",
+		logging.F("account", id),
+		logging.F("provider", provider),
+		logging.F("ok", result.OK),
+		logging.F("checked", result.CheckedIn),
+		logging.F("streak", result.StreakDays),
+	)
 	return result, nil
 }
 

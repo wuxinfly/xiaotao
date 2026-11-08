@@ -3,16 +3,16 @@ package usage
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
-	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"xiaotao/xt-client/internal/logging"
 )
 
 type Service struct {
@@ -78,11 +78,22 @@ func New(dataDir, version string) (*Service, error) {
 	// 1. Recover any lingering unfinalized requests from previous run
 	if _, err := db.RecoverUnfinishedRequests(batchID, now); err != nil {
 		s.storageStatus = StorageStatus{Status: "degraded", Message: "恢复中断请求异常: " + err.Error()}
+		logging.Default().For(logging.ModuleUsage).Warn("usage storage degraded",
+			logging.F("reason", logging.Redact(err.Error(), 200)),
+		)
 	}
 
 	// 2. Cleanup expired records older than 7 rolling days
 	cutoff := now.Add(-7 * 24 * time.Hour)
-	_, _ = db.CleanupExpiredRequests(cutoff)
+	if n, err := db.CleanupExpiredRequests(cutoff); err != nil {
+		logging.Default().For(logging.ModuleUsage).Warn("initial cleanup failed",
+			logging.F("error", logging.Redact(err.Error(), 200)),
+		)
+	} else if n > 0 {
+		logging.Default().For(logging.ModuleUsage).Info("initial cleanup completed",
+			logging.F("pruned_records", n),
+		)
+	}
 
 	// 3. Load today & cumulative stats
 	todayStr := DateInShanghai(now)
@@ -165,6 +176,13 @@ func (s *Service) StartRequest(id, channel, model, accountID, actionTag, actionT
 	// Enqueue initial record write
 	s.enqueueWrite(&rec, DateInShanghai(now), 0, 0, 0, false, "")
 	s.markDirty()
+
+	logging.Default().For(logging.ModuleUsage).Info("request started",
+		logging.F("req", id),
+		logging.F("channel", channel),
+		logging.F("model", model),
+		logging.F("account", accountID),
+	)
 
 	return ar
 }
@@ -342,6 +360,29 @@ func (ar *ActiveRequest) finish(status, errSummary string) {
 	ar.s.completeActiveRequest(ar.rec.RequestID, &copyRec, isFirstFinal, status)
 	ar.s.enqueueWrite(&copyRec, DateInShanghai(now), 0, 0, 0, isFirstFinal, status)
 	ar.s.markDirty()
+
+	durMs := int64(0)
+	if copyRec.EndedAt != nil {
+		durMs = copyRec.EndedAt.Sub(copyRec.CreatedAt).Milliseconds()
+	}
+	var pt, ct, ca any
+	if copyRec.PromptTokens != nil {
+		pt = *copyRec.PromptTokens
+	}
+	if copyRec.CompletionTokens != nil {
+		ct = *copyRec.CompletionTokens
+	}
+	if copyRec.CachedTokens != nil {
+		ca = *copyRec.CachedTokens
+	}
+	logging.Default().For(logging.ModuleUsage).Info("request finished",
+		logging.F("req", copyRec.RequestID),
+		logging.F("status", copyRec.Status),
+		logging.F("duration_ms", durMs),
+		logging.F("prompt_tokens", pt),
+		logging.F("completion_tokens", ct),
+		logging.F("cached_tokens", ca),
+	)
 }
 
 func (s *Service) completeActiveRequest(id string, rec *Record, isFirstFinal bool, finalStatus string) {
@@ -444,6 +485,9 @@ func (s *Service) enqueueWrite(rec *Record, confirmedDate string, deltaPrompt, d
 		s.mu.Lock()
 		s.storageStatus = StorageStatus{Status: "degraded", Message: "持久化队列繁忙，写入延迟"}
 		s.mu.Unlock()
+		logging.Default().For(logging.ModuleUsage).Warn("usage storage downgraded to memory",
+			logging.F("reason", "write queue full"),
+		)
 	}
 }
 
@@ -462,6 +506,10 @@ func (s *Service) writeWorker() {
 			s.mu.Lock()
 			if err != nil {
 				s.storageStatus = StorageStatus{Status: "error", Message: "数据库写入失败: " + err.Error()}
+				logging.Default().For(logging.ModuleUsage).Warn("write worker error",
+					logging.F("req", task.rec.RequestID),
+					logging.F("error", logging.Redact(err.Error(), 200)),
+				)
 			} else if s.storageStatus.Status == "error" {
 				s.storageStatus = StorageStatus{Status: "healthy"}
 			}
@@ -511,7 +559,16 @@ func (s *Service) dailyCleanupWorker() {
 			return
 		case <-ticker.C:
 			cutoff := time.Now().Add(-7 * 24 * time.Hour)
-			_, _ = s.db.CleanupExpiredRequests(cutoff)
+			n, err := s.db.CleanupExpiredRequests(cutoff)
+			if err != nil {
+				logging.Default().For(logging.ModuleUsage).Warn("daily cleanup failed",
+					logging.F("error", logging.Redact(err.Error(), 200)),
+				)
+			} else {
+				logging.Default().For(logging.ModuleUsage).Info("daily cleanup completed",
+					logging.F("pruned_records", n),
+				)
+			}
 		}
 	}
 }
@@ -767,83 +824,5 @@ func formatStatusText(status string, created, now time.Time) string {
 }
 
 func sanitizeError(err string) string {
-	if len(err) > 300 {
-		err = err[:300] + "..."
-	}
-	low := strings.ToLower(err)
-	for _, k := range []string{"token", "jwt", "key", "password", "secret", "bearer"} {
-		if i := strings.Index(low, k); i >= 0 {
-			err = err[:i] + k + "=<redacted>"
-			break
-		}
-	}
-	return err
-}
-
-// HandleSSE streams real-time DashboardSnapshot updates over Server-Sent Events.
-func (s *Service) HandleSSE(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Connection", "keep-alive")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-
-	// Initial snapshot
-	snap, err := s.Snapshot()
-	if err != nil {
-		http.Error(w, "snapshot error", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSONEvent := func(eventType string, data any) error {
-		b, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		if eventType != "" {
-			fmt.Fprintf(w, "event: %s\n", eventType)
-		}
-		fmt.Fprintf(w, "data: %s\n\n", b)
-		flusher.Flush()
-		return nil
-	}
-
-	if err := writeJSONEvent("snapshot", snap); err != nil {
-		return
-	}
-
-	// Register subscription
-	ch := make(chan *DashboardSnapshot, 8)
-	s.subMu.Lock()
-	s.subs[ch] = struct{}{}
-	s.subMu.Unlock()
-
-	defer func() {
-		s.subMu.Lock()
-		delete(s.subs, ch)
-		s.subMu.Unlock()
-	}()
-
-	pingTicker := time.NewTicker(15 * time.Second)
-	defer pingTicker.Stop()
-
-	ctx := r.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.done:
-			return
-		case <-pingTicker.C:
-			fmt.Fprint(w, ": ping\n\n")
-			flusher.Flush()
-		case update := <-ch:
-			if err := writeJSONEvent("update", update); err != nil {
-				return
-			}
-		}
-	}
+	return logging.Redact(err, 300)
 }

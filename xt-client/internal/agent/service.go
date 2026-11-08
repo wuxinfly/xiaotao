@@ -503,6 +503,10 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	stats.ContextTokens = initialBreakdown.TotalTokens
 	history.RunStats = append(history.RunStats, stats)
 	emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: &stats})
+	runCtx = withAgentSessionRun(runCtx, sessionID, runID)
+	setCurrentSession(sessionID)
+	defer setCurrentSession("")
+	logSessionStart(sessionID, runID, history.Model, len(history.Messages), stats.ContextWindow)
 	err = s.loopWithRunSettings(runCtx, workspace, client, history, messages, references, runID, &stats, &outputSeconds, effectiveSettings, emit)
 	history.UpdatedAt = time.Now()
 	end := time.Now()
@@ -511,6 +515,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 		if runCtx.Err() != nil {
 			history.Status = StatusCanceled
 			history.Error = "任务已停止"
+			logUserCancel(sessionID, runID, "context_canceled")
 		} else {
 			history.Status = StatusFailed
 			history.Error = err.Error()
@@ -518,6 +523,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	} else {
 		history.Status = StatusCompleted
 	}
+	logSessionEnd(sessionID, runID, string(history.Status), end.Sub(stats.StartedAt).Milliseconds(), stats.OutputTokens, stats.ToolCalls)
 	stats.Phase = history.Status
 	if stats.OutputTokens > 0 && outputSeconds > 0 {
 		stats.OutputSpeed = math.Round(float64(stats.OutputTokens)/outputSeconds*10) / 10
@@ -619,6 +625,9 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		stats.ModelRequests++
 		stats.firstRequestAt = time.Now()
 		stats.FirstTokenMs = 0
+		turnAttempt := stats.ModelRequests
+		turnStart := time.Now()
+		logTurnRequestStart(history.ID, runID, turnAttempt, stats.ContextTokens, len(tools))
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		var requestChars int
 		var requestFirstOutputAt time.Time
@@ -655,6 +664,14 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 			}
 		})
+		turnDur := time.Since(turnStart).Milliseconds()
+		var outTokens int64
+		var hasTools bool
+		if result != nil {
+			outTokens = int64(result.OutputTokens)
+			hasTools = len(result.ToolCalls) > 0
+		}
+		logTurnRequestEnd(history.ID, runID, turnDur, stats.FirstTokenMs, outTokens, hasTools)
 		recordCompletionStats(stats, result, outputSeconds)
 		completedTokens = stats.OutputTokens
 		requestChars = 0
@@ -798,6 +815,7 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			history.Activity[len(history.Activity)-1] = activity
 			history.UpdatedAt = end
 			emit(Event{Type: "activity", SessionID: history.ID, Activity: &activity})
+			logToolCall(history.ID, runID, call.Name, activity.Status, end.Sub(activity.StartedAt).Milliseconds(), len(output))
 			stats.ToolCalls++
 			if call.Name == "read_file" {
 				stats.FilesRead++
@@ -886,6 +904,7 @@ func (s *Service) runReadBatch(ctx context.Context, execute func(context.Context
 		if call.Name == "read_file" {
 			stats.FilesRead++
 		}
+		logToolCall(history.ID, runID, call.Name, activities[i].Status, result.ended.Sub(activities[i].StartedAt).Milliseconds(), len(result.output))
 		messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "name": call.Name, "content": result.output})
 		history.Messages = append(history.Messages, Message{ID: "msg_" + randomID(6), Role: "tool", Content: result.output, ToolCallID: call.ID, ToolName: call.Name, CreatedAt: result.ended})
 	}
@@ -907,6 +926,7 @@ func (s *Service) Cancel(id string) bool {
 		return false
 	}
 	r.cancel()
+	logUserCancel(id, "", "user_cancel_called")
 	return true
 }
 
@@ -942,6 +962,12 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if sID := agentSessionID(ctx); sID != "" {
+		req.Header.Set("X-Xiaotao-Session", sID)
+	}
+	if rID := agentRunID(ctx); rID != "" {
+		req.Header.Set("X-Xiaotao-Run", rID)
+	}
 	if c.key != nil {
 		req.Header.Set("Authorization", "Bearer "+c.key())
 	}
@@ -1098,100 +1124,6 @@ func historyHasImages(messages []Message) bool {
 		}
 	}
 	return false
-}
-
-func activityTitle(name string) string {
-	switch name {
-	case "list_files":
-		return "查看项目结构"
-	case "search_files":
-		return "搜索代码"
-	case "read_file":
-		return "阅读文件"
-	case "write_file":
-		return "更新文件"
-	case "run_command":
-		return "运行命令"
-	case "read_historical_tool_result":
-		return "回查历史工具输出"
-	case mcpEnableToolName:
-		return "启用浏览器工具"
-	default:
-		return "调用工具"
-	}
-}
-
-func activityDetail(args json.RawMessage) string {
-	var value map[string]any
-	if json.Unmarshal(args, &value) != nil {
-		return ""
-	}
-	for _, key := range []string{"path", "command", "query"} {
-		if text, ok := value[key].(string); ok && text != "" {
-			runes := []rune(text)
-			if len(runes) > 80 {
-				return string(runes[:80]) + "..."
-			}
-			return text
-		}
-	}
-	return ""
-}
-
-func localActivityInput(name string, args json.RawMessage) string {
-	if len(args) == 0 {
-		return ""
-	}
-	var value map[string]any
-	if json.Unmarshal(args, &value) != nil {
-		return string(args)
-	}
-	switch name {
-	case "read_file":
-		var input struct {
-			Path   string `json:"path"`
-			Offset int    `json:"offset"`
-			Limit  int    `json:"limit"`
-		}
-		if json.Unmarshal(args, &input) == nil {
-			value = map[string]any{"path": input.Path}
-			if input.Offset > 0 {
-				value["offset"] = input.Offset
-			}
-			if input.Limit > 0 {
-				value["limit"] = input.Limit
-			}
-		}
-	case "write_file":
-		var input struct {
-			Path    string `json:"path"`
-			Content string `json:"content"`
-			Append  bool   `json:"append"`
-		}
-		if json.Unmarshal(args, &input) == nil {
-			value = map[string]any{"path": input.Path, "content_bytes": len(input.Content), "append": input.Append}
-		}
-	case "run_command":
-		var input struct {
-			Command    string `json:"command"`
-			TimeoutSec int    `json:"timeout_sec"`
-		}
-		if json.Unmarshal(args, &input) == nil {
-			value = map[string]any{"command": input.Command}
-			if input.TimeoutSec > 0 {
-				value["timeout_sec"] = input.TimeoutSec
-			}
-		}
-	}
-	pretty, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return string(args)
-	}
-	return string(pretty)
-}
-
-func outputPreview(output string) string {
-	return activityPreview(strings.TrimSpace(output), 6000)
 }
 
 func randomID(n int) string {

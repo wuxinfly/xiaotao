@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/storage"
@@ -51,6 +52,17 @@ func (s *Service) handleAntigravityWithFailover(
 		cred, err := s.antigravityCredential(&acct)
 		if err != nil {
 			lastErr = err
+			action := "abort"
+			if i+1 < len(accounts) {
+				action = "switch"
+			}
+			logProxyWarn("failover decision",
+				logging.F("attempt", i+1),
+				logging.F("account", acct.ID),
+				logging.F("error", logging.Redact(err.Error(), 200)),
+				logging.F("retryable", true),
+				logging.F("action", action),
+			)
 			if i+1 < len(accounts) {
 				continue
 			}
@@ -61,7 +73,24 @@ func (s *Service) handleAntigravityWithFailover(
 		}
 		upstream := antigravityBody(msgs, tools, toolChoice, reasoningEffort, maxTokens)
 		lastErr = s.runAntigravityAttempt(ctx, w, tracker, id, created, model, modelID, stream, &acct, cred, upstream)
-		if lastErr == nil || ctx.Err() != nil || !retryableAccountError(lastErr) {
+		if lastErr == nil {
+			break
+		}
+		retryable := retryableAccountError(lastErr)
+		action := "abort"
+		if retryable && i+1 < len(accounts) {
+			action = "switch"
+		} else if retryable {
+			action = "cool"
+		}
+		logProxyWarn("failover decision",
+			logging.F("attempt", i+1),
+			logging.F("account", acct.ID),
+			logging.F("error", logging.Redact(lastErr.Error(), 200)),
+			logging.F("retryable", retryable),
+			logging.F("action", action),
+		)
+		if ctx.Err() != nil || !retryable {
 			break
 		}
 		s.markAccountCooling(acct.ID, false)

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"embed"
@@ -10,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +18,7 @@ import (
 	"xiaotao/xt-client/internal/agent"
 	"xiaotao/xt-client/internal/authsessions"
 	"xiaotao/xt-client/internal/desktop"
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/antigravity"
 	"xiaotao/xt-client/internal/providers/codex"
@@ -122,15 +121,19 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	started := time.Now()
 	store, err := storage.Open(filepath.Join(data, "accounts"))
 	if err != nil {
+		logging.Default().For(logging.ModuleClient).Error("open accounts storage failed", logging.F("error", err))
 		return nil, err
 	}
 	keyring, err := secrets.Open(filepath.Join(data, "keys"))
 	if err != nil {
+		logging.Default().For(logging.ModuleClient).Error("open keyring failed", logging.F("error", err))
 		return nil, err
 	}
 	if err := importModelAccounts(store, keyring, data); err != nil {
+		logging.Default().For(logging.ModuleClient).Error("import model accounts failed", logging.F("error", err))
 		return nil, err
 	}
+	logging.Default().For(logging.ModuleClient).Info("storage and keyring initialized")
 	proxy.SetEncryptor(keyring.Encrypt)
 	authSvc := authsessions.NewService(s.URL)
 	var proxyKey string
@@ -842,6 +845,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		send(w, cfg)
 	})
 	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		logging.Default().For(logging.ModuleClient).Info("shutdown requested via api")
 		send(w, map[string]bool{"ok": true})
 		usageSvc.Close()
 		go stop()
@@ -865,6 +869,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != s.URL[len("http://"):] {
+			logging.Default().For(logging.ModuleClient).Warn("request rejected", logging.F("path", r.URL.Path), logging.F("reason", "invalid_host"))
 			http.Error(w, "invalid host", 403)
 			return
 		}
@@ -879,82 +884,16 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
 		if origin := r.Header.Get("Origin"); origin != "" && origin != s.URL {
+			logging.Default().For(logging.ModuleClient).Warn("same-origin rejected", logging.F("path", r.URL.Path), logging.F("reason", "origin_mismatch"))
 			http.Error(w, "same-origin required", 403)
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Header.Get("Authorization") != "Bearer "+s.Token && r.Header.Get("Origin") != s.URL {
+			logging.Default().For(logging.ModuleClient).Warn("same-origin rejected", logging.F("path", r.URL.Path), logging.F("reason", "unauthorized_origin"))
 			http.Error(w, "same-origin required", 403)
 			return
 		}
 		mux.ServeHTTP(w, r)
 	})
-	return &closeableHandler{Handler: baseHandler, usage: usageSvc}, nil
-}
-
-type closeableHandler struct {
-	http.Handler
-	usage *usage.Service
-}
-
-func (c *closeableHandler) Close() error {
-	if c.usage != nil {
-		return c.usage.Close()
-	}
-	return nil
-}
-
-func writeProxyError(w http.ResponseWriter, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": message, "type": code}})
-}
-
-func Serve(ctx context.Context, data string) error {
-	release, e := desktop.Lock(runtimeenv.ServiceMutex(Key(data)))
-	if e != nil {
-		return e
-	}
-	defer release()
-	l, e := net.Listen("tcp4", "127.0.0.1:"+runtimeenv.Current().DefaultPort)
-	if e != nil {
-		l, e = net.Listen("tcp4", "127.0.0.1:0")
-		if e != nil {
-			return e
-		}
-	}
-	defer l.Close()
-	token := make([]byte, 32)
-	if _, e = rand.Read(token); e != nil {
-		return e
-	}
-	s := State{URL: "http://" + l.Addr().String(), Token: hex.EncodeToString(token), PID: os.Getpid(), Version: Version}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	h, e := Handler(s, data, cancel)
-	if e != nil {
-		return e
-	}
-	if closer, ok := h.(interface{ Close() error }); ok {
-		defer closer.Close()
-	}
-	srv := http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
-	if e = Save(filepath.Join(data, "runtime.json"), s); e != nil {
-		return e
-	}
-	defer os.Remove(filepath.Join(data, "runtime.json"))
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		<-ctx.Done()
-		c, stop := context.WithTimeout(context.Background(), 5*time.Second)
-		defer stop()
-		srv.Shutdown(c)
-	}()
-	e = srv.Serve(l)
-	cancel()
-	<-done
-	if e == http.ErrServerClosed {
-		return nil
-	}
-	return e
+	return &closeableHandler{Handler: accessLogMiddleware(baseHandler), usage: usageSvc}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/qoder"
 	"xiaotao/xt-client/internal/storage"
@@ -21,6 +22,7 @@ func (s *Service) handleQoder(ctx context.Context, w http.ResponseWriter, tracke
 		}
 	}
 	if entry.UpstreamID == "" {
+		logProxyWarn("qoder model invalid", logging.F("account", acct.ID), logging.F("model", model))
 		writeError(w, 400, "invalid_model", "Qoder 模型目录不可用或模型已停用")
 		if tracker != nil {
 			tracker.OnError("模型不可用")
@@ -31,6 +33,7 @@ func (s *Service) handleQoder(ctx context.Context, w http.ResponseWriter, tracke
 	json.Unmarshal(raw, &body)
 	reg, ok := qoder.Regions[acct.Region]
 	if !ok {
+		logProxyWarn("qoder region invalid", logging.F("account", acct.ID), logging.F("region", acct.Region))
 		if tracker != nil {
 			tracker.OnError("Qoder 区域无效")
 		}
@@ -43,6 +46,7 @@ func (s *Service) handleQoder(ctx context.Context, w http.ResponseWriter, tracke
 		result, err := collectQoderWithQueue(queueCtx, client, cred, model, entry, body)
 		queueCancel()
 		if err != nil {
+			logProxyWarn("qoder non-stream request failed", logging.F("account", acct.ID), logging.F("model", model), logging.F("status", upstreamHTTPStatus(err)), logging.F("error", redact(err.Error())))
 			if tracker != nil {
 				if ctx.Err() != nil {
 					tracker.OnCanceled()
@@ -59,6 +63,7 @@ func (s *Service) handleQoder(ctx context.Context, w http.ResponseWriter, tracke
 		if tracker != nil {
 			tracker.OnCompleted()
 		}
+		logProxyInfo("qoder non-stream request completed", logging.F("account", acct.ID), logging.F("model", model))
 		writeJSON(w, result)
 		return
 	}
@@ -113,6 +118,7 @@ func (s *Service) handleQoder(ctx context.Context, w http.ResponseWriter, tracke
 		s.recordUsage(tracker, acct, confirmed)
 	}
 	if err != nil {
+		logProxyWarn("qoder stream request failed", logging.F("account", acct.ID), logging.F("model", model), logging.F("error", redact(err.Error())))
 		if tracker != nil {
 			if ctx.Err() != nil {
 				tracker.OnCanceled()
