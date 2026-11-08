@@ -183,6 +183,8 @@
 
 2026-11-08 reasoning_effort 统一层：内部归一化档位为 low/medium/high/xhigh/max，别名 none/minimal/light→low、ultra/extra_high→xhigh；代理按模型目录声明的档位就近取（平手取更高档），模型未声明对应档位时不下发字段。Trae 出口翻译为原生拼写（low→light、xhigh→extra_high），Antigravity thinkingBudget 映射覆盖 xhigh/max，Codex Responses 与 Qoder 继续透传归一化值。Agent 会话 `ModelSettings` 新增 `reasoningEffort` 并随会话快照持久化，前端仅对目录声明 `supportsReasoning` 的模型展示思考等级选择。
 
+同日 Trae 窗口与 Max 变体：目录解析 `context_window_tokens.dev` 写入 `MaxInputTokens`，`model_detail_list` 里 `__max` 明细且 `max` 窗口更大时生成独立 `-max` 变体（继承档位与多模态标志）；请求 `-max` 变体时 `config_name` 改用 `__max` 上游名并携带 `user_message_context.model_info.prompt_max_tokens`（窗口减 `max_tokens`），与 Trae 客户端的 Max 模式一致。目录刷新后前端模型列表即可看到 1M 窗口变体。
+
 接入时必须覆盖推理参数转换：
 - Anthropic `thinking.type=enabled` 的 `budget_tokens` 映射至上游支持的推理档位，`disabled` 映射为关闭；具体阈值按渠道能力确定，不直接照搬参考项目。
 - Responses `reasoning.effort` 转为内部 `reasoning_effort`；null 表示使用默认，不下发空值。

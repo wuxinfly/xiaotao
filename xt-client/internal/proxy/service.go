@@ -307,6 +307,11 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	if body.ReasoningEffort != "" {
 		upstream["reasoning_effort"] = providerEffort(acct.Provider, body.ReasoningEffort)
 	}
+	if acct.Provider == "trae" && trae.IsMaxModel(body.Model) {
+		if window := trae.MaxWindow(trae.BaseModel(body.Model), s.AccountModels(acct)); window > 0 {
+			upstream["user_message_context"] = map[string]any{"model_info": map[string]any{"prompt_max_tokens": window - maxTokens}}
+		}
+	}
 	if maxTokens > 0 {
 		upstream["max_tokens"] = maxTokens
 	}

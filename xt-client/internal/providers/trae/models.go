@@ -92,7 +92,8 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 			Name      string                `json:"config_name"`
 			Switch    *bool                 `json:"config_switch"`
 			Invisible *bool                 `json:"is_invisible_to_user"`
-			Context   any                   `json:"context_window_tokens"`
+			Context   catalogContext        `json:"context_window_tokens"`
+			Details   []modelDetail         `json:"model_detail_list"`
 			Display   catalogDisplay        `json:"display_config"`
 			Contact   json.RawMessage       `json:"display_contact_config"`
 			Efforts   reasoningEffortConfig `json:"reasoning_effort_config"`
@@ -111,6 +112,7 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 		}
 		seen[id] = true
 		info := providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi, PriceFactor: catalogPriceFactor(e.Contact)}
+		info.MaxInputTokens = int(e.Context.Dev)
 		for _, raw := range e.Efforts.Options {
 			if level, ok := effort.Parse(raw); ok && !containsLevel(info.Efforts, string(level)) {
 				info.Efforts = append(info.Efforts, string(level))
@@ -118,6 +120,31 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 			}
 		}
 		out = append(out, info)
+		for _, detail := range e.Details {
+			if detail.Name == "" || !strings.HasSuffix(detail.Name, detailMaxSuffix) {
+				continue
+			}
+			if e.Context.Max <= e.Context.Dev {
+				continue
+			}
+			var price *float64
+			if info.PriceFactor != nil {
+				value := *info.PriceFactor
+				price = &value
+			}
+			maxInfo := providers.ModelInfo{
+				ID:             id + "-max",
+				UpstreamID:     detail.Name,
+				DisplayName:    orDefault(e.Display.Name, e.Name) + " (Max)",
+				Multimodal:     e.Display.Multi,
+				PriceFactor:    price,
+				MaxInputTokens: int(e.Context.Max),
+				Reasoning:      info.Reasoning,
+				Efforts:        info.Efforts,
+			}
+			out = append(out, maxInfo)
+			break
+		}
 	}
 	if len(out) == 0 {
 		return nil, ErrEmptyCatalog
@@ -127,6 +154,16 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 
 type reasoningEffortConfig struct {
 	Options []string `json:"options"`
+}
+
+type catalogContext struct {
+	Dev int64 `json:"dev"`
+	Max int64 `json:"max"`
+}
+
+type modelDetail struct {
+	Name      string `json:"model_name"`
+	MaxTokens int64  `json:"max_tokens"`
 }
 
 func containsLevel(list []string, value string) bool {
