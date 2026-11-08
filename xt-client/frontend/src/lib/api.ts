@@ -467,14 +467,9 @@ async function dashboardRequest(): Promise<DashboardSnapshot> {
 }
 
 import type {MCPServer, MCPSettings, SkillsCatalog, SkillsSettings} from './extensions';
-
 export type {MCPServer, MCPSettings, SkillsCatalog, SkillsSettings} from './extensions';
-
-export interface ModelCatalog {
-  models: ({ id: string; displayName?: string; multimodal: boolean } & ModelPricing)[];
-  source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error';
-  error?: string;
-}
+export interface ModelInfo extends ModelPricing { id: string; displayName?: string; multimodal: boolean; maxInputTokens?: number; }
+export interface ModelCatalog { models: ModelInfo[]; source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error'; error?: string; }
 
 export const api = {
   // MCP / Skills payload types live in extensions.ts; requests stay here.

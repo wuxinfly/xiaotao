@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {ModelPriceBadge} from '../../../components/ModelPriceBadge';
-import { api, type Account, type ModelCatalog } from '../../../lib/api';
+import { api, type Account, type ModelCatalog, type ModelInfo } from '../../../lib/api';
 import { toast } from '../../../components/toast';
+import { formatContextWindow, getContextWindowTitle } from '../modelCatalogUtils';
+import './model-catalog.css';
 
 export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[]; providerId: string }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '');
@@ -72,11 +74,17 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
       {loading && !catalog && <div className="model-catalog-state" aria-label="正在获取模型目录"><span className="model-catalog-spinner" aria-hidden="true" />正在获取模型目录…</div>}
       {error && <p className="model-catalog-error" role="alert">{error}，可点击刷新重试。</p>}
       {!loading && catalog?.models.length === 0 && <div className="model-catalog-state">该账号暂无模型目录。</div>}
-      <div className="model-catalog-list">{!loading && catalog?.models?.map(model => {
+      <div className="model-catalog-list">{!loading && catalog?.models?.map((model: ModelInfo) => {
         const id = `${providerId}/${model.id}`;
         return <div className="model-catalog-row" key={id}>
           <div className="model-catalog-copy">
-            <strong>{model.displayName || model.id}<ModelPriceBadge {...model}/></strong>
+            <strong>
+              {model.displayName || model.id}
+              <ModelPriceBadge {...model}/>
+              <span className="model-catalog-context" title={getContextWindowTitle(model.maxInputTokens)}>
+                {formatContextWindow(model.maxInputTokens)}
+              </span>
+            </strong>
             <code>{id}</code>
           </div>
           <button type="button" className="model-catalog-copy-btn" onClick={() => void copy(id)} aria-label={`复制 ${id}`}>

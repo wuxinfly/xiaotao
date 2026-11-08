@@ -23,7 +23,12 @@ test('model views read shared data; buttons refresh all sources or the current s
     const versions = {q1:1, q2:1, w1:1};
     const requests = [];
     let failRefresh = false;
-    const catalog = id => [{id:'shared', displayName:`${id.toUpperCase()} v${versions[id]}`, priceFactor:versions[id]}];
+    const catalog = id => [{
+      id: 'shared',
+      displayName: `${id.toUpperCase()} v${versions[id]}`,
+      priceFactor: versions[id],
+      maxInputTokens: id === 'q1' ? 131072 : 0,
+    }];
     const aggregated = () => [accounts[0], accounts[2]].map(account => ({model:`${account.provider}/shared`, label:catalog(account.id)[0].displayName, priceFactor:versions[account.id]}));
     await page.addInitScript(() => localStorage.setItem('xiaotao.agent.modelCatalog', JSON.stringify([{model:'obsolete/model', label:'Obsolete directory'}])));
     await page.route('**/api/**', route => {
@@ -56,6 +61,8 @@ test('model views read shared data; buttons refresh all sources or the current s
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('xiaotao:navigate', {detail:'accounts'})));
     await page.getByTitle('查看 Qoder 模型目录', {exact:true}).click();
     await page.locator('.model-catalog-row').filter({hasText:'Q1 v2'}).waitFor();
+    assert.equal(await page.locator('.model-catalog-row .model-catalog-context').textContent(), '上下文 128K tokens');
+    assert.equal(await page.locator('.model-catalog-row .model-catalog-context').getAttribute('title'), '目录声明的最大输入上下文，以实际可用为准');
     assert.equal(requests.filter(request => request.path === '/api/proxy/models' && request.method === 'POST').length, 0);
     await page.getByRole('button', {name:'刷新列表', exact:true}).click();
     await page.locator('.model-catalog-row').filter({hasText:'Q1 v3'}).waitFor();
@@ -63,14 +70,17 @@ test('model views read shared data; buttons refresh all sources or the current s
     assert.deepEqual(requests.filter(request => request.path === '/api/proxy/models' && request.method === 'POST').map(request => request.id).sort(), ['q1','q2']);
     await page.locator('.model-catalog-account select').selectOption('q2');
     await page.locator('.model-catalog-row').filter({hasText:'Q2 v3'}).waitFor();
+    assert.equal(await page.locator('.model-catalog-row .model-catalog-context').textContent(), '上下文未知');
+    assert.equal(await page.locator('.model-catalog-row .model-catalog-context').getAttribute('title'), '目录未提供最大输入上下文');
     assert.deepEqual(versions, {q1:3, q2:3, w1:2});
     failRefresh = true;
     await page.getByRole('button', {name:'刷新列表', exact:true}).click();
     await page.getByText('2 个账号模型目录刷新失败，已保留原有目录').waitFor();
     await page.locator('.model-catalog-row').filter({hasText:'Q2 v3'}).waitFor();
-    await page.keyboard.press('Escape');
+    await page.getByRole('button', {name:'关闭模型目录弹窗'}).click();
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('xiaotao:navigate', {detail:'agent'})));
     await page.getByRole('button', {name:'打开 Agent 设置'}).click();
+    await page.getByRole('button', {name:/添加第一个模型/}).click();
     await page.locator('.agent-settings-group-toggle').filter({hasText:'Qoder'}).click();
     await page.locator('.agent-model-choice').filter({hasText:'Q1 v3'}).waitFor();
     assert.deepEqual(errors, []);

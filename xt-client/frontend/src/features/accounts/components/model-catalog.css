@@ -1,0 +1,19 @@
+.model-catalog-context {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--muted, #7f9eac) 28%, transparent);
+  border-radius: 5px;
+  color: var(--muted, #7f9eac);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+[data-theme='light'] .model-catalog-context {
+  border-color: rgba(60, 95, 115, .25);
+  color: #4b6b7a;
+}
