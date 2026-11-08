@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	effortpkg "xiaotao/xt-client/internal/effort"
 )
 
 const systemIdentity = "You are Antigravity, a powerful agentic AI coding assistant designed by " +
@@ -113,9 +115,13 @@ func generationConfig(body map[string]any) map[string]any {
 		cfg["stopSequences"] = []string{stop}
 	}
 	effort, _ := body["reasoning_effort"].(string)
-	effort = strings.ToLower(effort)
+	if level, ok := effortpkg.Parse(effort); ok {
+		effort = string(level)
+	} else {
+		effort = strings.ToLower(effort)
+	}
 	switch effort {
-	case "low", "medium", "high":
+	case "low", "medium", "high", "xhigh", "max":
 		budget := map[string]int{"low": 1024, "medium": 8192, "high": 24576}[effort]
 		cfg["thinkingConfig"] = map[string]any{"thinkingBudget": budget}
 	case "none", "disable":

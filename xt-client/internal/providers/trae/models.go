@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"xiaotao/xt-client/internal/effort"
 	"xiaotao/xt-client/internal/providers"
 )
 
@@ -88,12 +89,13 @@ func FetchUpstreamModels(cred *providers.Credential, machineID, deviceID string)
 func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 	var parsed struct {
 		ConfigInfoList []struct {
-			Name      string          `json:"config_name"`
-			Switch    *bool           `json:"config_switch"`
-			Invisible *bool           `json:"is_invisible_to_user"`
-			Context   any             `json:"context_window_tokens"`
-			Display   catalogDisplay  `json:"display_config"`
-			Contact   json.RawMessage `json:"display_contact_config"`
+			Name      string                `json:"config_name"`
+			Switch    *bool                 `json:"config_switch"`
+			Invisible *bool                 `json:"is_invisible_to_user"`
+			Context   any                   `json:"context_window_tokens"`
+			Display   catalogDisplay        `json:"display_config"`
+			Contact   json.RawMessage       `json:"display_contact_config"`
+			Efforts   reasoningEffortConfig `json:"reasoning_effort_config"`
 		} `json:"config_info_list"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
@@ -108,12 +110,32 @@ func parseModelCatalog(raw []byte) ([]providers.ModelInfo, error) {
 			continue
 		}
 		seen[id] = true
-		out = append(out, providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi, PriceFactor: catalogPriceFactor(e.Contact)})
+		info := providers.ModelInfo{ID: id, UpstreamID: e.Name, DisplayName: orDefault(e.Display.Name, e.Name), Multimodal: e.Display.Multi, PriceFactor: catalogPriceFactor(e.Contact)}
+		for _, raw := range e.Efforts.Options {
+			if level, ok := effort.Parse(raw); ok && !containsLevel(info.Efforts, string(level)) {
+				info.Efforts = append(info.Efforts, string(level))
+				info.Reasoning = true
+			}
+		}
+		out = append(out, info)
 	}
 	if len(out) == 0 {
 		return nil, ErrEmptyCatalog
 	}
 	return out, nil
+}
+
+type reasoningEffortConfig struct {
+	Options []string `json:"options"`
+}
+
+func containsLevel(list []string, value string) bool {
+	for _, item := range list {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 type catalogDisplay struct {
@@ -167,6 +189,20 @@ func UpstreamModel(id string) string {
 		return name
 	}
 	return id
+}
+
+// NativeEffort translates a normalized level into Trae's spelling. Models
+// without a matching entry reject the field, so callers only send levels the
+// catalog declared.
+func NativeEffort(level string) string {
+	switch effort.Level(level) {
+	case effort.Low:
+		return "light"
+	case effort.XHigh:
+		return "extra_high"
+	default:
+		return level
+	}
 }
 
 func catalogPriceFactor(raw json.RawMessage) *float64 {

@@ -75,7 +75,21 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     return {
       contextWindow: saved?.contextWindow || options.find(item => item.model === model)?.contextWindow,
       maxOutputTokens: saved?.maxOutputTokens,
+      reasoningEffort: saved?.reasoningEffort,
     };
+  }
+
+  function updateReasoningEffort(model: string, raw: string) {
+    const value = raw.trim();
+    setFormError('');
+    setConfigs(current => ({
+      ...current,
+      [model]: {
+        ...current[model],
+        model,
+        reasoningEffort: value === '' ? undefined : value,
+      },
+    }));
   }
 
   function updateSettings(model: string, key: 'contextWindow' | 'maxOutputTokens', raw: string) {
@@ -114,6 +128,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
       model,
       contextWindow: configs[model]?.contextWindow || models.find(item => item.model === model)?.contextWindow,
       maxOutputTokens: configs[model]?.maxOutputTokens,
+      reasoningEffort: configs[model]?.reasoningEffort,
     }));
     if (!validate(nextConfigs)) return;
     onSave(nextConfigs, defaults, defaultSettings);
@@ -184,6 +199,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
             <span className="agent-model-execution-title">执行参数</span>
             <label><span>上下文窗口</span><div><input type="number" min="1024" step="1024" inputMode="numeric" value={config.contextWindow ?? ''} onChange={event => updateSettings(item.model, 'contextWindow', event.target.value)} placeholder={item.contextWindow ? String(item.contextWindow) : '未知'} aria-label={`${name} 上下文窗口`}/><small>tokens</small></div></label>
             <label><span>最大输出</span><div><input type="number" min="16" step="256" inputMode="numeric" value={config.maxOutputTokens ?? ''} onChange={event => updateSettings(item.model, 'maxOutputTokens', event.target.value)} placeholder="跟随上游" aria-label={`${name} 最大输出`}/><small>tokens</small></div></label>
+            {item.supportsReasoning && <label><span>思考等级</span><div><select value={config.reasoningEffort ?? ''} onChange={event => updateReasoningEffort(item.model, event.target.value)} aria-label={`${name} 思考等级`}><option value="">跟随上游</option>{(item.reasoningEfforts || []).map(effort => <option key={effort} value={effort}>{effort}</option>)}</select></div></label>}
           </div>
         </article>;
       })}

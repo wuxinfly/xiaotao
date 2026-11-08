@@ -181,6 +181,8 @@
 
 目前对外提供 `/v1/chat/completions`，接收 `reasoning_effort`。Codex provider 内部调用 Responses 不等于对外实现 `/v1/responses`；Anthropic `/v1/messages` 与 Responses 入口仍待接入。
 
+2026-11-08 reasoning_effort 统一层：内部归一化档位为 low/medium/high/xhigh/max，别名 none/minimal/light→low、ultra/extra_high→xhigh；代理按模型目录声明的档位就近取（平手取更高档），模型未声明对应档位时不下发字段。Trae 出口翻译为原生拼写（low→light、xhigh→extra_high），Antigravity thinkingBudget 映射覆盖 xhigh/max，Codex Responses 与 Qoder 继续透传归一化值。Agent 会话 `ModelSettings` 新增 `reasoningEffort` 并随会话快照持久化，前端仅对目录声明 `supportsReasoning` 的模型展示思考等级选择。
+
 接入时必须覆盖推理参数转换：
 - Anthropic `thinking.type=enabled` 的 `budget_tokens` 映射至上游支持的推理档位，`disabled` 映射为关闭；具体阈值按渠道能力确定，不直接照搬参考项目。
 - Responses `reasoning.effort` 转为内部 `reasoning_effort`；null 表示使用默认，不下发空值。

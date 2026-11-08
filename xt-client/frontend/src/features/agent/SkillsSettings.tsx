@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {BookOpen, FolderOpen, Plus, RefreshCw, Trash2} from 'lucide-react';
-import {api, type SkillsCatalog, type SkillsSettings as Settings} from '../../lib/api';
+import {api} from '../../lib/api';
+import type {SkillsCatalog, SkillsSettings as Settings} from '../../lib/extensions';
 import './skills-settings.css';
 
 const empty: Settings = {directories: [], disabledSkills: []};

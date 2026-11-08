@@ -153,8 +153,12 @@ func normalizeModelSettings(input, fallback *ModelSettings) (*ModelSettings, err
 		return &copy, nil
 	}
 	contextWindow := input.ContextWindow
+	effortValue := strings.TrimSpace(input.ReasoningEffort)
 	if contextWindow == 0 && fallback != nil {
 		contextWindow = fallback.ContextWindow
+	}
+	if effortValue == "" && fallback != nil {
+		effortValue = fallback.ReasoningEffort
 	}
 	if input.ContextWindow < 0 || input.MaxOutputTokens < 0 {
 		return nil, fmt.Errorf("模型参数不能为负数")
@@ -168,10 +172,10 @@ func normalizeModelSettings(input, fallback *ModelSettings) (*ModelSettings, err
 	if contextWindow > 0 && input.MaxOutputTokens >= contextWindow {
 		return nil, fmt.Errorf("最大输出必须小于上下文窗口")
 	}
-	if contextWindow == 0 && input.MaxOutputTokens == 0 {
+	if contextWindow == 0 && input.MaxOutputTokens == 0 && effortValue == "" {
 		return nil, nil
 	}
-	return &ModelSettings{ContextWindow: contextWindow, MaxOutputTokens: input.MaxOutputTokens}, nil
+	return &ModelSettings{ContextWindow: contextWindow, MaxOutputTokens: input.MaxOutputTokens, ReasoningEffort: effortValue}, nil
 }
 
 func (s *Service) Create(options Options) (*Session, error) {
@@ -218,18 +222,18 @@ func (s *Service) Create(options Options) (*Session, error) {
 		return nil, err
 	}
 	session := &Session{
-		ID:        "run_" + randomID(8),
-		Project:   project,
-		Title:     "新任务",
-		Model:     model,
+		ID:            "run_" + randomID(8),
+		Project:       project,
+		Title:         "新任务",
+		Model:         model,
 		ModelSettings: settings,
-		Status:    StatusIdle,
-		Messages:  []Message{},
-		Activity:  []Activity{},
-		Thoughts:  []ThoughtStep{},
-		RunStats:  []RunStats{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Status:        StatusIdle,
+		Messages:      []Message{},
+		Activity:      []Activity{},
+		Thoughts:      []ThoughtStep{},
+		RunStats:      []RunStats{},
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 	s.mu.Lock()
 	s.runs[session.ID] = &run{}
@@ -446,6 +450,9 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 			return err
 		}
 		history.ModelSettings = effectiveSettings
+	}
+	if effectiveSettings != nil {
+		effectiveSettings.ReasoningEffort = s.reasoningEffort(history.Model, effectiveSettings.ReasoningEffort)
 	}
 	if (len(images) > 0 || historyHasImages(history.Messages)) && !s.supportsImages(history.Model) {
 		return fmt.Errorf("会话包含图片，当前模型未声明支持图片，请切换支持图片的模型")
@@ -903,8 +910,6 @@ func (s *Service) Cancel(id string) bool {
 	return true
 }
 
-
-
 func readableThought(value string) string {
 	value = strings.TrimSpace(strings.Join(strings.Fields(value), " "))
 	value = strings.TrimLeft(value, "-*# ")
@@ -915,13 +920,14 @@ func readableThought(value string) string {
 	return value
 }
 
-
-
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, settings ModelSettings, onDelta func(string)) (*completion, error) {
 	startedAt := time.Now()
 	payload := map[string]any{"model": model, "messages": messages, "stream": true}
 	if settings.MaxOutputTokens > 0 {
 		payload["max_tokens"] = settings.MaxOutputTokens
+	}
+	if settings.ReasoningEffort != "" {
+		payload["reasoning_effort"] = settings.ReasoningEffort
 	}
 	if len(tools) > 0 {
 		payload["tools"] = tools

@@ -301,6 +301,8 @@ export interface AgentModelOption extends ModelPricing {
   model: string;
   label: string;
   supportsImages?: boolean;
+  supportsReasoning?: boolean;
+  reasoningEfforts?: string[];
   contextWindow?: number;
 }
 
@@ -464,20 +466,18 @@ async function dashboardRequest(): Promise<DashboardSnapshot> {
   }
 }
 
+import type {MCPServer, MCPSettings, SkillsCatalog, SkillsSettings} from './extensions';
+
+export type {MCPServer, MCPSettings, SkillsCatalog, SkillsSettings} from './extensions';
+
 export interface ModelCatalog {
   models: ({ id: string; displayName?: string; multimodal: boolean } & ModelPricing)[];
   source: 'live' | 'builtin' | 'merged' | 'cached' | 'stale' | 'error';
   error?: string;
 }
 
-export interface MCPServer { command: string; args: string[]; disabled?: boolean }
-export interface MCPSettings { mcpServers: Record<string, MCPServer>; source?: 'local' | 'environment' | 'empty' }
-export interface SkillDirectory {path: string; disabled?: boolean}
-export interface SkillsSettings {directories: SkillDirectory[]; disabledSkills: string[]}
-export interface LocalSkill {id: string; name: string; description: string; path: string; directory: string; enabled: boolean; error?: string}
-export interface SkillsCatalog {settings: SkillsSettings; skills: LocalSkill[]; issues: {path: string; message: string}[]; issuesOmitted?: number}
-
 export const api = {
+  // MCP / Skills payload types live in extensions.ts; requests stay here.
   agentSkills: (signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills', {signal}),
   scanAgentSkills: (settings: SkillsSettings, signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills/scan', {method:'POST', body:JSON.stringify(settings), signal}),
   saveAgentSkills: (settings: SkillsSettings, signal?: AbortSignal) => request<SkillsCatalog>('/api/agent/skills', {method:'PUT', body:JSON.stringify(settings), signal}),

@@ -4,6 +4,7 @@ import type {AgentModelOption} from './api';
 export interface AgentModelSettings {
   contextWindow?: number;
   maxOutputTokens?: number;
+  reasoningEffort?: string;
 }
 
 export interface AgentModelConfig extends AgentModelSettings {
@@ -52,6 +53,7 @@ function readModelConfigs(): AgentModelConfig[] {
       model: item.model,
       contextWindow: Number(item.contextWindow) > 0 ? Number(item.contextWindow) : undefined,
       maxOutputTokens: Number(item.maxOutputTokens) > 0 ? Number(item.maxOutputTokens) : undefined,
+      reasoningEffort: typeof item.reasoningEffort === 'string' ? item.reasoningEffort : undefined,
     }));
   } catch { return []; }
 }
@@ -74,14 +76,14 @@ export function modelConfigFor(configs: AgentModelConfig[], model: string, optio
   if (!model) return undefined;
   const saved = configs.find(item => item.model === model);
   const contextWindow = saved?.contextWindow || options.find(item => item.model === model)?.contextWindow;
-  if (!contextWindow && !saved?.maxOutputTokens) return undefined;
-  return {model, contextWindow, maxOutputTokens: saved?.maxOutputTokens};
+  if (!contextWindow && !saved?.maxOutputTokens && !saved?.reasoningEffort) return undefined;
+  return {model, contextWindow, maxOutputTokens: saved?.maxOutputTokens, reasoningEffort: saved?.reasoningEffort};
 }
 
 export function modelSettingsFor(configs: AgentModelConfig[], model: string, options: AgentModelOption[]) {
   const config = modelConfigFor(configs, model, options);
   if (!config) return undefined;
-  return {contextWindow: config.contextWindow, maxOutputTokens: config.maxOutputTokens};
+  return {contextWindow: config.contextWindow, maxOutputTokens: config.maxOutputTokens, reasoningEffort: config.reasoningEffort};
 }
 
 export function utilityModelFor(role: keyof AgentDefaultModels, defaults: AgentDefaultModels, settings: AgentModelDefaults, configs: AgentModelConfig[], options: AgentModelOption[]) {

@@ -177,14 +177,14 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		ReasoningEffort string          `json:"reasoning_effort"`
-		Model           string          `json:"model"`
-		Stream          bool            `json:"stream"`
-		MaxTokens       int64           `json:"max_tokens"`
-		MaxCompletionTokens int64        `json:"max_completion_tokens"`
-		Messages        json.RawMessage `json:"messages"`
-		Tools           json.RawMessage `json:"tools"`
-		ToolChoice      any             `json:"tool_choice"`
+		ReasoningEffort     string          `json:"reasoning_effort"`
+		Model               string          `json:"model"`
+		Stream              bool            `json:"stream"`
+		MaxTokens           int64           `json:"max_tokens"`
+		MaxCompletionTokens int64           `json:"max_completion_tokens"`
+		Messages            json.RawMessage `json:"messages"`
+		Tools               json.RawMessage `json:"tools"`
+		ToolChoice          any             `json:"tool_choice"`
 	}
 	if err := json.Unmarshal(requestBody, &body); err != nil {
 		writeError(w, 400, "invalid_request_error", "请求体无法解析")
@@ -305,7 +305,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.ReasoningEffort != "" {
-		upstream["reasoning_effort"] = body.ReasoningEffort
+		upstream["reasoning_effort"] = providerEffort(acct.Provider, body.ReasoningEffort)
 	}
 	if maxTokens > 0 {
 		upstream["max_tokens"] = maxTokens
@@ -437,13 +437,7 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	flusher, _ := w.(http.Flusher)
-	writeChunk := func(payload map[string]any) {
-		b, _ := json.Marshal(payload)
-		fmt.Fprintf(w, "data: %s\n\n", b)
-		if flusher != nil {
-			flusher.Flush()
-		}
-	}
+	writeChunk := func(payload map[string]any) { writeSSEChunk(w, flusher, payload) }
 	chunk := func(delta map[string]any, finish any) {
 		writeChunk(map[string]any{
 			"id": id, "object": "chat.completion.chunk", "created": created, "model": model,

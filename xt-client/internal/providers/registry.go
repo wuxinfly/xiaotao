@@ -13,6 +13,7 @@ type ModelInfo struct {
 	PriceFactor    *float64          `json:"priceFactor,omitempty"`
 	IsFree         *bool             `json:"isFree,omitempty"`
 	Reasoning      bool              `json:"reasoning,omitempty"`
+	Efforts        []string          `json:"efforts,omitempty"`
 	MaxInputTokens int               `json:"maxInputTokens,omitempty"`
 	UpstreamID     string            `json:"-"`
 	Routes         map[string]string `json:"-"`

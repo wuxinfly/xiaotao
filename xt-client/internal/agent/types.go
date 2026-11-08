@@ -113,18 +113,18 @@ type RunStats struct {
 }
 
 type Session struct {
-	ID       string        `json:"id"`
-	Project  Project       `json:"project"`
-	Title    string        `json:"title"`
-	Model    string        `json:"model"`
-	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
-	Status   string        `json:"status"`
-	Messages []Message     `json:"messages"`
-	Activity []Activity    `json:"activity"`
-	Thoughts []ThoughtStep `json:"thoughts"`
-	RunStats []RunStats    `json:"runStats"`
-	Error    string        `json:"error,omitempty"`
-	Summary  *ContextSummary `json:"summary,omitempty"`
+	ID            string          `json:"id"`
+	Project       Project         `json:"project"`
+	Title         string          `json:"title"`
+	Model         string          `json:"model"`
+	ModelSettings *ModelSettings  `json:"modelSettings,omitempty"`
+	Status        string          `json:"status"`
+	Messages      []Message       `json:"messages"`
+	Activity      []Activity      `json:"activity"`
+	Thoughts      []ThoughtStep   `json:"thoughts"`
+	RunStats      []RunStats      `json:"runStats"`
+	Error         string          `json:"error,omitempty"`
+	Summary       *ContextSummary `json:"summary,omitempty"`
 	// HasImages lets the composer enforce image capability even when the
 	// image message is outside the bounded history page.
 	HasImages bool      `json:"hasImages,omitempty"`
@@ -133,26 +133,29 @@ type Session struct {
 }
 
 type Options struct {
-	ProjectPath string `json:"projectPath"`
-	ProjectName string `json:"projectName"`
-	Model       string `json:"model"`
+	ProjectPath   string         `json:"projectPath"`
+	ProjectName   string         `json:"projectName"`
+	Model         string         `json:"model"`
 	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
 }
 
 type ModelOption struct {
-	PriceFactor    *float64 `json:"priceFactor,omitempty"`
-	IsFree         *bool    `json:"isFree,omitempty"`
-	SupportsImages bool     `json:"supportsImages,omitempty"`
-	ContextWindow  int64    `json:"contextWindow,omitempty"`
-	Model          string   `json:"model"`
-	Label          string   `json:"label"`
+	PriceFactor       *float64 `json:"priceFactor,omitempty"`
+	IsFree            *bool    `json:"isFree,omitempty"`
+	SupportsImages    bool     `json:"supportsImages,omitempty"`
+	SupportsReasoning bool     `json:"supportsReasoning,omitempty"`
+	ReasoningEfforts  []string `json:"reasoningEfforts,omitempty"`
+	ContextWindow     int64    `json:"contextWindow,omitempty"`
+	Model             string   `json:"model"`
+	Label             string   `json:"label"`
 }
 
 // ModelSettings is snapshotted into a session and carried through each model
 // request. ContextWindow is also the threshold for later context compaction.
 type ModelSettings struct {
-	ContextWindow   int64 `json:"contextWindow,omitempty"`
-	MaxOutputTokens int64 `json:"maxOutputTokens,omitempty"`
+	ContextWindow   int64  `json:"contextWindow,omitempty"`
+	MaxOutputTokens int64  `json:"maxOutputTokens,omitempty"`
+	ReasoningEffort string `json:"reasoningEffort,omitempty"`
 }
 
 type ConversationReference struct {

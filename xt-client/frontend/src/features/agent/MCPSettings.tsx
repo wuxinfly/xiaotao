@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {Plus, Trash2} from 'lucide-react';
-import {api, type MCPServer, type MCPSettings as Settings} from '../../lib/api';
+import {api} from '../../lib/api';
+import type {MCPServer, MCPSettings as Settings} from '../../lib/extensions';
 import './mcp-settings.css';
 
 type Draft = {id: number; name: string; command: string; args: string; disabled: boolean};
