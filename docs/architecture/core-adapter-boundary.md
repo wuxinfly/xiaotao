@@ -54,6 +54,7 @@ XiaoTao 采用一份可移植 Core，加零个或多个可选宿主 Adapter：
 - 自动 checkpoint 能力矩阵：[automatic-checkpoint.md](automatic-checkpoint.md)
 - Codex 当前范围：[adapters/codex/README.md](../../xt-skills/adapters/codex/README.md)
 - Antigravity 插件与适配器：[adapters/antigravity/README.md](../../xt-skills/adapters/antigravity/README.md)
+- Claude Code 插件与适配器：[adapters/claude-code/README.md](../../xt-skills/adapters/claude-code/README.md)
 - 真实宿主证据格式：[manual-acceptance.md](../manual-acceptance.md)
 
 ## 4. Model-facing 工具的边界

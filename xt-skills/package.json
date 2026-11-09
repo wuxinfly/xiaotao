@@ -1,6 +1,6 @@
 {
   "name": "@wxfly/xiaotao",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "面向结果的 AI 协作 Skill，支持动态 Worker 和多宿主安装 CLI",
   "type": "module",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "README.md",
     "adapters/zcode/",
     "adapters/codex/",
+    "adapters/claude-code/",
     "adapters/antigravity/xiaotao-antigravity/",
     "adapters/deepseek-harness/scripts/",
     "adapters/deepseek-harness/adapter/"

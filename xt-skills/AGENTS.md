@@ -5,7 +5,7 @@
 ## 分工
 - `xiaotao/SKILL.md`：Skill 主入口；references、workers、scripts 提供协议、角色与运行支持。
 - `bin/xiaotao.js`：命令入口；`cli/` 负责安装、更新和诊断，不调度 Worker。
-- `adapters/`：Codex、Antigravity、DSH 和 ZCode 宿主适配。DSH 是独立 npm 包。
+- `adapters/`：Codex、Claude Code、Antigravity、DSH 和 ZCode 宿主适配。DSH 是独立 npm 包。
 - `test/`：Node 测试；`scripts/`：契约和语义验证。
 - 共享架构与验收文档位于 `../docs/`。
 

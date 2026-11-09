@@ -3,17 +3,17 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 import { detectScenes, SCENES } from './scenes.js';
-import { doctorInstallation, globalUpdateNotice, installCodex, installScenes, requireCurrentInstallation, updateScenes } from './install.js';
+import { doctorInstallation, globalUpdateNotice, installClaude, installCodex, installScenes, requireCurrentInstallation, updateScenes } from './install.js';
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, '..');
-const HELP = `XiaoTao installer\n\nUsage:\n  xiaotao init [path] [--force]\n  xiaotao update [path] [--yes]\n  xiaotao doctor [path] [--json]\n  xiaotao codex [path] [--prepare] [--json]\n\nRun init in a terminal. It detects available hosts and lets you choose.\n`;
+const HELP = `XiaoTao installer\n\nUsage:\n  xiaotao init [path] [--force]\n  xiaotao update [path] [--yes]\n  xiaotao doctor [path] [--json]\n  xiaotao codex [path] [--prepare] [--json]\n  xiaotao claude [path] [--json]\n\nRun init in a terminal. It detects available hosts and lets you choose.\n`;
 class UsageError extends Error {}
 
 function parseArgs(argv) {
   if (!argv.length || ['--help', '-h'].includes(argv[0])) return { kind: 'help' };
     if (['--version', '-V'].includes(argv[0])) return { kind: 'version' };
-    if (['codex'].includes(argv[0]) && ['--help', '-h'].includes(argv[1])) return { kind: 'help' };
-  if (!['init', 'update', 'doctor', 'codex'].includes(argv[0])) throw new UsageError(`Unknown command: ${argv[0]}`);
+    if (['codex', 'claude'].includes(argv[0]) && ['--help', '-h'].includes(argv[1])) return { kind: 'help' };
+  if (!['init', 'update', 'doctor', 'codex', 'claude'].includes(argv[0])) throw new UsageError(`Unknown command: ${argv[0]}`);
   const options = { kind: 'command', command: argv[0], projectPath: '.', force: false, json: false, yes: false, prepare: false };
   let pathSeen = false;
   for (let index = 1; index < argv.length; index += 1) {
@@ -22,7 +22,7 @@ function parseArgs(argv) {
     if (value === '--yes' && options.command === 'update') { options.yes = true; continue; }
     if (value === '--prepare' && options.command === 'codex') { options.prepare = true; continue; }
     if (value === '--json') {
-      if (!['doctor', 'codex'].includes(options.command)) throw new UsageError('--json is only valid with xiaotao doctor or xiaotao codex');
+      if (!['doctor', 'codex', 'claude'].includes(options.command)) throw new UsageError('--json is only valid with xiaotao doctor, xiaotao codex or xiaotao claude');
       options.json = true;
       continue;
     }
@@ -109,6 +109,17 @@ export async function run(argv, io = {}) {
         output.write('首次使用前请在 Codex 中审查并信任插件 Hooks，然后新开会话。\n');
       }
       return result.ok ? 0 : 1;
+    }
+    if (parsed.command === 'claude') {
+      const result = await installClaude({ projectRoot, packageRoot: PACKAGE_ROOT, environment });
+      if (parsed.json) output.write(`${JSON.stringify(result, null, 2)}\n`);
+      else {
+        printDiagnosis(output, { checks: result.checks });
+        output.write(`\nClaude Code 插件来源：${result.marketplace}\n`);
+        output.write(`在 Claude Code 中运行 /plugin marketplace add ${result.marketplaceRoot}，再运行 /plugin install xiaotao-claude@xiaotao-local，启用后新开会话。\n`);
+        output.write('这里只准备来源，不证明插件已启用；裸 Skill 仍是可用回退。\n');
+      }
+      return result.checks.every((check) => check.ok) ? 0 : 1;
     }
     const diagnosis = await doctorInstallation(projectRoot, environment);
     if (parsed.json) output.write(`${JSON.stringify(diagnosis, null, 2)}\n`);

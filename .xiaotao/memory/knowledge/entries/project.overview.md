@@ -1,6 +1,6 @@
 ---
-revision: 11
-updated_at: 2026-11-07T08:05:00Z
+revision: 12
+updated_at: 2026-11-09T13:15:56Z
 updated_by: xiao-tao/maintainer
 ---
 
@@ -11,7 +11,7 @@ updated_by: xiao-tao/maintainer
   "entry_id": "project.overview",
   "title": "XiaoTao 架构全景与模块组织概览",
   "memory_kind": "fact",
-  "content": "XiaoTao 是面向软件协作的 AI 项目。现有 Agent Skill、CLI、多宿主适配器和测试位于 xt-skills/；xt-client/ 是 Go 本地服务与 WebView2 轻量客户端原型，website/ 是独立网站，docs/ 保存共享文档。Skill 主入口为 xt-skills/xiaotao/SKILL.md，CLI 入口为 xt-skills/bin/xiaotao.js，CLI 提供 init、update、doctor、codex 四个命令。宿主适配器包括 antigravity、codex、deepseek-harness 和 zcode。Core 支持记录自身协作改进建议，由用户手动导出交给维护 GitHub 源码的设计 AI，不自动修改安装或发布。",
+  "content": "XiaoTao 是面向软件协作的 AI 项目。现有 Agent Skill、CLI、多宿主适配器和测试位于 xt-skills/；xt-client/ 是 Go 本地服务与 WebView2 轻量客户端原型，website/ 是独立网站，docs/ 保存共享文档。Skill 主入口为 xt-skills/xiaotao/SKILL.md，CLI 入口为 xt-skills/bin/xiaotao.js，CLI 提供 init、update、doctor、codex、claude 五个命令。宿主适配器包括 antigravity、claude-code、codex、deepseek-harness 和 zcode。Core 支持记录自身协作改进建议，由用户手动导出交给维护 GitHub 源码的设计 AI，不自动修改安装或发布。",
   "tags": [
     "architecture",
     "overview",
@@ -41,6 +41,7 @@ updated_by: xiao-tao/maintainer
     "xt-skills/xiaotao/SKILL.md",
     "xt-skills/cli/index.js",
     "xt-skills/adapters/zcode/README.md",
+    "xt-skills/adapters/claude-code/README.md",
     "docs/architecture/xt-client-overview.md",
     "xt-skills/xiaotao/references/evolution.md"
   ],
@@ -52,10 +53,10 @@ updated_by: xiao-tao/maintainer
     "xt-skills/adapters/zcode/README.md"
   ],
   "code_fingerprints": {
-    "xt-skills/package.json": "86459ecbbe55ed2e6b5e26b1d15d70060bb1561d860709f97ac3d538b1d575f1",
+    "xt-skills/package.json": "28cf52f30c26b4ddcd8cd01dbbea41e02db07358fa8da148f23f6bd3ad5ed386",
     "xt-skills/xiaotao/SKILL.md": "b1dd224e1c26911da9de62af224bc7a13cf74f5fe2bc565807847d4821674e6c",
     "xt-skills/bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb",
-    "xt-skills/cli/index.js": "f1f334c91cfc3588eff7202cfe6db9185d638fc1bea1d7ec9f957ea8e0815690",
+    "xt-skills/cli/index.js": "e5271906e918c1e5ba3131d4903a0252d3f7a375442783375d075b179db70319",
     "xt-skills/adapters/zcode/README.md": "159f2157e4a198ae0b4d9b6c4f6db64af2db5ac6ec6271f998cfdcecc2600d00"
   },
   "status": "active"

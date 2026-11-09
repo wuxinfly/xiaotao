@@ -17,6 +17,7 @@ npx @wxfly/xiaotao@latest init
 2. Codex / 通用 Agent Skills
 3. Claude Code
 4. Antigravity
+5. ZCode
 ```
 
 选完会自动安装和自检。实际 Skill 装在用户级目录；当前项目只会生成：
@@ -49,6 +50,9 @@ npx @wxfly/xiaotao@latest doctor
 
 # 安装 Codex Skill 与增强插件
 npx @wxfly/xiaotao@latest codex
+
+# 安装 Claude Code Skill 并准备增强插件
+npx @wxfly/xiaotao@latest claude
 ```
 
 `update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
@@ -63,6 +67,7 @@ npx @wxfly/xiaotao@latest codex
 | --- | --- |
 | Codex / 通用 Agent Skills | `~/.agents/skills/xiaotao/` |
 | Claude Code | `~/.claude/skills/xiaotao/` |
+| Claude Code（增强插件） | `~/.xiaotao/hosts/claude/` 的本地插件市场 |
 | Antigravity | `~/.gemini/config/plugins/xiaotao-antigravity/`（含 PreInvocation 恢复 Hook） |
 | DSH | `~/.dsh/profiles/web/` 的插件配置 |
 
@@ -120,3 +125,9 @@ DSH Adapter、Codex Desktop 插件和 Skill 内部协议的详细说明在 [`ada
 `xiaotao init` 可选择 ZCode，准备本地插件市场；随后需在 ZCode 客户端安装启用。
 支持 Core、共享项目记忆、一层原生 Worker 和每轮结束前的进度检查提醒。
 安装、更新步骤与尚未验收的限制见 [ZCode 适配说明](adapters/zcode/README.md)。
+
+### Claude Code
+
+裸 Skill 安装后即可使用。`xiaotao claude` 会额外准备本地插件市场，提供会话入口提醒、阶段保存回执检查和只读记忆整理子代理；需在 Claude Code 中通过 `/plugin marketplace add` 添加并启用。
+
+安装、更新步骤与尚未验收的限制见 [Claude Code 适配说明](adapters/claude-code/README.md)。

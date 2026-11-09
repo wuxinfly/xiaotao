@@ -1,0 +1,8 @@
+{
+  "name": "xiaotao-claude",
+  "version": "0.7.0",
+  "description": "恢复 XiaoTao 会话入口、提醒阶段保存，并提供只读记忆整理子代理。",
+  "author": {
+    "name": "IHongTaoI"
+  }
+}

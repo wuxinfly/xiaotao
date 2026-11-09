@@ -108,6 +108,78 @@ export async function installZcode({ packageRoot, target, skillSource, version }
   await writeFile(path.join(target.path, MARKER_NAME), JSON.stringify({ package: MANAGED_PACKAGE, scene: 'zcode', version }) + '\n');
 }
 
+const CLAUDE_PLUGIN_NAME = 'xiaotao-claude';
+const CLAUDE_MARKETPLACE_NAME = 'xiaotao-local';
+
+async function writeInstallationRecords({ projectRoot, environment, scene, target, version, merge = false }) {
+  const now = new Date().toISOString();
+  let previous = null;
+  try { previous = await readInstallation(projectRoot); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const scenes = merge ? [...new Set([...(previous?.scenes ?? []), scene])] : [scene];
+  const targets = { ...(previous?.targets ?? {}), [scene]: target };
+  const metadata = {
+    schema_version: 2, package: MANAGED_PACKAGE, package_version: version, scenes, targets,
+    installed_at: previous?.installed_at ?? now, updated_at: now,
+  };
+  await mkdir(path.dirname(projectConfig(projectRoot)), { recursive: true });
+  await writeFile(projectConfig(projectRoot), `${JSON.stringify(metadata, null, 2)}\n`);
+  const previousGlobal = await readGlobalInstallation(environment);
+  const globalScenes = [...new Set([...(previousGlobal?.scenes ?? []), ...scenes])];
+  const global = {
+    schema_version: 1, package: MANAGED_PACKAGE, package_version: version, scenes: globalScenes,
+    targets: { ...(previousGlobal?.targets ?? {}), ...targets }, updated_at: now,
+  };
+  await mkdir(path.dirname(globalConfig(environment)), { recursive: true });
+  await writeFile(globalConfig(environment), `${JSON.stringify(global, null, 2)}\n`);
+  return metadata;
+}
+
+// Prepares a local plugin marketplace and the user-level Skill. Installation and
+// enabling the plugin stay with Claude Code, exactly like the ZCode adapter.
+export async function installClaude({ projectRoot, packageRoot, environment = process.env }) {
+  const resolvedPackage = path.resolve(packageRoot);
+  const { version, skillSource } = await packageInfo(resolvedPackage);
+  const skillsTarget = SCENES.claude.resolveTarget(environment);
+  if ((await isNonEmpty(skillsTarget.path)) && !(await isManaged(skillsTarget.path))) {
+    throw new Error(`Destination is not managed by XiaoTao: ${skillsTarget.path}. Run xiaotao init with --force to adopt it.`);
+  }
+  const adapterSource = path.join(resolvedPackage, 'adapters', 'claude-code', CLAUDE_PLUGIN_NAME);
+  if (!(await pathExists(path.join(adapterSource, '.claude-plugin', 'plugin.json')))) {
+    throw new Error('Claude Code adapter is missing from this checkout');
+  }
+
+  await mkdir(skillsTarget.path, { recursive: true });
+  await cp(skillSource, skillsTarget.path, { recursive: true, force: true });
+  await writeFile(path.join(skillsTarget.path, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'claude', version }, null, 2)}\n`);
+
+  const marketplaceRoot = path.join(resolveUserHome(environment), '.xiaotao', 'hosts', 'claude');
+  if ((await isNonEmpty(marketplaceRoot)) && !(await isManaged(marketplaceRoot))) {
+    throw new Error(`Destination is not managed by XiaoTao: ${marketplaceRoot}. Move or remove it before running xiaotao claude.`);
+  }
+  const pluginDir = path.join(marketplaceRoot, CLAUDE_PLUGIN_NAME);
+  await mkdir(pluginDir, { recursive: true });
+  await cp(adapterSource, pluginDir, { recursive: true, force: true });
+  const manifestPath = path.join(pluginDir, '.claude-plugin', 'plugin.json');
+  const manifest = await readJson(manifestPath);
+  await writeFile(manifestPath, `${JSON.stringify({ ...manifest, version }, null, 2)}\n`);
+  const marketplacePath = path.join(marketplaceRoot, '.claude-plugin', 'marketplace.json');
+  await mkdir(path.dirname(marketplacePath), { recursive: true });
+  await writeFile(marketplacePath, `${JSON.stringify({
+    name: CLAUDE_MARKETPLACE_NAME,
+    owner: { name: 'XiaoTao' },
+    metadata: { description: '本地 XiaoTao 插件来源' },
+    plugins: [{ name: CLAUDE_PLUGIN_NAME, source: `./${CLAUDE_PLUGIN_NAME}`, description: 'XiaoTao 会话入口、阶段保存提醒和只读记忆整理子代理。' }],
+  }, null, 2)}\n`);
+  await writeFile(path.join(marketplaceRoot, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'claude', version })}\n`);
+  await writeFile(path.join(pluginDir, MARKER_NAME), `${JSON.stringify({ package: MANAGED_PACKAGE, scene: 'claude', version })}\n`);
+
+  await writeInstallationRecords({ projectRoot, environment, scene: 'claude', target: skillsTarget, version, merge: true });
+  return {
+    ok: true, version, marketplaceRoot, pluginDir, marketplace: marketplacePath,
+    checks: (await doctorInstallation(projectRoot, environment)).checks,
+  };
+}
+
 export async function installCodex({ projectRoot, packageRoot, environment = process.env, prepare = false, command = execFileAsync }) {
   const resolvedPackage = path.resolve(packageRoot);
   const { version, skillSource } = await packageInfo(resolvedPackage);
@@ -233,6 +305,22 @@ export async function doctorInstallation(projectRoot, environment = process.env,
       checks.push({ code: pluginOk ? 'plugin_present' : 'plugin_missing', ok: pluginOk, scene: id, path: target.path });
       checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });
       checks.push({ code: markerOk ? 'marker_present' : 'marker_missing', ok: markerOk, scene: id, path: path.join(target.path, MARKER_NAME) });
+      continue;
+    }
+    if (id === 'claude') {
+      const skill = path.join(target.path, 'SKILL.md');
+      const skillOk = await pathExists(skill); const markerOk = await isManaged(target.path);
+      checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });
+      checks.push({ code: markerOk ? 'marker_present' : 'marker_missing', ok: markerOk, scene: id, path: path.join(target.path, MARKER_NAME) });
+      const marketplaceRoot = path.join(resolveUserHome(environment), '.xiaotao', 'hosts', 'claude');
+      if (!(await pathExists(marketplaceRoot))) continue;
+      for (const relative of ['.claude-plugin/marketplace.json', `${CLAUDE_PLUGIN_NAME}/.claude-plugin/plugin.json`, `${CLAUDE_PLUGIN_NAME}/hooks/hooks.json`, `${CLAUDE_PLUGIN_NAME}/hooks/context.mjs`, `${CLAUDE_PLUGIN_NAME}/scripts/progress-check.mjs`, `${CLAUDE_PLUGIN_NAME}/agents/xiaotao-memory-worker.md`, MARKER_NAME]) {
+        const file = path.join(marketplaceRoot, relative);
+        let ok = false;
+        try { const text = await readFile(file, 'utf8'); if (relative.endsWith('.json')) JSON.parse(text); ok = true; } catch {}
+        checks.push({ code: ok ? 'claude_plugin_file_present' : 'claude_plugin_file_invalid', ok, scene: id, path: file });
+      }
+      checks.push({ code: 'claude_activation_unverified', ok: true, scene: id, message: `插件来源已准备；请在 Claude Code 中运行 /plugin marketplace add ${marketplaceRoot}，安装并启用 ${CLAUDE_PLUGIN_NAME} 后新开会话。这里只检查文件，不证明插件已启用。` });
       continue;
     }
     const skill = path.join(target.path, 'SKILL.md');

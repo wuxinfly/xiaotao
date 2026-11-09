@@ -150,6 +150,9 @@ test('shipped project overview is indexed from the project memory directory', as
   for (const relativePath of [
     'xt-skills/package.json',
     'xt-skills/xiaotao/SKILL.md',
+    'xt-skills/cli/index.js',
+    'xt-skills/adapters/zcode/README.md',
+    'xt-skills/adapters/claude-code/README.md',
     'xt-skills/bin/xiaotao.js',
     '.xiaotao/memory/knowledge/entries/project.overview.md',
     'docs/architecture/xt-client-overview.md',
