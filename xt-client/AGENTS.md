@@ -3,6 +3,7 @@
 - Windows Go 服务和 WebView2 壳，页面嵌入服务。
 - 本目录执行 go test ./...、go vet ./...；手动打包使用 ./build.ps1 或 ./build.ps1 -Env uat。AI 自行构建验证时必须添加 -Verify，不递增版本，也不覆盖正式产物或快捷方式。
 - 客户端代码质量按 ../docs/agent/client-code-quality.md 检查；新增代码不得新增超限文件或函数，修改存量超限文件时不得继续变大。前端在 frontend 运行 npm run lint、npm run check:size；Go 文件大小在 xt-client 运行 node tools/check-go-size.mjs。
+- 打包用的外部 Go 工具（当前为 go-winres）固定为 go.mod 的 tool 依赖并用 `go tool` 调用，不写 `go run <module>@<version>`，避免构建时联网查询模块版本。
 - 不主动写注册表，不携带 WebView2 运行时。
 - 数据写用户目录；管理写接口校验同源。
 - 不提交 dist、日志和本机数据。不用模拟数据冒充用量。

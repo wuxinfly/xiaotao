@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "pinned-go-tool-dependency",
+  "created_at": "2026-11-10T08:00:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.pinned-go-tool-dependency",
+  "text": "打包脚本里固定版本的外部 Go 工具必须写成 go.mod 的 tool 依赖并用 `go tool` 调用，不要用 `go run <module>@<version>`：后者每次构建都会联网查询该版本是否废弃，代理不可达时直接中断打包。",
+  "rationale": "2026-11-10 在 xt-client 执行 ./build.ps1 时，`go run github.com/tc-hib/go-winres@v0.3.3` 因无法连接 proxy.golang.org 查询 deprecation 信息而失败，模块本身已在本地缓存；改为 go.mod 的 tool 依赖后，go tool go-winres 在 GOPROXY=off 下也能完成完整构建。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/go.mod",
+    "xt-client/build.ps1",
+    "xt-client/README.md"
+  ]
+}
