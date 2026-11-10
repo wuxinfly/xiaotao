@@ -153,7 +153,7 @@ function traceSummary(row: ThoughtTraceRow) {
 
 function thoughtTraceIcon(row: ThoughtTraceRow) {
   if (row.kind === 'activity') {
-    if (row.activityKind === 'write_file') return FilePenLine;
+    if (row.activityKind === 'write_file' || row.activityKind === 'str_replace') return FilePenLine;
     if (row.activityKind === 'read_file' || row.activityKind === 'list_files' || row.activityKind === 'search_files') return FileSearch;
     return Terminal;
   }

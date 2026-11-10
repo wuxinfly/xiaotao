@@ -64,7 +64,9 @@ func TestReadBatchConcurrentAndPreservesOrder(t *testing.T) {
 func TestLocalActivityKeepsFullCommand(t *testing.T) {
 	command := `Get-ChildItem -LiteralPath xt-client\frontend\tests | Select-Object Name,Length | Select-String -Pattern 'agent'`
 	input := localActivityInput("run_command", json.RawMessage(`{"command":`+strconv.Quote(command)+`}`))
-	var parsed struct{Command string `json:"command"`}
+	var parsed struct {
+		Command string `json:"command"`
+	}
 	if json.Unmarshal([]byte(input), &parsed) != nil || parsed.Command != command {
 		t.Fatalf("command input preview is incomplete: %s", input)
 	}
@@ -82,7 +84,7 @@ func TestReadBatchBoundaries(t *testing.T) {
 			t.Fatal(name)
 		}
 	}
-	for _, name := range []string{"write_file", "run_command", "enable_mcp_tools", "mcp_example"} {
+	for _, name := range []string{"write_file", "str_replace", "run_command", "enable_mcp_tools", "mcp_example"} {
 		if isParallelRead(name) {
 			t.Fatal(name)
 		}

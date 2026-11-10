@@ -64,12 +64,12 @@ func needsApproval(w *Workspace, name string, raw json.RawMessage) (string, bool
 	if strings.HasPrefix(name, "mcp_") {
 		return "外部 MCP 工具：" + name + "\n" + string(raw), true
 	}
-	if name == "write_file" && w != nil {
+	if (name == "write_file" || name == "str_replace") && w != nil {
 		var args struct {
 			Path   string `json:"path"`
 			Append bool   `json:"append"`
 		}
-		if json.Unmarshal(raw, &args) == nil && !args.Append {
+		if json.Unmarshal(raw, &args) == nil && (name == "str_replace" || !args.Append) {
 			path, err := w.Resolve(args.Path)
 			if err == nil {
 				if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Size() >= 128*1024 {

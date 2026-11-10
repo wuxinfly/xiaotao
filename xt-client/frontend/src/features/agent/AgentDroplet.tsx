@@ -12,7 +12,7 @@ output:'<g class="agent-symbol-stroke"><path d="M10 3H3v18h7"/><g class="output-
 };
 export function activityState(kind?: string): DropletState {
   if (kind === 'read_file' || kind === 'list_files' || kind === 'search_files') return 'reading';
-  if (kind === 'write_file') return 'writing';
+  if (kind === 'write_file' || kind === 'str_replace') return 'writing';
   return 'tool';
 }
 export function AgentDroplet({running = false, state = running ? 'thinking' : 'idle'}: {running?: boolean; state?: DropletState}) {

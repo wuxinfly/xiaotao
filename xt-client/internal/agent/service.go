@@ -820,7 +820,7 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			if call.Name == "read_file" {
 				stats.FilesRead++
 			}
-			if call.Name == "write_file" {
+			if call.Name == "write_file" || call.Name == "str_replace" {
 				stats.FilesWritten++
 			}
 			messages = append(messages, map[string]any{

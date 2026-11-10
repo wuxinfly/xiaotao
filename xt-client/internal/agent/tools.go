@@ -39,8 +39,9 @@ var toolDefinitions = []map[string]any{
 				"type":     "object",
 				"required": []string{"query"},
 				"properties": map[string]any{
-					"query": map[string]any{"type": "string", "description": "Literal text to find"},
-					"path":  map[string]any{"type": "string", "description": "Absolute or working-directory-relative path, default '.'"},
+					"query":     map[string]any{"type": "string", "description": "Literal text to find"},
+					"path":      map[string]any{"type": "string", "description": "Absolute or working-directory-relative path, default '.'"},
+					"file_glob": map[string]any{"type": "string", "description": "Filename-only PowerShell -like pattern, case-insensitive (Windows search only), e.g. *.go"},
 				},
 			},
 		},
@@ -80,6 +81,21 @@ var toolDefinitions = []map[string]any{
 	{
 		"type": "function",
 		"function": map[string]any{
+			"name":        "str_replace",
+			"description": "Replace exactly one non-overlapping occurrence of old_str in a file. Read the file first.",
+			"parameters": map[string]any{
+				"type": "object", "required": []string{"path", "old_str", "new_str"},
+				"properties": map[string]any{
+					"path":    map[string]any{"type": "string"},
+					"old_str": map[string]any{"type": "string", "description": "Exact text to replace"},
+					"new_str": map[string]any{"type": "string", "description": "Replacement text"},
+				},
+			},
+		},
+	},
+	{
+		"type": "function",
+		"function": map[string]any{
 			"name":        "run_command",
 			"description": "Run a non-interactive command in the project root to build, test, inspect, or edit files. High-risk commands may require user confirmation.",
 			"parameters": map[string]any{
@@ -107,13 +123,14 @@ func (w *Workspace) Execute(ctx context.Context, name string, raw json.RawMessag
 		return w.listFiles(args.Path, args.Recursive)
 	case "search_files":
 		var args struct {
-			Path  string `json:"path"`
-			Query string `json:"query"`
+			Path     string `json:"path"`
+			Query    string `json:"query"`
+			FileGlob string `json:"file_glob"`
 		}
 		if err := json.Unmarshal(raw, &args); err != nil {
 			return "", fmt.Errorf("参数无效")
 		}
-		return w.searchFiles(args.Path, args.Query)
+		return w.searchFiles(args.Path, args.Query, args.FileGlob)
 	case "read_file":
 		var args struct {
 			Path   string `json:"path"`
@@ -137,6 +154,19 @@ func (w *Workspace) Execute(ctx context.Context, name string, raw json.RawMessag
 			return "", err
 		}
 		return fmt.Sprintf("已写入 %s", args.Path), nil
+	case "str_replace":
+		var args struct {
+			Path   string  `json:"path"`
+			OldStr *string `json:"old_str"`
+			NewStr *string `json:"new_str"`
+		}
+		if err := json.Unmarshal(raw, &args); err != nil || args.OldStr == nil || args.NewStr == nil || args.Path == "" {
+			return "", fmt.Errorf("参数无效：需要 path、old_str 和 new_str")
+		}
+		if err := w.StrReplace(args.Path, *args.OldStr, *args.NewStr); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("已替换 %s 中的匹配内容", args.Path), nil
 	case "run_command":
 		var args struct {
 			Command    string `json:"command"`
@@ -194,7 +224,7 @@ func (w *Workspace) listFiles(relative string, recursive bool) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
-func (w *Workspace) searchFiles(relative, query string) (string, error) {
+func (w *Workspace) searchFiles(relative, query, fileGlob string) (string, error) {
 	if strings.TrimSpace(query) == "" {
 		return "", fmt.Errorf("搜索内容不能为空")
 	}
@@ -202,27 +232,28 @@ func (w *Workspace) searchFiles(relative, query string) (string, error) {
 		relative = "."
 	}
 	if runtime.GOOS == "windows" {
-		return w.searchWindows(relative, query)
+		return w.searchWindows(relative, query, fileGlob)
 	}
 	return "", fmt.Errorf("当前系统暂不支持内置搜索，请使用 run_command 调用 rg")
 }
 
-func (w *Workspace) searchWindows(relative, query string) (string, error) {
+func (w *Workspace) searchWindows(relative, query, fileGlob string) (string, error) {
 	target, err := w.Resolve(relative)
 	if err != nil {
 		return "", err
 	}
-	script := `$ErrorActionPreference='SilentlyContinue'; $q=$env:XIAOTAO_QUERY; ` +
+	script := `$ErrorActionPreference='SilentlyContinue'; $q=$env:XIAOTAO_QUERY; $g=$env:XIAOTAO_FILE_GLOB; ` +
+		`if (-not [string]::IsNullOrEmpty($g)) { try { $pattern = [System.Management.Automation.WildcardPattern]::new($g); $null = $pattern.IsMatch('') } catch { [Console]::Error.WriteLine('Invalid file_glob pattern'); exit 1 } }; ` +
 		`Get-ChildItem -LiteralPath $env:XIAOTAO_SEARCH_ROOT -Recurse -File | ` +
-		`Where-Object { $_.FullName -notmatch '[\\/](node_modules|vendor|dist|\\.git)[\\/]' -and $_.Length -le 1048576 } | ` +
+		`Where-Object { $_.FullName -notmatch '[\\/](node_modules|vendor|dist|\.git)[\\/]' -and $_.Length -le 1048576 -and ([string]::IsNullOrEmpty($g) -or $_.Name -like $g) } | ` +
 		`Select-String -SimpleMatch $q -List -Encoding UTF8 | Select-Object -First 80 | ForEach-Object { $_.Path + ':' + $_.LineNumber + ': ' + $_.Line.Trim() }`
 	cmd := shellCommand(nil, script)
 	hideCommandWindow(cmd)
 	cmd.Dir = w.Root
-	cmd.Env = childUTF8Env(append(cmd.Environ(), "XIAOTAO_SEARCH_ROOT="+target, "XIAOTAO_QUERY="+query))
-	output, err := cmd.Output()
+	cmd.Env = childUTF8Env(append(cmd.Environ(), "XIAOTAO_SEARCH_ROOT="+target, "XIAOTAO_QUERY="+query, "XIAOTAO_FILE_GLOB="+fileGlob))
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("搜索失败: %w", err)
+		return "", fmt.Errorf("搜索失败: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	text := strings.TrimSpace(strings.ReplaceAll(string(output), w.Root+string(filepath.Separator), ""))
 	if text == "" {

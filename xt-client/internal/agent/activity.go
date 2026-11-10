@@ -15,6 +15,8 @@ func activityTitle(name string) string {
 		return "阅读文件"
 	case "write_file":
 		return "更新文件"
+	case "str_replace":
+		return "替换文件内容"
 	case "run_command":
 		return "运行命令"
 	case "read_historical_tool_result":
@@ -75,6 +77,15 @@ func localActivityInput(name string, args json.RawMessage) string {
 		}
 		if json.Unmarshal(args, &input) == nil {
 			value = map[string]any{"path": input.Path, "content_bytes": len(input.Content), "append": input.Append}
+		}
+	case "str_replace":
+		var input struct {
+			Path   string `json:"path"`
+			OldStr string `json:"old_str"`
+			NewStr string `json:"new_str"`
+		}
+		if json.Unmarshal(args, &input) == nil {
+			value = map[string]any{"path": input.Path, "old_str_bytes": len(input.OldStr), "new_str_bytes": len(input.NewStr)}
 		}
 	case "run_command":
 		var input struct {
