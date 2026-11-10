@@ -140,6 +140,10 @@ type Options struct {
 }
 
 type ModelOption struct {
+	SourceID          string   `json:"sourceId,omitempty"`
+	SourceLabel       string   `json:"sourceLabel,omitempty"`
+	UpstreamModelID   string   `json:"upstreamModelId,omitempty"`
+	MaxOutputTokens   int64    `json:"maxOutputTokens,omitempty"`
 	PriceFactor       *float64 `json:"priceFactor,omitempty"`
 	IsFree            *bool    `json:"isFree,omitempty"`
 	SupportsImages    bool     `json:"supportsImages,omitempty"`

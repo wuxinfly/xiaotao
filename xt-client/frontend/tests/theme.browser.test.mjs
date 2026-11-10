@@ -40,8 +40,8 @@ test('theme persists, covers portals and synchronizes the HUD', {timeout: 60000}
     assert.equal(await page.locator('.hero-tokens').evaluate(el=>getComputedStyle(el).color),'rgb(32, 63, 76)');
     await screenshot('dashboard');
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('xiaotao:navigate',{detail:'accounts'})));
-    await page.getByRole('button',{name:'添加账号',exact:true}).first().click();
-    assert.equal(await page.locator('.dialog-title').evaluate(el=>getComputedStyle(el).color),'rgb(32, 63, 76)');
+    await page.getByRole('button',{name:'添加接口',exact:true}).first().click();
+    assert.equal(await page.getByRole('dialog', {name:'添加模型接口'}).locator('h2').evaluate(el=>getComputedStyle(el).color),'rgb(32, 63, 76)');
     await screenshot('dialog');
     await page.keyboard.press('Escape');
     const hud=await context.newPage();

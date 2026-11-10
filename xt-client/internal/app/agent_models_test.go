@@ -1,110 +1,36 @@
 package app
 
 import (
-	"fmt"
-	"sync"
 	"testing"
-	"time"
-	"xiaotao/xt-client/internal/providers"
-	"xiaotao/xt-client/internal/storage"
+	"xiaotao/xt-client/internal/modelsource"
 )
 
-func TestRefreshAgentModelsCoversEnabledSourcesOnceAndKeepsStale(t *testing.T) {
-	accounts := []*storage.Account{
-		{ID: "one", Provider: "first", Enabled: true},
-		{ID: "two", Provider: "second", Enabled: true},
-		{ID: "disabled", Provider: "third"},
+func TestAgentModelsUseStableRoutesAndSavedCapabilities(t *testing.T) {
+	sources := []modelsource.Source{
+		{ID: "source_1", Label: "接口一", Enabled: true, HasAPIKey: true, Models: []modelsource.Model{{ID: "model_1", UpstreamModelID: "org/model", Label: "模型", ContextWindow: 32000, MaxOutputTokens: 2048, SupportsImages: true, SupportsReasoning: true, ReasoningEfforts: []string{"low", "high"}}}},
+		{ID: "source_2", Label: "接口二", Enabled: true, HasAPIKey: true, Models: []modelsource.Model{{ID: "model_2", UpstreamModelID: "org/model", Label: "模型"}}},
+		{ID: "disabled", Models: []modelsource.Model{{ID: "model_3"}}},
+		{ID: "missing-key", Enabled: true, Models: []modelsource.Model{{ID: "model_4"}}},
 	}
-	var mu sync.Mutex
-	calls := map[string]int{}
-	models, failures := refreshAgentModelsForAccounts(accounts, func(a storage.Account) ([]providers.ModelInfo, string, error) {
-		mu.Lock()
-		calls[a.ID]++
-		mu.Unlock()
-		if a.ID == "two" {
-			return []providers.ModelInfo{{ID: "old"}}, "stale", fmt.Errorf("offline")
-		}
-		return []providers.ModelInfo{{ID: "new"}}, "live", nil
-	})
-	if calls["one"] != 1 || calls["two"] != 1 || calls["disabled"] != 0 {
-		t.Fatal(calls)
+	models := agentModelsForSources(sources)
+	if len(models) != 2 || models[0].Model != "model_1" || models[1].Model != "model_2" {
+		t.Fatalf("routes collapsed: %+v", models)
 	}
-	if len(models) != 2 || models[0].Model != "first/new" || models[1].Model != "second/old" || len(failures) != 1 {
-		t.Fatalf("models=%+v failures=%v", models, failures)
+	first := models[0]
+	if first.SourceID != "source_1" || first.SourceLabel != "接口一" || first.UpstreamModelID != "org/model" || first.Label != "模型 · 接口一" {
+		t.Fatalf("source identity lost: %+v", first)
 	}
-	_, failures = refreshAgentModelsForAccounts(accounts, func(a storage.Account) ([]providers.ModelInfo, string, error) {
-		mu.Lock()
-		calls[a.ID]++
-		mu.Unlock()
-		return nil, "error", fmt.Errorf("offline")
-	})
-	if calls["one"] != 2 || calls["two"] != 2 || len(failures) != 2 {
-		t.Fatalf("refresh retried empty failures: %v %v", calls, failures)
+	if first.ContextWindow != 32000 || first.MaxOutputTokens != 2048 || !first.SupportsImages || !first.SupportsReasoning {
+		t.Fatalf("capabilities lost: %+v", first)
+	}
+	first.ReasoningEfforts[0] = "changed"
+	if sources[0].Models[0].ReasoningEfforts[0] != "low" {
+		t.Fatal("catalog aliases mutable storage")
 	}
 }
 
-func TestAgentModelsFetchConcurrentlyAndKeepAccountOrder(t *testing.T) {
-	started := make(chan string, 2)
-	release := make(chan struct{})
-	done := make(chan []string, 1)
-	accounts := []*storage.Account{{Provider: "first", Enabled: true}, {Provider: "disabled"}, {Provider: "second", Enabled: true}}
-	go func() {
-		models := agentModelsForAccounts(accounts, func(acct storage.Account) []providers.ModelInfo {
-			started <- acct.Provider
-			<-release
-			return []providers.ModelInfo{{ID: "model"}}
-		})
-		ids := make([]string, len(models))
-		for i, model := range models {
-			ids[i] = model.Model
-		}
-		done <- ids
-	}()
-	released := false
-	defer func() {
-		if !released {
-			close(release)
-		}
-	}()
-	for range 2 {
-		select {
-		case <-started:
-		case <-time.After(2 * time.Second):
-			t.Fatal("enabled accounts did not start concurrently")
-		}
-	}
-	close(release)
-	released = true
-	select {
-	case ids := <-done:
-		if len(ids) != 2 || ids[0] != "first/model" || ids[1] != "second/model" {
-			t.Fatalf("unexpected models: %v", ids)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("fetch did not finish")
-	}
-}
-
-func TestAgentModelsPricingFollowsFirstAccount(t *testing.T) {
-	accounts := []*storage.Account{{ID: "first", Provider: "qoder", Enabled: true}, {ID: "second", Provider: "qoder", Enabled: true}}
-	models := agentModelsForAccounts(accounts, func(a storage.Account) []providers.ModelInfo {
-		factor := 0.5
-		if a.ID == "second" {
-			factor = 2
-		}
-		return []providers.ModelInfo{{ID: "m", PriceFactor: &factor}}
-	})
-	if len(models) != 1 || models[0].PriceFactor == nil || *models[0].PriceFactor != 0.5 {
-		t.Fatalf("wrong routing price: %v", models)
-	}
-}
-
-func TestAgentModelsExposeContextWindow(t *testing.T) {
-	accounts := []*storage.Account{{ID: "first", Provider: "codex", Enabled: true}}
-	models := agentModelsForAccounts(accounts, func(storage.Account) []providers.ModelInfo {
-		return []providers.ModelInfo{{ID: "m", MaxInputTokens: 272000}}
-	})
-	if len(models) != 1 || models[0].ContextWindow != 272000 {
-		t.Fatalf("model context window missing: %+v", models)
+func TestAgentModelsEmptyDirectoryIsJSONArray(t *testing.T) {
+	if got := agentModelsForSources(nil); got == nil || len(got) != 0 {
+		t.Fatalf("empty models: %#v", got)
 	}
 }

@@ -50,7 +50,7 @@ import {
   Sparkles,
   Loader2,
 } from 'lucide-react';
-import {ModelPriceBadge} from '../../components/ModelPriceBadge';
+import {mergeModelCatalog, modelPickerLabel, ModelPickerOptions, pickerModels, useModelCatalogChanged} from './modelOptions';
 import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentEvent, type AgentMessage, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
 import {modelConfigFor, modelLabelsKey, modelSettingsFor, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
 import {AgentSettingsModal} from './AgentSettingsModal';
@@ -583,6 +583,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   const [models, setModels] = useState<AgentModelOption[]>(() => { const labels = readModelLabels(); return Array.from(new Map([...readEnabledModels().map(id => ({model: id, label: labels[id] || id}))].map(item => [item.model, item])).values()); });
   const [modelsLoading, setModelsLoading] = useState(false), [modelsError, setModelsError] = useState('');
   const [modelsAttempt, setModelsAttempt] = useState(0);
+  useModelCatalogChanged(useCallback(() => setModelsAttempt(value => value + 1), []));
   const refreshModelsRequested = useRef(false);
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -1052,11 +1053,11 @@ export function AgentPage({visible}: {visible: boolean}) {
         if (available.errors?.length) setModelsError(available.errors.join('；'));
         setModels(current => {
           const selected = new Set(readEnabledModels());
-          return Array.from(new Map([...current.filter(item => selected.has(item.model)), ...available.models].map(item => [item.model, item])).values());
+          return mergeModelCatalog(available.models, Array.from(selected), current);
         });
       })
       .catch(reason => live && setModelsError(controller.signal.aborted
-        ? '获取模型列表超时，请检查账号状态后重试'
+        ? '获取模型列表超时，请检查接口配置后重试'
         : reason instanceof TypeError ? '无法连接小涛服务，请检查服务是否正在运行' : reason instanceof Error ? reason.message : String(reason)))
       .finally(() => { window.clearTimeout(timer); if (live) setModelsLoading(false); });
     return () => {live = false; window.clearTimeout(timer); controller.abort();};
@@ -1102,7 +1103,7 @@ export function AgentPage({visible}: {visible: boolean}) {
       return `引用小涛的回复 ${index + 1}：\n\n${quoted}${item.reply.trim() ? `\n\n我的回复：${item.reply.trim()}` : ''}`;
     });
     const content = [...quoteBlocks, text].filter(Boolean).join('\n\n');
-    if ((!content && !submittedImages.length) || quotes.some(item => !item.text.trim()) || busy || !editor || (!active && !model)) return;
+    if (models.find(item => item.model === (model || active?.model))?.unavailable || (!content && !submittedImages.length) || quotes.some(item => !item.text.trim()) || busy || !editor || (!active && !model)) return;
     historyRequest.current++; historyInFlight.current = false; setHistoryLoading(false); prependAnchor.current = null;
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
@@ -1351,7 +1352,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   const currentModelSupportsImages = currentModelOption?.supportsImages === true;
   const historyHasImages = !!active && conversationHasImages(active.messages, active.hasImages);
   const isReviewingCurrent = !!active && reviewingSessionId === active.id;
-  const canSend = !busy && !isReviewingCurrent && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference || composerImages.length > 0) && (!!active || !!model) && (!(composerImages.length || historyHasImages) || currentModelSupportsImages || currentModelOption === undefined);
+  const canSend = !!currentModelOption && !currentModelOption.unavailable && !busy && !isReviewingCurrent && quotes.every(item => !!item.text.trim()) && (!!prompt.trim() || quotes.length > 0 || hasReference || composerImages.length > 0) && (!!active || !!model) && (!(composerImages.length || historyHasImages) || currentModelSupportsImages);
   canSendRef.current = canSend;
 
   const {entries} = useMemo(() => {
@@ -1390,9 +1391,7 @@ export function AgentPage({visible}: {visible: boolean}) {
   const workingIndicator = <div className="agent-working-row" role="status"><div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working"><span><strong>正在思考</strong><small>准备下一步…</small></span></div></div>;
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const activeProjectPath = active ? active.project.path : path;
-  const availablePickerModels = models.filter(item => enabledModels.includes(item.model));
-  if (model && !availablePickerModels.some(item => item.model === model)) availablePickerModels.push({model, label: models.find(item => item.model === model)?.label || model});
-  if (active?.model && !availablePickerModels.some(item => item.model === active.model)) availablePickerModels.push({model: active.model, label: active.model});
+  const availablePickerModels = pickerModels(models, enabledModels, model, active?.model);
 
   const projects = useMemo(() => Array.from(new Map([...savedProjects, ...([...sessions].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt))).filter(item => item.project.path && !item.project.isDefault).map(item => item.project), ...(path ? [{path, name: activeProjectName, isDefault: false, saved: false}] : [])].map(item => [item.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, ''), item])).values()).filter(item => `${item.name} ${item.path}`.toLowerCase().includes(projectQuery.trim().toLowerCase())), [savedProjects, sessions, path, activeProjectName, projectQuery]);
 
@@ -1540,10 +1539,10 @@ export function AgentPage({visible}: {visible: boolean}) {
               <ContextMeter stats={lastRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
               <div className="agent-model-picker">
                 <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
-                  <span>{availablePickerModels.find(item => item.model === (model || active?.model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>
+                  <span>{modelPickerLabel(availablePickerModels, model || active?.model || '')}</span><ChevronDown aria-hidden="true"/>
                 </button>
                 <Popover open={modelMenuOpen} onClose={() => setModelMenuOpen(false)} anchorRef={modelButtonRef} side="top" align="end" className="agent-model-menu" aria-label="选择模型">
-                  {availablePickerModels.map(item => <button type="button" role="menuitemradio" aria-checked={item.model === model} key={item.model} onClick={() => {setModel(item.model); setModelMenuOpen(false); modelButtonRef.current?.focus();}}><span>{item.label}<ModelPriceBadge {...item}/></span>{item.model === model && <Check aria-hidden="true"/>}</button>)}
+                  <ModelPickerOptions models={availablePickerModels} value={model} onSelect={value => {setModel(value); setModelMenuOpen(false); modelButtonRef.current?.focus();}}/>
                 </Popover>
               </div>
               {!!composerImages.length && currentModelSupportsImages && <span className="agent-image-model-hint"><Image aria-hidden="true"/>图片将随消息发送</span>}

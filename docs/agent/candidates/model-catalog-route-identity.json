@@ -6,8 +6,15 @@
   "kind": "convention",
   "section_id": "development-conventions",
   "rule_id": "development-conventions.model-catalog-route-identity",
-  "text": "模型目录展示 ID 与上游名称分别保存；动态发现时同步保存大小写和档位路由，不把目录可见标成账号已验证可调用。",
-  "rationale": "对照发现 Trae 小写 ID 丢失上游大小写，Antigravity 动态发现也需 effort 路由，只有展示表无法保证调用正确。",
-  "observations": 2,
-  "source_refs": ["xt-client/internal/providers/trae/models.go", "xt-client/internal/providers/antigravity/catalog.go", "docs/plans/2026-11-01-model-catalog-followup.md"]
+  "text": "模型内部调用 ID、所属来源和上游模型 ID 分开保存，不能只按上游同名 ID 合并或猜测来源；动态发现时保留大小写与档位映射，不把目录可见当作已经验证可调用。",
+  "rationale": "此前 Trae 大小写与 Antigravity 档位已两次证明展示名称不足以确定实际路由；手动 API 改造再次确认，不同来源可以配置相同 org/model，必须通过稳定来源/模型 ID 独立绑定，避免串号和旧会话静默重绑。",
+  "observations": 3,
+  "source_refs": [
+    "xt-client/internal/providers/trae/models.go",
+    "xt-client/internal/providers/antigravity/catalog.go",
+    "docs/plans/2026-11-01-model-catalog-followup.md",
+    "xt-client/internal/modelsource/store.go",
+    "xt-client/internal/modelsource/store_test.go",
+    "docs/plans/2026-11-10-manual-model-sources.md"
+  ]
 }

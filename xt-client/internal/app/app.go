@@ -1,33 +1,23 @@
 package app
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
+
 	"xiaotao/xt-client/internal/agent"
-	"xiaotao/xt-client/internal/authsessions"
-	"xiaotao/xt-client/internal/desktop"
+	"xiaotao/xt-client/internal/gateway"
 	"xiaotao/xt-client/internal/logging"
-	"xiaotao/xt-client/internal/providers"
-	"xiaotao/xt-client/internal/providers/antigravity"
-	"xiaotao/xt-client/internal/providers/codex"
-	"xiaotao/xt-client/internal/providers/trae"
-	"xiaotao/xt-client/internal/providers/workbuddy"
-	"xiaotao/xt-client/internal/proxy"
-	"xiaotao/xt-client/internal/runtimeenv"
+	"xiaotao/xt-client/internal/modelsource"
 	"xiaotao/xt-client/internal/secrets"
-	"xiaotao/xt-client/internal/storage"
 	"xiaotao/xt-client/internal/usage"
 )
 
@@ -46,16 +36,6 @@ type Config struct {
 	Name string `json:"name"`
 }
 
-type hudState struct {
-	mu      sync.Mutex
-	enabled bool
-}
-
-var traeProvider = trae.Provider{}
-var workbuddyProvider = workbuddy.Provider{}
-var antigravityProvider = antigravity.Provider{}
-var codexProvider = codex.Provider{}
-
 func Key(data string) string { h := sha256.Sum256([]byte(data)); return hex.EncodeToString(h[:12]) }
 func Save(path string, v any) error {
 	b, e := json.MarshalIndent(v, "", "  ")
@@ -68,6 +48,10 @@ func Save(path string, v any) error {
 	}
 	defer os.Remove(f.Name())
 	if _, e = f.Write(b); e != nil {
+		f.Close()
+		return e
+	}
+	if e = f.Sync(); e != nil {
 		f.Close()
 		return e
 	}
@@ -102,73 +86,47 @@ func Alive(s State) bool {
 	}
 	return r.StatusCode == 200 && json.NewDecoder(r.Body).Decode(&v) == nil && v.App == "xiaotao" && v.PID == s.PID
 }
+
+// Handler assembles only generic model sources. Platform account packages are
+// deliberately absent: they will be loaded through the future plugin boundary.
 func Handler(s State, data string, stop func()) (http.Handler, error) {
-	cfg := Config{Name: "小涛"}
-	path := filepath.Join(data, "config.json")
-	if b, e := os.ReadFile(path); e == nil {
-		if e = json.Unmarshal(b, &cfg); e != nil {
-			return nil, fmt.Errorf("invalid config: %w", e)
-		}
-	} else if !os.IsNotExist(e) {
-		return nil, e
-	} else if e = Save(path, cfg); e != nil {
-		return nil, e
+	if err := os.MkdirAll(data, 0700); err != nil {
+		return nil, err
 	}
-	var mu sync.Mutex
-	mux := http.NewServeMux()
-	hud := &hudState{}
-	hudTitle := desktop.HUDWindowTitle(runtimeenv.Current().DisplayName)
-	started := time.Now()
-	store, err := storage.Open(filepath.Join(data, "accounts"))
+	cfg, err := loadConfig(data)
 	if err != nil {
-		logging.Default().For(logging.ModuleClient).Error("open accounts storage failed", logging.F("error", err))
 		return nil, err
 	}
 	keyring, err := secrets.Open(filepath.Join(data, "keys"))
 	if err != nil {
-		logging.Default().For(logging.ModuleClient).Error("open keyring failed", logging.F("error", err))
 		return nil, err
 	}
-	if err := importModelAccounts(store, keyring, data); err != nil {
-		logging.Default().For(logging.ModuleClient).Error("import model accounts failed", logging.F("error", err))
+	sources, err := modelsource.Open(data, keyring.Encrypt, keyring.Decrypt)
+	if err != nil {
 		return nil, err
 	}
-	logging.Default().For(logging.ModuleClient).Info("storage and keyring initialized")
-	proxy.SetEncryptor(keyring.Encrypt)
-	authSvc := authsessions.NewService(s.URL)
-	var proxyKey string
-	if b, err := store.LoadSecret("proxy", keyring.Decrypt); err == nil {
-		// Keys are always stored as their hex-string form.
-		proxyKey = string(b)
-		if len(b) != 48 {
-			proxyKey = hex.EncodeToString(b)
-		}
-	} else {
-		key := make([]byte, 24)
-		if _, err = rand.Read(key); err != nil {
-			return nil, err
-		}
-		proxyKey = hex.EncodeToString(key)
-		if err = store.SaveSecret("proxy", key, keyring.Encrypt); err != nil {
-			return nil, err
-		}
+	if err = importManualModelSources(sources, keyring, data); err != nil {
+		return nil, fmt.Errorf("import manual model sources: %w", err)
 	}
-	proxySvc := proxy.New(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) }, proxyKey)
-	accountSvc := proxy.NewAccountService(store, func(id string) ([]byte, error) { return store.LoadSecret(id, keyring.Decrypt) })
-	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, proxySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption {
-		return agentModelsForAccounts(store.Accounts(), proxySvc.AccountModels)
-	})
+	key, saveKey, err := localGatewayKey(data, keyring)
+	if err != nil {
+		return nil, err
+	}
+	gatewaySvc := gateway.New(sources, key, saveKey)
+	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, gatewaySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption { return agentModelsForSources(sources.List()) })
 	agentSvc.SetClientVersion(Version)
 	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
 	if err != nil {
 		return nil, err
 	}
-	proxySvc.SetUsage(usageSvc)
+	gatewaySvc.SetUsage(usageSvc)
+	mux := http.NewServeMux()
 	send := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		json.NewEncoder(w).Encode(v)
+		_ = json.NewEncoder(w).Encode(v)
 	}
 	apiError := func(w http.ResponseWriter, status int, message string) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(status)
 		send(w, map[string]any{"error": map[string]any{"message": message}})
 	}
@@ -181,701 +139,40 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
-	registerProviders := func() {
-		providers.Register(antigravityProvider)
-		providers.Register(traeProvider)
-		providers.Register(workbuddyProvider)
-		providers.Register(codexProvider)
-	}
-	registerProviders()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		send(w, map[string]any{"App": "xiaotao", "PID": s.PID, "version": Version})
-	})
-	mux.HandleFunc("GET /api/providers", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		send(w, map[string]any{"providers": providers.List()})
-	})
 	registerAgentRoutes(mux, agentSvc, requireOrigin, send, apiError)
-	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		snap, err := usageSvc.Snapshot()
-		if err != nil {
-			apiError(w, 500, "snapshot failed: "+err.Error())
-			return
-		}
-		send(w, snap)
-	})
-	mux.HandleFunc("GET /api/request-hud", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		hud.mu.Lock()
-		enabled := hud.enabled
-		hud.mu.Unlock()
-		send(w, map[string]any{"enabled": enabled})
-	})
-	mux.HandleFunc("POST /api/request-hud", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		var body struct {
-			Enabled bool `json:"enabled"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
-			apiError(w, 400, "invalid request")
-			return
-		}
-		hud.mu.Lock()
-		hud.enabled = body.Enabled
-		if body.Enabled {
-			exe, err := os.Executable()
-			if err != nil {
-				hud.mu.Unlock()
-				apiError(w, 500, "cannot locate executable")
-				return
-			}
-			hud.mu.Unlock()
-			go func() {
-				_ = desktop.Start(exe, "--hud-window", "--data-dir", data)
-			}()
-			send(w, map[string]any{"enabled": true})
-			return
-		}
-		hud.mu.Unlock()
-		go desktop.CloseWindow(hudTitle)
-		send(w, map[string]any{"enabled": false})
-	})
-	mux.HandleFunc("GET /api/dashboard/events", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		usageSvc.HandleSSE(w, r)
-	})
-	mux.HandleFunc("GET /api/accounts", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		send(w, map[string]any{"accounts": store.Accounts()})
-	})
-	mux.HandleFunc("POST /api/accounts/order", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		var body struct {
-			ProviderID string   `json:"providerId"`
-			AccountIDs []string `json:"accountIds"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-			apiError(w, 400, "invalid request")
-			return
-		}
-		if err := store.ReorderAccounts(body.ProviderID, body.AccountIDs); err != nil {
-			apiError(w, 400, err.Error())
-			return
-		}
-		send(w, map[string]any{"accounts": store.Accounts()})
-	})
-	mux.HandleFunc("POST /api/accounts/{id}/rename", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		var body struct {
-			Alias   *string `json:"alias"`
-			Enabled *bool   `json:"enabled"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
-			apiError(w, 400, "invalid request")
-			return
-		}
-		id := r.PathValue("id")
-		if _, ok := store.Account(id); !ok {
-			apiError(w, 404, "account not found")
-			return
-		}
-		if body.Alias != nil && len([]rune(strings.TrimSpace(*body.Alias))) > 40 {
-			apiError(w, 400, "alias too long")
-			return
-		}
-		err := store.UpdateAccount(id, func(a *storage.Account) {
-			if body.Alias != nil {
-				a.Alias = strings.TrimSpace(*body.Alias)
-			}
-			if body.Enabled != nil {
-				a.Enabled = *body.Enabled
-			}
-		})
-		if err != nil {
-			apiError(w, 500, "update failed")
-			return
-		}
-		if acct, ok := store.Account(id); ok {
-			send(w, acct)
-		}
-	})
-	mux.HandleFunc("POST /api/accounts/{id}/delete", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		id := r.PathValue("id")
-		if _, ok := store.Account(id); !ok {
-			apiError(w, 404, "account not found")
-			return
-		}
-		if err := store.DeleteAccount(id); err != nil {
-			apiError(w, 500, "delete failed")
-			return
-		}
-		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("POST /api/accounts/{id}/quota", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		id := r.PathValue("id")
-		if _, ok := store.Account(id); !ok {
-			apiError(w, 404, "account not found")
-			return
-		}
-		snap, err := accountSvc.RefreshQuota(id)
-		if err != nil {
-			apiError(w, 502, "quota refresh failed")
-			return
-		}
-		send(w, snap)
-	})
-	mux.HandleFunc("GET /api/accounts/{id}/checkin", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		id := r.PathValue("id")
-		if _, ok := store.Account(id); !ok {
-			apiError(w, 404, "account not found")
-			return
-		}
-		st, err := accountSvc.FetchCheckin(id)
-		if err != nil {
-			apiError(w, 502, "checkin status failed: "+err.Error())
-			return
-		}
-		send(w, st)
-	})
-	mux.HandleFunc("POST /api/accounts/{id}/checkin", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		id := r.PathValue("id")
-		if _, ok := store.Account(id); !ok {
-			apiError(w, 404, "account not found")
-			return
-		}
-		res, err := accountSvc.ClaimCheckin(id)
-		if err != nil {
-			apiError(w, 502, "checkin claim failed: "+err.Error())
-			return
-		}
-		send(w, res)
-	})
-	mux.HandleFunc("POST /api/checkin/claim-all", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		res := accountSvc.ClaimSupportedProvider(r.URL.Query().Get("provider"))
-		send(w, map[string]any{"results": res})
-	})
-	mux.HandleFunc("POST /api/auth/trae", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		sess, err := authSvc.Start("trae", "")
-		if err != nil {
-			apiError(w, 500, "start login failed")
-			return
-		}
-		if err := desktop.Browser(sess.LoginURL); err != nil {
-			apiError(w, 500, "cannot open default browser")
-			return
-		}
-		send(w, sess)
-	})
-
-	startProviderLogin := func(w http.ResponseWriter, r *http.Request, providerID string) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		region := ""
-		if providerID == "qoder" {
-			var input struct {
-				Region string `json:"region"`
-			}
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
-				apiError(w, 400, "invalid region request")
-				return
-			}
-			region = input.Region
-			if region == "" {
-				region = "cn"
-			}
-			if region != "cn" && region != "global" {
-				apiError(w, 400, "unsupported Qoder region")
-				return
-			}
-		}
-		sess, err := authSvc.Start(providerID, region)
-		if err != nil {
-			apiError(w, 500, "start login failed")
-			return
-		}
-		if sess.LoginURL != "" {
-			if err := desktop.Browser(sess.LoginURL); err != nil {
-				apiError(w, 500, "cannot open default browser")
-				return
-			}
-		}
-		send(w, sess)
-	}
-
-	mux.HandleFunc("POST /api/auth/workbuddy", func(w http.ResponseWriter, r *http.Request) {
-		startProviderLogin(w, r, "workbuddy")
-	})
-	mux.HandleFunc("POST /api/auth/antigravity", func(w http.ResponseWriter, r *http.Request) {
-		startProviderLogin(w, r, "antigravity")
-	})
-	mux.HandleFunc("POST /api/auth/qoder", func(w http.ResponseWriter, r *http.Request) { startProviderLogin(w, r, "qoder") })
-	mux.HandleFunc("POST /api/auth/codex", func(w http.ResponseWriter, r *http.Request) { startProviderLogin(w, r, "codex") })
-	mux.HandleFunc("POST /api/auth/codex/import", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64*1024))
-		if err != nil {
-			apiError(w, 400, "读取请求体失败")
-			return
-		}
-		cred, err := codex.ImportAuthPayload(raw)
-		if err != nil {
-			apiError(w, 400, "导入凭据失败: "+err.Error())
-			return
-		}
-		id := "codex:global:" + cred.UID
-		now := time.Now().Unix()
-		acct := &storage.Account{
-			ID: id, Provider: "codex", Region: cred.Region, UID: cred.UID,
-			Nickname: cred.Nickname, Enabled: true, AuthState: "valid",
-			AddedAt: now, UpdatedAt: now,
-		}
-		if existing, ok := store.Account(id); ok {
-			acct.Alias = existing.Alias
-			acct.Enabled = existing.Enabled
-			acct.AddedAt = existing.AddedAt
-		}
-		if err := store.UpsertAccount(acct); err != nil {
-			apiError(w, 500, "保存账号失败")
-			return
-		}
-		b, err := json.Marshal(cred)
-		if err != nil {
-			apiError(w, 500, "编码凭据失败")
-			return
-		}
-		if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
-			apiError(w, 500, "保存凭据失败")
-			return
-		}
-		go proxySvc.AccountModels(*acct)
-		send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": cred.Nickname})
-	})
-	mux.HandleFunc("POST /api/auth/codex/{id}/callback", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		var input struct {
-			Callback string `json:"callback"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
-			apiError(w, 400, "invalid callback payload")
-			return
-		}
-		cred, err := authSvc.CompleteCodexManual(r.PathValue("id"), input.Callback)
-		if err != nil {
-			apiError(w, 400, "换取 Token 失败: "+err.Error())
-			return
-		}
-		id := "codex:global:" + cred.UID
-		now := time.Now().Unix()
-		acct := &storage.Account{
-			ID: id, Provider: "codex", Region: cred.Region, UID: cred.UID,
-			Nickname: cred.Nickname, Enabled: true, AuthState: "valid",
-			AddedAt: now, UpdatedAt: now,
-		}
-		if existing, ok := store.Account(id); ok {
-			acct.Alias = existing.Alias
-			acct.Enabled = existing.Enabled
-			acct.AddedAt = existing.AddedAt
-		}
-		if err := store.UpsertAccount(acct); err != nil {
-			apiError(w, 500, "保存账号失败")
-			return
-		}
-		b, err := json.Marshal(cred)
-		if err != nil {
-			apiError(w, 500, "编码凭据失败")
-			return
-		}
-		if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
-			apiError(w, 500, "保存凭据失败")
-			return
-		}
-		go proxySvc.AccountModels(*acct)
-		send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": cred.Nickname})
-	})
-
-	saveProviderAccount := func(w http.ResponseWriter, r *http.Request, providerID string) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		sess, cred := authSvc.Poll(r.PathValue("id"))
-		if sess.Status == "not_found" {
-			apiError(w, 404, "session not found")
-			return
-		}
-		if sess.Provider != providerID {
-			apiError(w, 404, "session not found")
-			return
-		}
-		if sess.Status == "succeeded" && cred != nil {
-			uid := cred.UID
-			nickname := cred.Nickname
-			if providerID == "trae" {
-				var err error
-				uid, nickname, err = trae.UserInfo(cred)
-				if err != nil || uid == "" {
-					uid = trae.JWTUserID(cred.AccessToken)
-				}
-				if uid == "" {
-					apiError(w, 502, "cannot determine account identity")
-					return
-				}
-			}
-			if uid == "" {
-				apiError(w, 502, "cannot determine account identity")
-				return
-			}
-			id := providerID + ":cn:" + uid
-			if providerID == "qoder" || providerID == "codex" {
-				id = providerID + ":" + cred.Region + ":" + uid
-			}
-			now := time.Now().Unix()
-			acct := &storage.Account{
-				ID: id, Provider: providerID, Region: cred.Region, UID: uid,
-				Nickname: nickname, Enabled: true, AuthState: "valid",
-				MachineID: cred.MachineID, DeviceID: cred.DeviceID,
-				AddedAt: now, UpdatedAt: now,
-			}
-			if existing, ok := store.Account(id); ok {
-				acct.Alias = existing.Alias
-				acct.Enabled = existing.Enabled
-				acct.AddedAt = existing.AddedAt
-			}
-			if err := store.UpsertAccount(acct); err != nil {
-				apiError(w, 500, "save account failed")
-				return
-			}
-			b, err := json.Marshal(cred)
-			if err != nil {
-				apiError(w, 500, "encode credential failed")
-				return
-			}
-			if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
-				apiError(w, 500, "save credential failed")
-				return
-			}
-			if providerID == "qoder" {
-				authSvc.Complete(sess.ID)
-				go proxySvc.AccountModels(*acct)
-			}
-			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
-			return
-		}
-		send(w, map[string]any{"status": sess.Status, "error": sess.Error})
-	}
-
-	mux.HandleFunc("GET /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
-		saveProviderAccount(w, r, "workbuddy")
-	})
-	mux.HandleFunc("GET /api/auth/antigravity/{id}", func(w http.ResponseWriter, r *http.Request) {
-		saveProviderAccount(w, r, "antigravity")
-	})
-	mux.HandleFunc("GET /api/auth/qoder/{id}", func(w http.ResponseWriter, r *http.Request) { saveProviderAccount(w, r, "qoder") })
-	mux.HandleFunc("DELETE /api/auth/qoder/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		sess, ok := authSvc.View(r.PathValue("id"))
-		if !ok || sess.Provider != "qoder" {
-			apiError(w, 404, "session not found")
-			return
-		}
-		authSvc.Cancel(sess.ID)
-		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("GET /api/auth/codex/{id}", func(w http.ResponseWriter, r *http.Request) {
-		saveProviderAccount(w, r, "codex")
-	})
-	mux.HandleFunc("DELETE /api/auth/codex/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		sess, ok := authSvc.View(r.PathValue("id"))
-		if !ok || sess.Provider != "codex" {
-			apiError(w, 404, "session not found")
-			return
-		}
-		authSvc.Cancel(sess.ID)
-		send(w, map[string]any{"ok": true})
-	})
-
-	mux.HandleFunc("DELETE /api/auth/workbuddy/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		authSvc.Cancel(r.PathValue("id"))
-		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("DELETE /api/auth/antigravity/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		authSvc.Cancel(r.PathValue("id"))
-		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("GET /api/auth/trae/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		sess, cred := authSvc.Poll(r.PathValue("id"))
-		if sess.Status == "not_found" {
-			apiError(w, 404, "session not found")
-			return
-		}
-		if sess.Status == "succeeded" && cred != nil {
-			uid, nickname, err := trae.UserInfo(cred)
-			if err != nil || uid == "" {
-				uid = trae.JWTUserID(cred.AccessToken)
-			}
-			if uid == "" {
-				apiError(w, 502, "cannot determine account identity")
-				return
-			}
-			id := "trae:" + uid
-			now := time.Now().Unix()
-			acct := &storage.Account{
-				ID: id, Provider: "trae", Region: cred.Region, UID: uid,
-				Nickname: nickname, Enabled: true, AuthState: "valid",
-				MachineID: cred.MachineID, DeviceID: cred.DeviceID,
-				AddedAt: now, UpdatedAt: now,
-			}
-			if existing, ok := store.Account(id); ok {
-				acct.Alias = existing.Alias
-				acct.Enabled = existing.Enabled
-				acct.AddedAt = existing.AddedAt
-			}
-			if err := store.UpsertAccount(acct); err != nil {
-				apiError(w, 500, "save account failed")
-				return
-			}
-			b, err := json.Marshal(cred)
-			if err != nil {
-				apiError(w, 500, "encode credential failed")
-				return
-			}
-			if err := store.SaveSecret(id, b, keyring.Encrypt); err != nil {
-				apiError(w, 500, "save credential failed")
-				return
-			}
-			send(w, map[string]any{"status": "succeeded", "accountId": id, "nickname": nickname})
-			return
-		}
-		send(w, map[string]any{"status": sess.Status, "error": sess.Error})
-	})
-	mux.HandleFunc("DELETE /api/auth/trae/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		authSvc.Cancel(r.PathValue("id"))
-		send(w, map[string]any{"ok": true})
-	})
-	mux.HandleFunc("POST /api/proxy/key", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		key, err := proxySvc.RotateKey()
-		if err != nil {
-			apiError(w, 500, "rotate failed")
-			return
-		}
-		send(w, map[string]any{"key": key})
-	})
-	mux.HandleFunc("GET /api/proxy/key", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		send(w, map[string]any{"key": proxySvc.APIKey()})
-	})
-	mux.HandleFunc("POST /api/agent/models/refresh", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		models, failures := refreshAgentModelsForAccounts(store.Accounts(), proxySvc.RefreshAccountModelCatalog)
-		send(w, map[string]any{"models": models, "errors": failures})
-	})
-	mux.HandleFunc("/api/proxy/models", func(w http.ResponseWriter, r *http.Request) {
-		if !requireOrigin(r) {
-			http.Error(w, "same-origin required", 403)
-			return
-		}
-		if r.Method != http.MethodGet && r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		if id := r.URL.Query().Get("accountId"); id != "" {
-			acct, ok := store.Account(id)
-			if !ok {
-				apiError(w, 404, "account not found")
-				return
-			}
-			var models []providers.ModelInfo
-			var source string
-			var catalogErr error
-			if r.Method == http.MethodPost {
-				models, source, catalogErr = proxySvc.RefreshAccountModelCatalog(acct)
-			} else {
-				models, source = proxySvc.AccountModelCatalog(acct)
-			}
-			message := ""
-			if catalogErr != nil || source == "error" {
-				message = "模型目录获取失败，可点击刷新重试"
-			}
-			send(w, map[string]any{"models": models, "source": source, "error": message})
-			return
-		}
-		accs := store.Accounts()
-		if len(accs) == 0 {
-			apiError(w, 409, "no accounts")
-			return
-		}
-		byID := map[string]providers.ModelInfo{}
-		names := []string{}
-		failures := []string{}
-		for _, a := range accs {
-			if !a.Enabled {
-				continue
-			}
-			var catalog []providers.ModelInfo
-			if r.Method == http.MethodPost {
-				var catalogErr error
-				catalog, _, catalogErr = proxySvc.RefreshAccountModelCatalog(*a)
-				if catalogErr != nil {
-					failures = append(failures, a.Provider+": 模型目录刷新失败")
-				}
-			} else {
-				catalog = proxySvc.AccountModels(*a)
-			}
-			for _, m := range catalog {
-				full := a.Provider + "/" + m.ID
-				if _, ok := byID[full]; !ok {
-					byID[full] = m
-					names = append(names, full)
-				}
-			}
-		}
-		models := make([]providers.ModelInfo, 0, len(names))
-		for _, name := range names {
-			models = append(models, byID[name])
-		}
-		send(w, map[string]any{"models": models, "errors": failures})
-	})
-	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
-		send(w, map[string]any{"version": Version, "url": s.URL, "pid": s.PID, "uptime": int(time.Since(started).Seconds()), "dataDir": data, "modelReady": false})
-	})
-	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) { mu.Lock(); defer mu.Unlock(); send(w, cfg) })
-	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {
-		var next Config
-		if e := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&next); e != nil || len([]rune(next.Name)) < 1 || len([]rune(next.Name)) > 40 {
-			http.Error(w, "invalid name", 400)
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		if e := Save(path, next); e != nil {
-			http.Error(w, "save failed", 500)
-			return
-		}
-		cfg = next
-		send(w, cfg)
-	})
-	mux.HandleFunc("POST /api/shutdown", func(w http.ResponseWriter, r *http.Request) {
-		logging.Default().For(logging.ModuleClient).Info("shutdown requested via api")
-		send(w, map[string]bool{"ok": true})
-		usageSvc.Close()
-		go stop()
-	})
-	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
-		if !proxySvc.Authorize(r) {
-			writeProxyError(w, 401, "invalid_api_key", "代理访问密钥无效")
-			return
-		}
-		models, err := proxySvc.Models()
-		if err != nil {
-			writeProxyError(w, 500, "models_error", "获取模型失败")
-			return
-		}
-		send(w, map[string]any{"object": "list", "data": models})
-	})
-	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		proxySvc.HandleChat(w, r)
-	})
+	registerSourceRoutes(mux, sources, gatewaySvc, requireOrigin, send, apiError)
+	registerRuntimeRoutes(mux, runtimeRoutes{state: s, data: data, stop: stop, cfg: cfg, sources: sources, gateway: gatewaySvc, usage: usageSvc, send: send, apiError: apiError})
 	sub, _ := fs.Sub(assets, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
-	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != s.URL[len("http://"):] {
-			logging.Default().For(logging.ModuleClient).Warn("request rejected", logging.F("path", r.URL.Path), logging.F("reason", "invalid_host"))
+	// Removed management routes must never fall through to HTML/static resources.
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		apiError(w, 404, "接口不存在；平台账号接入已移至后续插件方案")
+	})
+	return &closeableHandler{Handler: accessLogMiddleware(guardLocalRequests(s, mux)), usage: usageSvc}, nil
+}
+
+func loadConfig(data string) (Config, error) {
+	cfg := Config{Name: "小涛"}
+	path := filepath.Join(data, "config.json")
+	if b, e := os.ReadFile(path); e == nil {
+		if e = json.Unmarshal(b, &cfg); e != nil {
+			return cfg, fmt.Errorf("invalid config: %w", e)
+		}
+	} else if !os.IsNotExist(e) {
+		return cfg, e
+	} else if e = Save(path, cfg); e != nil {
+		return cfg, e
+	}
+	return cfg, nil
+}
+
+func guardLocalRequests(s State, mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != strings.TrimPrefix(s.URL, "http://") {
 			http.Error(w, "invalid host", 403)
 			return
 		}
-		// The OpenAI-compatible proxy authenticates with its own bearer key
-		// and must accept non-browser clients, so it is exempt from the
-		// same-origin guard below.
+		// Model endpoints authenticate with a separate local gateway key.
 		if r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" {
 			mux.ServeHTTP(w, r)
 			return
@@ -889,11 +186,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Header.Get("Authorization") != "Bearer "+s.Token && r.Header.Get("Origin") != s.URL {
-			logging.Default().For(logging.ModuleClient).Warn("same-origin rejected", logging.F("path", r.URL.Path), logging.F("reason", "unauthorized_origin"))
 			http.Error(w, "same-origin required", 403)
 			return
 		}
 		mux.ServeHTTP(w, r)
 	})
-	return &closeableHandler{Handler: accessLogMiddleware(baseHandler), usage: usageSvc}, nil
 }

@@ -44,7 +44,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.workspace-dock').evaluate(element => getComputedStyle(element).position), 'fixed');
     assert.ok(parseFloat(await page.locator('.agent-session-list').evaluate(element => getComputedStyle(element).paddingBottom)) >= footer.height, 'session history must reserve space above the dock');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
-    assert.deepEqual(await footerButtons.allTextContents(), ['仪表盘', '账号与配额']);
+    assert.deepEqual(await footerButtons.allTextContents(), ['仪表盘', '模型接口']);
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
     await page.locator('.agent-workspace').waitFor();
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();
@@ -62,8 +62,8 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.locator('.agent-workspace').waitFor();
     assert.equal(await page.locator('.workspace-dock .workspace-nav button.is-active').count(), 0);
 
-    await page.locator('.workspace-dock').getByRole('button', {name: '账号与配额', exact: true}).click();
-    await page.getByText('管理不同接入来源的账号与模型调用额度').waitFor();
+    await page.locator('.workspace-dock').getByRole('button', {name: '模型接口', exact: true}).click();
+    await page.getByText('填写自己的 API 地址、密钥和模型，供小涛调用。').waitFor();
     assert.equal(await page.locator('.workspace-sidebar').count(), 0);
     assert.equal(await page.locator('.workspace-dock').count(), 0);
     const accountsView = await page.locator('.workspace-page-view').boundingBox();
@@ -81,7 +81,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.setViewportSize({width: 540, height: 800});
     assert.equal(await page.locator('.agent-sidebar').evaluate(element => getComputedStyle(element).display), 'flex');
     assert.ok(await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).isVisible());
-    await page.locator('.workspace-dock').getByRole('button', {name: '账号与配额', exact: true}).click();
+    await page.locator('.workspace-dock').getByRole('button', {name: '模型接口', exact: true}).click();
     await page.getByRole('button', {name: '返回小涛', exact: true}).waitFor();
     assert.equal(await page.locator('.workspace-dock').count(), 0);
     await page.setViewportSize({width: 420, height: 800});

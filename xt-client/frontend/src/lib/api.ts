@@ -1,3 +1,4 @@
+import {request} from './http';
 import type {AgentModelSettings} from './agent-model-settings';
 import type {ContextBreakdown} from '../features/agent/contextTypes';
 export type {AgentDefaultModels, AgentModelConfig, AgentModelDefaults, AgentModelSettings} from './agent-model-settings';
@@ -298,6 +299,11 @@ export interface ModelPricing {
 }
 
 export interface AgentModelOption extends ModelPricing {
+  sourceId?: string;
+  sourceLabel?: string;
+  upstreamModelId?: string;
+  maxOutputTokens?: number;
+  unavailable?: boolean;
   model: string;
   label: string;
   supportsImages?: boolean;
@@ -433,22 +439,6 @@ export interface AgentEvent {
   runStats?: AgentRunStats;
   status?: AgentSession['status'];
   error?: string;
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  });
-  if (!res.ok) {
-    let message = `请求失败（${res.status}）`;
-    try {
-      const body = await res.json();
-      if (body?.error?.message) message = body.error.message;
-    } catch { /* keep default */ }
-    throw new Error(message);
-  }
-  return res.json() as Promise<T>;
 }
 
 async function dashboardRequest(): Promise<DashboardSnapshot> {

@@ -23,6 +23,7 @@ button{transition:background-color 160ms ease,color 160ms ease,border-color 160m
 @media(prefers-reduced-motion:reduce){.page-view{animation:none}}
 /* Shared content column for the model pages: dashboard and accounts read these tokens instead of carrying their own widths. */
 :root{--content-max:1240px;--content-gutter:28px}
+.content-column{width:100%;max-width:var(--content-max);margin-inline:auto;padding:24px var(--content-gutter) 32px}
 @media(max-width:560px){:root{--content-gutter:18px}}
 /* Keep the native scrollbar gutter visually transparent so the ocean background reaches the window edge. */
 *{scrollbar-width:thin;scrollbar-color:transparent transparent}

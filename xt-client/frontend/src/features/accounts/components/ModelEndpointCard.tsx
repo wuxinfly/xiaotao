@@ -55,7 +55,7 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
     const ok = await copyToClipboard(text);
     if (ok) {
       setCopiedField(field);
-      toast.success(field === 'url' ? '接口地址已复制' : 'API 密钥已复制');
+      toast.success(field === 'url' ? '本地接口地址已复制' : '本地访问密钥已复制');
       setTimeout(() => setCopiedField(null), 1600);
     } else {
       toast.error('复制失败，请手动选择');
@@ -64,7 +64,7 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
 
   const handleRotate = async () => {
     if (rotating) return;
-    if (!await confirm({title: '重新生成 API 密钥？', description: '已在其它工具中配置的旧密钥将会失效。', confirmLabel: '重新生成'})) {
+    if (!await confirm({title: '重新生成 本地访问密钥？', description: '已在其它工具中配置的旧密钥将会失效。', confirmLabel: '重新生成'})) {
       return;
     }
     setRotating(true);
@@ -79,8 +79,8 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
     <div className="endpoint-banner-card">
       <div className="endpoint-banner-header">
         <div className="endpoint-title-group">
-          <h2 className="endpoint-title">模型接入</h2>
-          <p className="endpoint-subtitle">OpenAI 兼容接口</p>
+          <h2 className="endpoint-title">本地调用入口</h2>
+          <p className="endpoint-subtitle">供外部工具连接小涛；此处密钥与上游 API Key 分开保存。</p>
         </div>
         <div className="endpoint-protocol-capsules">
           <span className="protocol-capsule">OpenAI Chat Completions</span>
@@ -89,9 +89,9 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
       </div>
 
       <div className="endpoint-grid">
-        {/* Field 1: 接口地址 */}
+        {/* Field 1: 本地接口地址 */}
         <div className="endpoint-row">
-          <span className="field-label">接口地址</span>
+          <span className="field-label">本地接口地址</span>
           <div className="field-box">
             <span className="field-value mono" title={endpointUrl}>{endpointUrl}</span>
             <div className="field-actions">
@@ -99,8 +99,8 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
                 type="button"
                 className="field-icon-btn"
                 onClick={() => handleCopy('url', endpointUrl)}
-                title="复制接口地址"
-                aria-label="复制接口地址"
+                title="复制本地接口地址"
+                aria-label="复制本地接口地址"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
@@ -112,9 +112,9 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
           </div>
         </div>
 
-        {/* Field 2: API 密钥 */}
+        {/* Field 2: 本地访问密钥 */}
         <div className="endpoint-row">
-          <span className="field-label">API 密钥</span>
+          <span className="field-label">本地访问密钥</span>
           <div className="field-box">
             <span className="field-value mono" title={showKey && apiKey ? apiKey : '点击眼睛查看'}>
               {showKey && apiKey ? apiKey : maskKey(apiKey)}
@@ -144,8 +144,8 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
                 className="field-icon-btn"
                 onClick={() => apiKey && handleCopy('key', apiKey)}
                 disabled={!apiKey}
-                title="复制 API 密钥"
-                aria-label="复制 API 密钥"
+                title="复制 本地访问密钥"
+                aria-label="复制 本地访问密钥"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />

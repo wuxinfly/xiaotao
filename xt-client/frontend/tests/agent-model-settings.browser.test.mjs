@@ -30,7 +30,7 @@ test('Agent settings add execution models and configure utility models', {timeou
         return route.fulfill({json:session});
       }
       if (path === '/api/agent/sessions') return route.fulfill({json:{sessions:[]}});
-      if (path === '/api/agent/models') return route.fulfill({json:{models:[{model:'qoder/qwen',label:'Qwen',contextWindow:262144},{model:'qoder/helper',label:'Helper',contextWindow:32768}]}});
+      if (path === '/api/agent/models') return route.fulfill({json:{models:[{model:'qoder/qwen',label:'Qwen',sourceId:'source1',sourceLabel:'My source',contextWindow:262144,maxOutputTokens:8192},{model:'qoder/helper',label:'Helper',sourceId:'source1',sourceLabel:'My source',contextWindow:32768,maxOutputTokens:2048}]}});
       if (path === '/api/agent/access-mode') return route.fulfill({json:{mode:'full'}});
       if (path.endsWith('/title')) {
         titles.push(request.postDataJSON());
@@ -51,10 +51,10 @@ test('Agent settings add execution models and configure utility models', {timeou
     await page.goto('http://127.0.0.1:5221');
     await page.getByRole('button', {name:'打开 Agent 设置'}).click();
     await page.getByRole('button', {name:/添加第一个模型/}).click();
-    await page.locator('.agent-settings-group-toggle').filter({hasText:'Qoder'}).click();
+    await page.locator('.agent-settings-group-toggle').filter({hasText:'My source'}).click();
     await page.locator('.agent-model-choice').filter({hasText:'Qwen'}).click();
     await page.getByRole('button', {name:'添加模型', exact:true}).click();
-    await page.locator('.agent-settings-group-toggle').filter({hasText:'Qoder'}).click();
+    await page.locator('.agent-settings-group-toggle').filter({hasText:'My source'}).click();
     await page.locator('.agent-model-choice').filter({hasText:'Helper'}).click();
     const contextInput = page.getByLabel('Qwen 上下文窗口');
     const outputInput = page.getByLabel('Qwen 最大输出');
