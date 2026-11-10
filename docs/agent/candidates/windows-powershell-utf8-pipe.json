@@ -12,7 +12,6 @@
   "source_refs": [
     "xt-client/internal/agent/command.go",
     "xt-client/internal/agent/tools.go",
-    "xt-client/internal/agent/encoding_test.go",
-    ".xiaotao/memory/timeline/years/2026/11/07/details/client-save-contract.md"
+    "xt-client/internal/agent/encoding_test.go"
   ]
 }
