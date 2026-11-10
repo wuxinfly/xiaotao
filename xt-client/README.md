@@ -397,3 +397,5 @@ Qoder 国内/海外账号现支持状态查询、单账号打卡及来源分组�
 历史按最新时间跨消息、工具活动、摘要和轮次统计分页；分页边界缺少用户消息时仍保留助手回答，加载更早记录时同步合并摘要与统计。只有未结束轮次显示执行态；失败或取消且没有最终回答时保留轨迹和查看过程入口。
 
 统一模型目录的接口、实现与验收见 [统一模型目录](../docs/plans/2026-11-07-unified-model-catalog.md)。前端回归：在 frontend 运行 `node --test --test-concurrency=1 tests/model-catalog.browser.test.mjs tests/model-pricing.browser.test.mjs`，使用隔离合成 API 验证查看、全量/来源刷新、页面间数据同步与失败保留目录。
+
+Agent 文件工具支持 `str_replace`：先用 `read_file` 读取，再对文件中唯一的非重叠精确匹配执行替换；空匹配、冲突及导致文件变空的替换会被拒绝。替换使用同目录临时文件，失败时不回退截断原文件；最终路径的符号链接不受支持。普通权限位尽力保留，ACL、特殊权限位和其他元数据不作保证。文件检查不能阻止外部进程在检查与替换之间修改文件，也不提供备份。`write_file` 拒绝以空内容覆盖已有非空文件。Windows 的 `search_files` 可用 `file_glob` 按文件名筛选，使用 PowerShell `-like` 通配规则且不区分大小写；非 Windows 内置搜索仍不可用。

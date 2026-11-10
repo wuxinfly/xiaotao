@@ -130,6 +130,9 @@ func (w *Workspace) Write(relative, content string, appendMode bool) error {
 	if readErr != nil && !os.IsNotExist(readErr) {
 		return readErr
 	}
+	if !appendMode && content == "" && readErr == nil && len(current) > 0 {
+		return fmt.Errorf("拒绝用空内容覆盖非空文件 %s", relative)
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
