@@ -1,0 +1,26 @@
+/* Per-message "more" trigger: revealed on hover/focus, always on for the
+   finished-answer meta row and for touch layouts where hover does not exist. */
+.agent-message-actions { display: flex; align-items: center; justify-content: flex-end; width: 100%; opacity: 0; transition: opacity 140ms ease; }
+.agent-message:hover .agent-message-actions, .agent-message:focus-within .agent-message-actions { opacity: 1; }
+.agent-final-meta-wrap .agent-message-actions { flex: none; width: auto; opacity: 1; }
+
+.agent-message-actions-trigger {
+  display: grid; place-items: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: #7899a5;
+  transition: color 150ms, background-color 150ms, border-color 150ms;
+}
+.agent-message-actions-trigger:hover,
+.agent-message-actions-trigger:focus-visible {
+  color: #d8f6f4; border-color: rgba(89, 223, 221, .28); background: rgba(16, 59, 71, .52); outline: none;
+}
+.agent-message-actions-trigger[aria-expanded='true'] { color: #d8f6f4; background: rgba(16, 59, 71, .52); }
+.agent-message-actions-trigger svg { width: 15px; height: 15px; }
+
+.agent-message-menu { width: 148px; }
+.agent-message-menu button { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: #cce3e9; text-align: left; font-size: 12px; }
+.agent-message-menu button:hover, .agent-message-menu button:focus-visible { background: rgba(58, 123, 139, .3); outline: none; }
+.agent-message-menu button:disabled { opacity: .45; cursor: default; background: transparent; }
+.agent-message-menu button svg { width: 13px; height: 13px; flex: none; }
+
+@media (hover: none) { .agent-message-actions { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .agent-message-actions, .agent-message-actions-trigger { transition: none; } }

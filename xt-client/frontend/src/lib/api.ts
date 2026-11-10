@@ -541,6 +541,11 @@ export const api = {
     }),
   cancelAgentSession: (id: string) =>
     request<{ ok: boolean }>(`/api/agent/sessions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  branchAgentSession: (id: string, messageId: string) =>
+    request<AgentSession>(`/api/agent/sessions/${encodeURIComponent(id)}/branch`, {
+      method: 'POST',
+      body: JSON.stringify({ messageId }),
+    }),
   createReview: (sessionId: string, requestId?: string, model?: string, modelSettings?: AgentModelSettings) =>
     request<BehaviorReview>(`/api/agent/sessions/${encodeURIComponent(sessionId)}/reviews`, {
       method: 'POST',

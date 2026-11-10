@@ -184,6 +184,25 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 		}
 		send(w, session)
 	})
+	mux.HandleFunc("POST /api/agent/sessions/{id}/branch", func(w http.ResponseWriter, r *http.Request) {
+		if !requireOrigin(r) {
+			http.Error(w, "same-origin required", 403)
+			return
+		}
+		var input struct {
+			MessageID string `json:"messageId"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
+			apiError(w, 400, "请求格式无效")
+			return
+		}
+		session, err := svc.Branch(r.PathValue("id"), input.MessageID)
+		if err != nil {
+			apiError(w, 400, err.Error())
+			return
+		}
+		send(w, session)
+	})
 	mux.HandleFunc("GET /api/agent/sessions/{id}/history", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)

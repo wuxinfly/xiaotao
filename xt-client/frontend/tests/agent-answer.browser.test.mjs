@@ -60,8 +60,14 @@ test('formal answer streams monotonically, survives tools, history, stop and lat
   const summary=page.locator('.agent-final-meta');
   assert.ok((await summary.boundingBox()).y >= (await bubble.boundingBox()).y+(await bubble.boundingBox()).height);
   assert.equal(await page.locator('.agent-process-collapse').getAttribute('aria-hidden'),'true');
-  await summary.locator('xpath=..').getByRole('button',{name:'查看思考过程'}).click();
-  await page.getByRole('dialog',{name:'本轮思考过程'}).getByText('阅读文件',{exact:true}).waitFor();
+  await summary.locator('xpath=..').getByRole('button',{name:'消息操作'}).click();
+  await page.addStyleTag({content:'.agent-thought-drawer{transition-duration:1.2s !important}'});
+  await page.getByRole('menuitem',{name:'查看思考过程'}).click();
+  await page.waitForFunction(()=>document.querySelector('.agent-drawer-backdrop')?.classList.contains('is-open'));
+  const openingTransform=await page.locator('.agent-thought-drawer').evaluate(el=>getComputedStyle(el).transform);
+  assert.notEqual(openingTransform,'none');
+  assert.notEqual(openingTransform,'matrix(1, 0, 0, 1, 0, 0)','drawer opens with a transition, not a jump');
+  await page.getByRole('dialog',{name:'本轮思考过程'}).getByText('阅读文件',{exact:true}).first().waitFor();
   await page.keyboard.press('Escape');
   for(const width of [1200,390]) {
     await page.setViewportSize({width,height:800});
@@ -83,10 +89,22 @@ test('formal answer streams monotonically, survives tools, history, stop and lat
     await page.evaluate(()=>window.answerStream.close());
     const run=page.locator('[data-run-id="'+runId+'"]');
     await run.locator('.agent-final-meta').waitFor();
-    assert.match(await run.textContent(),status==='failed' ? /任务失败/ : /任务已停止/);
+    const notice=run.locator('.agent-run-notice');
+    await notice.waitFor();
+    assert.match(await notice.textContent(),status==='failed' ? /任务失败/ : /任务已停止/);
     assert.match(await run.locator('.agent-run-bubble').textContent(),/部分文字/);
+    assert.equal(await page.locator('.agent-error').count(),0,'run status stays in the bubble, not the pinned bar');
     await page.waitForFunction(()=>document.querySelector('.agent-send')?.getAttribute('aria-label')==='发送消息');
   }
+  await send();
+  const emptyRunId='r-stopped-empty';
+  await emit([{type:'session',status:'running',message:{id:'u-empty',role:'user',runId:emptyRunId,content:'中断',createdAt:at(20)}},{type:'run_stats',runStats:{...stats,runId:emptyRunId,userMessageId:'u-empty'}},{type:'run_stats',runStats:{...stats,runId:emptyRunId,phase:'canceled',endedAt:at(21)}},{type:'status',runId:emptyRunId,status:'canceled'}]);
+  await page.evaluate(()=>window.answerStream.close());
+  const emptyRun=page.locator('[data-run-id="'+emptyRunId+'"]');
+  await emptyRun.locator('.agent-run-notice').waitFor();
+  assert.match(await emptyRun.locator('.agent-run-bubble').textContent(),/任务已停止/,'a stopped run without an answer still shows one bubble');
+  assert.equal(await emptyRun.locator('.agent-result-viewport').count(),0);
+  assert.equal(await page.locator('.agent-error').count(),0);
   session.messages=[{id:'wide',role:'user',content:'query'+ 'x'.repeat(3000)+'\n\n```go\n'+ 'error'.repeat(600)+'\n```',createdAt:at(30)}];
   session.runStats=[];
   await page.reload();

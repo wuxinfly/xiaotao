@@ -336,10 +336,12 @@
 .agent-final-stat:hover, .agent-final-stat:focus-visible { border-color: rgba(89, 223, 221, .28); background: rgba(16, 59, 71, .52); color: #d8f6f4; outline: none; }
 .agent-final-stat svg { flex: none; width: 13px; height: 13px; }
 .agent-final-stat > span { min-width: 0; }
-.agent-final-state { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 3px 8px; border: 1px solid rgba(255, 157, 145, .22); border-radius: 5px; background: rgba(130, 44, 44, .18); color: #ffb5ad; font-size: 10.5px; }
-.agent-final-state[data-state='canceled'] { border-color: rgba(239, 182, 91, .22); background: rgba(130, 92, 44, .16); color: #f4c67f; }
-.agent-final-state svg { width: 13px; height: 13px; }
-.agent-final-open { flex: none; margin-left: auto; }
+.agent-run-bubble.is-terminal { border-color: rgba(239, 182, 91, .34); }
+.agent-run-bubble.is-terminal[data-phase='failed'] { border-color: rgba(255, 143, 134, .38); }
+.agent-result-viewport + .agent-run-notice { margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(144, 196, 203, .14); }
+.agent-run-notice { display: flex; align-items: center; gap: 6px; color: #f4c67f; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.agent-run-notice svg { flex: none; width: 14px; height: 14px; }
+.agent-run-bubble.is-terminal[data-phase='failed'] .agent-run-notice { color: #ffb5ad; }
 .agent-stat-tooltip { position: fixed; z-index: 210; padding: 5px 8px; border: 1px solid rgba(104, 180, 196, .3); border-radius: 5px; background: #092435; color: #d8f3f2; box-shadow: 0 8px 20px rgba(0, 8, 18, .35); font-size: 10.5px; line-height: 1.4; white-space: nowrap; pointer-events: none; animation: agent-tooltip-in 120ms ease; }
 @keyframes agent-tooltip-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -938,7 +940,9 @@
   .agent-workspace *::before,
   .agent-workspace *::after { animation: none !important; }
   .agent-process-body,
-  .agent-process-chevron { transition: none !important; }
+  .agent-process-chevron,
+  .agent-drawer-backdrop,
+  .agent-thought-drawer { transition: none !important; }
 }
 
 .agent-history-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin: 20px 4px 9px 8px; color: #accbd4; font-size: 12px; font-weight: 600; letter-spacing: .04em; }

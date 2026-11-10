@@ -1,9 +1,12 @@
 import {normaliseImage} from './imageNormalise';
-import {AgentDroplet, activityState, type DropletState} from './AgentDroplet';
+import {AgentDroplet} from './AgentDroplet';
+import {MessageRow, RunTimeline} from './messages/MessageFeed';
+import {runDuration, runPhase, thoughtKindLabel} from './messages/runStats';
+import {useBranchSession} from './useBranchSession';
 import {Popover} from '../../components/popover/Popover';
 import {ContextMeter} from './ContextDetailPopover';
 import {ModalPresence} from '../../components/modal/ModalFrame';
-import {Fragment as ReactFragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {Fragment as ReactFragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {SessionList} from './SessionList';
 import {createPortal} from 'react-dom';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -22,13 +25,9 @@ import {
   ArrowDown,
   CircleAlert,
   CircleCheck,
-  CircleStop,
-  Clock3,
   FilePenLine,
   FileSearch,
-  Gauge,
   Image,
-  SendHorizontal,
   ListFilter,
   Check,
   ChevronDown,
@@ -42,10 +41,8 @@ import {
   Settings2,
   Trash2,
   Square,
-  PanelRight,
   Route,
   Terminal,
-  TriangleAlert,
   Wrench,
   X,
   Zap,
@@ -118,13 +115,6 @@ function mergeRunStats(older: AgentRunStats[] | null | undefined, newer: AgentRu
   return Array.from(merged.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
-const thoughtKindLabel: Record<AgentThought['kind'], string> = {
-  understanding: '理解',
-  observation: '进展',
-  decision: '决定',
-  checkpoint: '阶段',
-};
-
 type ThoughtTraceRow = {
   id: string;
   time: string;
@@ -172,10 +162,6 @@ function traceOffset(startedAt: string, time: string) {
 
 function traceStatusLabel(status: ThoughtTraceRow['status']) {
   return status === 'running' ? '进行中' : status === 'failed' ? '失败' : '完成';
-}
-
-function runPhase(stats: AgentRunStats): NonNullable<AgentRunStats['phase']> {
-  return stats.phase ?? (stats.endedAt ? 'completed' : 'working');
 }
 
 function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
@@ -241,104 +227,6 @@ function conversationHasImages(messages: AgentMessage[], hasImages?: boolean) {
   return !!hasImages || messages.some(item => !!item.images?.length);
 }
 
-function runDuration(stats: AgentRunStats) {
-  const start = new Date(stats.startedAt).getTime();
-  const end = stats.endedAt ? new Date(stats.endedAt).getTime() : Date.now();
-  const seconds = Math.max(0, Math.round((end - start) / 1000));
-  return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
-}
-
-function runSpeed(stats: AgentRunStats) {
-  if (!stats.outputSpeed || stats.outputSpeed <= 0) return '';
-  return `${stats.outputSpeed.toFixed(1).replace(/\.0$/, '')} tok/s`;
-}
-
-// runElapsed is the wall clock time of the run, in whole seconds.
-function runElapsed(stats: AgentRunStats, now: number) {
-  const start = new Date(stats.startedAt).getTime();
-  if (!Number.isFinite(start)) return 0;
-  const end = stats.endedAt ? new Date(stats.endedAt).getTime() : now;
-  return Math.max(0, Math.floor((end - start) / 1000));
-}
-
-function formatElapsed(seconds: number) {
-  if (seconds < 60) return `${seconds} 秒`;
-  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
-}
-
-// useTicker advances once per second so the live duration keeps moving even
-// when the backend has nothing new to report.
-function useTicker(active: boolean) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [active]);
-  return now;
-}
-
-// liveOutput reads the streaming values first and falls back to the values
-// reported by a finished request.
-function liveOutput(stats: AgentRunStats) {
-  const tokens = (stats.liveTokens ?? 0) > 0 ? stats.liveTokens! : (stats.outputTokens ?? 0);
-  const speed = (stats.liveSpeed ?? 0) > 0 ? stats.liveSpeed! : (stats.outputSpeed ?? 0);
-  return {tokens, speed};
-}
-
-function runSummaryItems(stats: AgentRunStats) {
-  const items = [{key: 'duration', label: `共思考 ${runDuration(stats)}`, Icon: Clock3, value: runDuration(stats)}];
-  if (stats.firstTokenMs != null && stats.firstTokenMs > 0) {
-    const value = `${(stats.firstTokenMs / 1000).toFixed(1)} 秒`;
-    items.push({key: 'firstToken', label: `首 token 延迟 ${value}`, Icon: Zap, value});
-  }
-  if (stats.filesRead > 0) items.push({key: 'read', label: `读取 ${stats.filesRead} 个文件`, Icon: FileSearch, value: String(stats.filesRead)});
-  if (stats.filesWritten > 0) items.push({key: 'write', label: `写入 ${stats.filesWritten} 个文件`, Icon: FilePenLine, value: String(stats.filesWritten)});
-  if (stats.toolCalls > 0) items.push({key: 'tools', label: `调用 ${stats.toolCalls} 次工具`, Icon: Wrench, value: String(stats.toolCalls)});
-  if ((stats.modelRequests ?? 0) > 0) items.push({key: 'requests', label: `模型请求 ${stats.modelRequests} 次`, Icon: SendHorizontal, value: String(stats.modelRequests)});
-  const speed = runSpeed(stats);
-  if (speed) items.push({key: 'speed', label: `输出速度 ${speed}`, Icon: Gauge, value: speed.replace(' tok/s', '')});
-  return items;
-}
-
-function RunSummary({stats}: {stats: AgentRunStats}) {
-  const anchor = useRef<HTMLDivElement>(null);
-  const [tip, setTip] = useState('');
-  const [tipPosition, setTipPosition] = useState({left: 0, top: 0});
-  const phase = runPhase(stats);
-  const items = runSummaryItems(stats);
-  const showTip = (event: React.FocusEvent<HTMLSpanElement> | React.MouseEvent<HTMLSpanElement>, label: string) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const width = Math.min(250, Math.max(140, label.length * 12 + 22));
-    setTip(label);
-    setTipPosition({
-      left: Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2)),
-      top: rect.top >= 44 ? rect.top - 36 : rect.bottom + 8,
-    });
-  };
-  const hideTip = () => setTip('');
-  return <div ref={anchor} className={'agent-final-meta is-' + phase}>
-    {(phase === 'failed' || phase === 'canceled') && <span className="agent-final-state" data-state={phase}>{phase === 'failed' ? <TriangleAlert aria-hidden="true"/> : <CircleStop aria-hidden="true"/>}<span>{phase === 'failed' ? '任务失败' : '任务已停止'}</span></span>}
-    {items.map(({key, label, Icon, value}) => <span key={key} className="agent-final-stat" tabIndex={0} aria-label={label} onMouseEnter={event => showTip(event, label)} onMouseLeave={hideTip} onFocus={event => showTip(event, label)} onBlur={hideTip}><Icon aria-hidden="true"/><span>{value}</span></span>)}
-    {tip && createPortal(<span className="agent-stat-tooltip" role="tooltip" style={tipPosition}>{tip}</span>, document.body)}
-  </div>;
-}
-
-function liveRunState(runId: string, thoughts: AgentThought[], activity: AgentActivity[]): DropletState {
-  const latestActivity = activity.filter(item => item.runId === runId).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).at(-1);
-  const latestThought = thoughts.filter(item => item.runId === runId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1);
-  if (!latestActivity || (latestThought && latestThought.createdAt >= latestActivity.startedAt)) return 'thinking';
-  if (latestActivity.status === 'failed') return 'error';
-  return activityState(latestActivity.kind);
-}
-
-function formatCompactTokens(value: number) {
-  if (value >= 1_000_000) return (value / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (value >= 1_000) return (value / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
-  return String(value);
-}
-
 // 最终回复有两种渲染形状：MessageRow 的 .agent-message.role-assistant 与 RunTimeline 的 .agent-run-bubble，
 // 两者的 data-message-id 分别落在 article 和气泡上，正文统一带 .agent-message-content。
 function quoteMessageContent(node: Node): HTMLElement | null {
@@ -348,90 +236,6 @@ function quoteMessageContent(node: Node): HTMLElement | null {
   if (!content || !owner?.dataset.messageId) return null;
   if (owner.classList.contains('role-user')) return null;
   return content;
-}
-
-const MessageRow = memo(function MessageRow({item, followsProcess, stats}: {
-  item: AgentMessage;
-  followsProcess: boolean;
-  stats?: AgentRunStats;
-}) {
-  const completed = !!stats?.endedAt;
-  return <article data-message-id={item.id} className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
-    {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet state={stats?.phase === 'failed' ? 'error' : completed ? 'completed' : 'output'}/></div>}
-    <div className="agent-message-body">
-      {item.role === 'user' && !!item.references?.length && <div className="agent-message-references" aria-label="已引用对话">
-        {item.references.map(reference => <button type="button" key={reference.id} className={'agent-message-reference' + (reference.sourceAvailable === false ? ' is-unavailable' : '')} onClick={() => window.dispatchEvent(new CustomEvent('xiaotao:agent-reference', {detail: reference}))} title={reference.sourceAvailable === false ? '来源对话已删除，摘要仍保留' : `引用对话：${reference.title}`}>
-          <MessageSquarePlus aria-hidden="true"/><span>{reference.title}</span>
-          {reference.hasNewContent && <small>有新内容</small>}
-          {reference.sourceAvailable === false && <small>来源不可用</small>}
-        </button>)}
-      </div>}
-      {item.role === 'assistant' && completed && <RunSummary stats={stats}/>}
-      {!!item.images?.length && <div className="agent-message-images">
-        {item.images.map(image => <a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="打开图片"><img src={image.url} alt="消息图片" width={image.width} height={image.height}/></a>)}
-      </div>}
-      <div className="agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{item.content}</Markdown></div>
-    </div>
-  </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
-
-// LiveStats shows the four numbers that matter while a run is streaming:
-// elapsed time, first-token latency, produced tokens and output speed.
-function LiveStats({stats}: {stats: AgentRunStats}) {
-  const now = useTicker(!stats.endedAt);
-  const elapsed = runElapsed(stats, now);
-  const {tokens, speed} = liveOutput(stats);
-  const firstToken = stats.firstTokenMs != null && stats.firstTokenMs > 0 ? `${(stats.firstTokenMs / 1000).toFixed(1)}s` : '--';
-  return <div className="agent-live-stats" aria-live="polite" aria-label="实时执行统计">
-    <span title="已执行时长"><Clock3 aria-hidden="true"/><span>{formatElapsed(elapsed)}</span></span>
-    <span title="首 token 延迟"><Zap aria-hidden="true"/><span>首 token {firstToken}</span></span>
-    <span title="累计输入 token 数（已返回用量）"><ArrowUp aria-hidden="true"/><span>{stats.inputKnown ? formatCompactTokens(stats.inputTokens ?? 0) : '--'} tok</span></span>
-    <span title="累计输出 token 数"><ArrowDown aria-hidden="true"/><span>{formatCompactTokens(tokens)} tok</span></span>
-    <span title="实时输出速度"><span className="agent-live-speed-val">{speed > 0 ? speed.toFixed(1).replace(/\.0$/, '') : '--'}</span><span className="agent-live-speed-unit">tok/s</span></span>
-  </div>;
-}
-
-function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, busy, onOpen}: {
-  runId: string; thoughts: AgentThought[]; activity: AgentActivity[];
-  streamDraft?: AgentMessage; answer?: AgentMessage; stats: AgentRunStats; busy: boolean; onOpen: () => void;
-}) {
-  const rows = useMemo(() => [
-    ...thoughts.filter(item => item.runId === runId).map(item => ({id: item.id, time: item.createdAt, kind: 'thought', label: thoughtKindLabel[item.kind], text: item.text})),
-    ...activity.filter(item => item.runId === runId).map(item => ({id: item.id, time: item.startedAt, kind: 'activity', label: '操作', text: item.title + (item.detail ? ' · ' + item.detail : '')})),
-  ].sort((a, b) => a.time.localeCompare(b.time)).slice(-4), [runId, thoughts, activity]);
-  const current = thoughts.filter(item => item.runId === runId).at(-1);
-  const finished = !!stats.endedAt;
-  const text = answer?.content || streamDraft?.content || current?.text || '正在理解你的需求…';
-  const content = useRef<HTMLDivElement>(null);
-  const viewport = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number>();
-  useLayoutEffect(() => {
-    const element = content.current;
-    if (!element) return;
-    const measure = () => setHeight(finished ? element.scrollHeight : Math.min(element.scrollHeight, parseFloat(getComputedStyle(element).lineHeight) * 2));
-    measure();
-    const observer = new ResizeObserver(measure); observer.observe(element);
-    return () => observer.disconnect();
-  }, [finished, text]);
-  useLayoutEffect(() => {
-    if (viewport.current) viewport.current.scrollTop = finished ? 0 : viewport.current.scrollHeight;
-  }, [text, finished, height]);
-  const hasEvents = rows.length > 0;
-  const hasAnswer = !!answer;
-  return <div className={'agent-run-timeline' + (finished ? ' is-finished' : '')} data-run-id={runId}>
-    <div className="agent-message-avatar"><AgentDroplet state={finished ? stats.phase === 'failed' ? 'error' : 'completed' : liveRunState(runId, thoughts, activity)} running={busy && !finished}/></div>
-    {(!finished || hasAnswer) && <div className={'agent-run-bubble' + (!finished && streamDraft ? ' is-streaming' : '')} data-message-id={answer?.id}>
-      <div ref={viewport} className={'agent-result-viewport' + (finished ? ' is-expanded' : '')} style={{height}}><div ref={content} className="agent-run-bubble-text agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{text}</Markdown></div></div>
-    </div>}
-    <div className={'agent-process-collapse' + (finished || !hasEvents ? ' is-collapsed' : '')} inert={finished || !hasEvents} aria-hidden={finished || !hasEvents}><div>
-      <div className="agent-run-trace">
-        <div className="agent-run-scroll" aria-label="最新四条思考与操作"><ol>{rows.map(row => <li key={row.id} data-kind={row.kind}><span>{row.label}</span><p>{row.text}</p></li>)}</ol></div>
-        {!finished && <button type="button" className="agent-run-open" onClick={onOpen} aria-label="查看思考过程" title="查看思考过程"><PanelRight aria-hidden="true"/></button>}
-      </div>
-      {!finished && <LiveStats stats={stats}/>}
-    </div></div>
-    {finished && <div className="agent-final-meta-wrap"><RunSummary stats={stats}/><button type="button" className="agent-run-open agent-final-open" onClick={onOpen} aria-label="查看思考过程" title="查看思考过程"><PanelRight aria-hidden="true"/></button></div>}
-  </div>;
 }
 
 function ThoughtTraceEntry({row, startedAt, index, expanded, onToggle}: {
@@ -483,21 +287,34 @@ function thoughtTraceRows(runId: string, thoughts: AgentThought[], activity: Age
   ].sort((a, b) => a.time.localeCompare(b.time));
 }
 
+// The drawer mounts already open, so shown flips one frame late: the closed
+// styles paint first and the CSS transition gets a start value to animate from.
+// Closing keeps present mounted until the exit transition has finished.
+function useDrawerPresence(open: boolean) {
+  const [present, setPresent] = useState(open);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setShown(false);
+      const timer = window.setTimeout(() => setPresent(false), 260);
+      return () => window.clearTimeout(timer);
+    }
+    setPresent(true);
+    const frame = window.requestAnimationFrame(() => setShown(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [open]);
+  return {present, shown};
+}
+
 function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
   runId: string; thoughts: AgentThought[]; activity: AgentActivity[]; stats: AgentRunStats; open: boolean; onClose: () => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const [present, setPresent] = useState(open);
+  const {present, shown} = useDrawerPresence(open);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    if (open) {
-      returnFocus.current = document.activeElement as HTMLElement | null;
-      setPresent(true);
-      return;
-    }
-    const timer = window.setTimeout(() => setPresent(false), 260);
-    return () => window.clearTimeout(timer);
+    if (open) returnFocus.current = document.activeElement as HTMLElement | null;
   }, [open]);
   useEffect(() => {
     if (!open) return;
@@ -518,7 +335,7 @@ function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
   const lastDecision = [...timeline].reverse().find(row => row.kind === 'thought' && row.thoughtKind === 'decision');
   const hasThought = timeline.some(row => row.kind === 'thought');
   if (!present) return null;
-  return createPortal(<div className={'agent-drawer-backdrop' + (open ? ' is-open' : ' is-closing')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
+  return createPortal(<div className={'agent-drawer-backdrop' + (open && shown ? ' is-open' : ' is-closing')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
     <aside className="agent-thought-drawer agent-thought-map" role="dialog" aria-modal="true" aria-label="本轮思考过程">
       <header className="agent-thought-header">
         <div><span>思考路线</span><strong><Route aria-hidden="true"/>{runDuration(stats)}</strong></div>
@@ -1460,6 +1277,8 @@ export function AgentPage({visible}: {visible: boolean}) {
     editor?.commands.focus();
   }, [pending, editor, saveDraft, restoreDraft]);
 
+  const branchSession = useBranchSession(setSessions, activeIdRef, selectSession);
+
   async function deleteSession(item: AgentSession) {
     if (busy || deleting) return;
     if (!await confirm({title: '删除会话？', description: '“' + item.title + '”的消息和执行记录将一并删除。', confirmLabel: '删除会话'})) return;
@@ -1520,9 +1339,13 @@ export function AgentPage({visible}: {visible: boolean}) {
     area.querySelectorAll('.agent-run-timeline').forEach(element => observer.observe(element));
     return () => observer.disconnect();
   }, [active?.id, active?.runStats?.length, updateScrollToBottom]);
-  const contextRun = runStats.at(-1);
+  const lastRun = runStats.at(-1);
+  // A run that ended on its own carries its status inside the answer bubble,
+  // so the pinned bottom error bar stays for errors that are not run-ending.
+  const runEndedInFeed = !!lastRun?.endedAt && (runPhase(lastRun) === 'failed' || runPhase(lastRun) === 'canceled');
+  const runNotice = runEndedInFeed ? active?.error || '' : '';
   const currentModel = model || active?.model || '';
-  const contextWindow = contextRun?.contextWindow ?? modelConfigFor(modelConfigs, currentModel, models)?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
+  const contextWindow = lastRun?.contextWindow ??modelConfigFor(modelConfigs, currentModel, models)?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
   const currentModelOption = models.find(item => item.model === (model || active?.model));
   const currentModelSupportsImages = currentModelOption?.supportsImages === true;
@@ -1656,14 +1479,14 @@ export function AgentPage({visible}: {visible: boolean}) {
           if (entry.kind === 'run') {
             const running = entry.phase === 'live';
             return <ReactFragment key={entry.runId}>
-              <RunTimeline runId={entry.runId} thoughts={thoughts} activity={activity} streamDraft={active?.streamDrafts?.find(item => item.runId === entry.runId)} stats={entry.stats} busy={running} answer={conversationMessages(active?.messages ?? []).find(item => item.role === 'assistant' && item.runId === entry.runId)} onOpen={() => setOpenThoughtRun(entry.runId)}/>
+              <RunTimeline runId={entry.runId} thoughts={thoughts} activity={activity} streamDraft={active?.streamDrafts?.find(item => item.runId === entry.runId)} stats={entry.stats} busy={running} answer={conversationMessages(active?.messages ?? []).find(item => item.role === 'assistant' && item.runId === entry.runId)} onOpen={() => setOpenThoughtRun(entry.runId)} onBranch={branchSession} branchDisabled={busy} notice={entry.runId === lastRun?.runId ? runNotice : undefined}/>
             </ReactFragment>;
           }
           const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
-          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats}/>;
+          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats} onBranch={branchSession} branchDisabled={busy}/>;
         })}
         {busy && !entries.some(entry => entry.kind === 'run' || (entry.kind === 'message' && entry.stats && !entry.stats.endedAt)) && workingIndicator}
-        {(error || (!busy && active?.error)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
+        {(error || (!busy && active?.error && !runEndedInFeed)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
       </div>
 
       <div className="agent-composer-wrap" ref={composer}>
@@ -1714,7 +1537,7 @@ export function AgentPage({visible}: {visible: boolean}) {
             </div>
             </div>
             <div className="agent-composer-actions">
-              <ContextMeter stats={contextRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
+              <ContextMeter stats={lastRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
               <div className="agent-model-picker">
                 <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
                   <span>{availablePickerModels.find(item => item.model === (model || active?.model))?.label || '先在设置中选择模型'}</span><ChevronDown aria-hidden="true"/>
