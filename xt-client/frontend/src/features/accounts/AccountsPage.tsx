@@ -6,6 +6,7 @@ import {modelCatalogChanged, modelSources, sourceInput, type Source} from '../..
 import {LocalGateway} from './LocalGateway';
 import {SourceEditor} from './SourceEditor';
 import './sources.css';
+import {PluginsPanel} from './PluginsPanel';
 
 export function AccountsPage() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -50,6 +51,7 @@ export function AccountsPage() {
       <ul className="source-model-list">{source.models.map(model => <li key={model.id}><div><strong>{model.label || model.upstreamModelId}</strong><code>{model.upstreamModelId}</code></div><small>{model.contextWindow ? `上下文 ${model.contextWindow.toLocaleString()}` : '上下文未声明'}{model.maxOutputTokens ? ` · 输出 ${model.maxOutputTokens.toLocaleString()}` : ''}{model.supportsImages ? ' · 图片' : ''}{model.supportsReasoning ? ` · 推理${model.reasoningEfforts?.length ? `（${model.reasoningEfforts.join(' / ')}）` : ''}` : ''}</small></li>)}</ul>
       <footer><span role={feedback?.failed ? 'alert' : 'status'} className={feedback?.failed ? 'source-error' : ''}>{busy === source.id ? '处理中…' : feedback?.id === source.id ? feedback.text : `${source.models.length} 个模型`}</span><div className="source-actions"><button type="button" className="app-modal-button secondary" disabled={!!busy || loading} onClick={() => setEditor(source)}>编辑</button><button type="button" className="app-modal-button secondary" disabled={!!busy || loading} onClick={() => void act(source, 'test')}>测试连接</button><button type="button" className="app-modal-button secondary" disabled={!!busy || loading} onClick={() => void act(source, 'delete')}>删除</button></div></footer>
     </article>)}</div>
+    <PluginsPanel/>
     <LocalGateway/>
     <ModalPresence>{editor && <SourceEditor key={editor === 'new' ? 'new' : editor.id} source={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} onSaved={saved => {setSources(current => current.some(item => item.id === saved.id) ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]); setEditor(null);}}/>}</ModalPresence>
   </section>;

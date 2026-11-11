@@ -39,7 +39,7 @@ func registerRuntimeRoutes(mux *http.ServeMux, rt runtimeRoutes) {
 		rt.send(w, map[string]any{"App": "xiaotao", "PID": rt.state.PID, "version": Version})
 	})
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
-		rt.send(w, map[string]any{"version": Version, "url": rt.state.URL, "pid": rt.state.PID, "uptime": int(time.Since(started).Seconds()), "dataDir": rt.data, "modelReady": len(agentModelsForSources(rt.sources.List())) > 0})
+		rt.send(w, map[string]any{"version": Version, "url": rt.state.URL, "pid": rt.state.PID, "uptime": int(time.Since(started).Seconds()), "dataDir": rt.data, "modelReady": len(rt.gateway.Models()) > 0})
 	})
 	mux.HandleFunc("GET /api/config", func(w http.ResponseWriter, r *http.Request) { mu.Lock(); defer mu.Unlock(); rt.send(w, rt.cfg) })
 	mux.HandleFunc("PUT /api/config", func(w http.ResponseWriter, r *http.Request) {

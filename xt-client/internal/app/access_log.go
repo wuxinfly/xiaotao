@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 	"xiaotao/xt-client/internal/logging"
+	"xiaotao/xt-client/internal/sourceplugin"
 	"xiaotao/xt-client/internal/usage"
 )
 
@@ -104,10 +105,14 @@ func accessLogMiddleware(next http.Handler) http.Handler {
 
 type closeableHandler struct {
 	http.Handler
-	usage *usage.Service
+	usage   *usage.Service
+	plugins *sourceplugin.Manager
 }
 
 func (c *closeableHandler) Close() error {
+	if c.plugins != nil {
+		c.plugins.Close()
+	}
 	if c.usage != nil {
 		return c.usage.Close()
 	}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"xiaotao/xt-client/internal/modelsource"
+	"xiaotao/xt-client/internal/sourceplugin"
 	"xiaotao/xt-client/internal/usage"
 )
 
@@ -24,6 +25,7 @@ const idleTimeout = 300 * time.Second
 const totalTimeout = 30 * time.Minute
 
 type Service struct {
+	plugins *sourceplugin.Manager
 	mu      sync.RWMutex
 	store   *modelsource.Store
 	key     string
@@ -68,7 +70,11 @@ func (s *Service) Models() []map[string]any {
 	if s.store == nil {
 		return result
 	}
-	for _, src := range s.store.List() {
+	sources := s.store.List()
+	if s.plugins != nil {
+		sources = append(sources, s.plugins.Sources()...)
+	}
+	for _, src := range sources {
 		if !src.Enabled || !src.HasAPIKey {
 			continue
 		}
@@ -139,6 +145,9 @@ func (s *Service) Test(ctx context.Context, sourceID string) error {
 }
 
 func (s *Service) send(ctx context.Context, src modelsource.Source, key string, body map[string]any) (*http.Response, context.CancelFunc, error) {
+	if src.Kind == "plugin" && s.plugins != nil {
+		return s.pluginSend(ctx, src, body)
+	}
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
 	raw, err := json.Marshal(body)
 	if err != nil {

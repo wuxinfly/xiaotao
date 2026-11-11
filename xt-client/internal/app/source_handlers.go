@@ -10,9 +10,10 @@ import (
 
 	"xiaotao/xt-client/internal/gateway"
 	"xiaotao/xt-client/internal/modelsource"
+	"xiaotao/xt-client/internal/sourceplugin"
 )
 
-func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gateway.Service, origin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gateway.Service, origin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string), plugins *sourceplugin.Manager) {
 	protect := func(handler http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if !origin(r) {
@@ -65,7 +66,7 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 		send(w, map[string]bool{"ok": true})
 	}))
 	mux.HandleFunc("POST /api/agent/models/refresh", protect(func(w http.ResponseWriter, r *http.Request) {
-		send(w, map[string]any{"models": agentModelsForSources(store.List()), "errors": []string{}})
+		send(w, map[string]any{"models": agentModelsForSources(append(store.List(), plugins.Sources()...)), "errors": []string{}})
 	}))
 	// Compatibility view for dashboard/HUD account labels; it contains manual
 	// sources only and never reads or refreshes legacy platform accounts.

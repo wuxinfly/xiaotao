@@ -7,7 +7,7 @@ export async function sourceBrowser(port, run) {
   let browser;
   try {
     await Promise.race([new Promise(resolve => server.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})), once(server, 'exit').then(() => {throw Error('Vite exited');})]);
-    browser = await chromium.launch({channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless:true});
+    browser = await chromium.launch({...(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge'}), headless:true});
     const page = await browser.newPage({viewport:{width:1100,height:850}, reducedMotion:'reduce'});
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const state = {sources: [], requests: [], saves: [], tests: [], modelReads:0, failTest:false};

@@ -14,7 +14,7 @@ Agent 与外部工具继续使用本地 `/v1/chat/completions` 和 `/v1/models`�
 
 来源配置和加密 API Key 保存在当前环境 `model-sources/sources.json`，使用 `keys/secret.key` 的受保护密钥环；API Key 不写浏览器 localStorage，也不通过管理读取回传。新的本地访问密钥另存 `keys/gateway.json`，首次升级可只读沿用本环境旧网关密钥。原 `accounts/` 平台数据保留，核心不再加载其账号用于模型调用、不执行登录或续期。旧平台代码仅保留作后续迁移参考，不编入客户端运行依赖。
 
-第 3、4 部分仅记录为后续计划：[模型来源插件与平台代理迁移](../docs/plans/2026-11-10-model-source-plugins.md)。当前没有可安装的模型来源插件，历史平台接入说明不再代表当前客户端能力。第 1、2 部分的实施与验收见[手动模型来源](../docs/plans/2026-11-10-manual-model-sources.md)。
+Trae 插件首版已接入：本地目录安装、启停、令牌导入/当前环境旧账号显式迁移、模型发现及统一网关调用。构建插件、安装和本地验证见[插件开发与 Trae 验证](../docs/plugins/README.md)。尚未提供浏览器 OAuth、多账号、卸载/更新与真实账号验收。第 3、4 部分总体计划：[模型来源插件与平台代理迁移](../docs/plans/2026-11-10-model-source-plugins.md)。其他历史平台接入说明不代表当前客户端能力。第 1、2 部分的实施与验收见[手动模型来源](../docs/plans/2026-11-10-manual-model-sources.md)。
 
 Agent 的回答提示要求先回应问题、按需展开，并保留必要依据、风险和未完成事项；用户指定格式和细节时优先遵守。此调整无需额外模型请求，实际文风仍取决于模型，真实模型对比验收尚未完成。Mermaid 图示渲染尚未实现。
 

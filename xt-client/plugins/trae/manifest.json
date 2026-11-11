@@ -1,0 +1,1 @@
+{"id":"xiaotao.trae","version":"0.1.0","contractVersion":1,"name":"Trae 国内版","entrypoint":"provider.exe","capabilities":["chat","login","refresh","models","quota","checkin"]}

@@ -41,13 +41,16 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	} else {
 		src, m, key, err = s.store.Resolve(modelID)
 	}
+	if err != nil && s.plugins != nil {
+		src, m, err = s.plugins.Resolve(modelID)
+	}
 	id := requestID()
 	s.mu.RLock()
 	u := s.usage
 	s.mu.RUnlock()
 	var tracker *usage.ActiveRequest
 	if u != nil {
-		tracker = u.StartRequest(id, "manual", modelID, src.ID, "用户", "模型请求")
+		tracker = u.StartRequest(id, src.Kind, modelID, src.ID, "用户", "模型请求")
 	}
 	if err != nil {
 		if tracker != nil {
@@ -62,6 +65,9 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, 400, err.Error())
 		return
+	}
+	if src.Kind == "plugin" {
+		body["_plugin_context_window"] = m.ContextWindow
 	}
 	stream, _ := body["stream"].(bool)
 	includeUsage := false

@@ -18,6 +18,7 @@ import (
 	"xiaotao/xt-client/internal/logging"
 	"xiaotao/xt-client/internal/modelsource"
 	"xiaotao/xt-client/internal/secrets"
+	"xiaotao/xt-client/internal/sourceplugin"
 	"xiaotao/xt-client/internal/usage"
 )
 
@@ -87,8 +88,8 @@ func Alive(s State) bool {
 	return r.StatusCode == 200 && json.NewDecoder(r.Body).Decode(&v) == nil && v.App == "xiaotao" && v.PID == s.PID
 }
 
-// Handler assembles only generic model sources. Platform account packages are
-// deliberately absent: they will be loaded through the future plugin boundary.
+// Handler assembles manual sources and independent model-source plugins.
+// Platform provider implementations remain outside the client dependency graph.
 func Handler(s State, data string, stop func()) (http.Handler, error) {
 	if err := os.MkdirAll(data, 0700); err != nil {
 		return nil, err
@@ -112,8 +113,13 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	plugins, err := sourceplugin.Open(data, keyring.Encrypt, keyring.Decrypt)
+	if err != nil {
+		return nil, err
+	}
 	gatewaySvc := gateway.New(sources, key, saveKey)
-	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, gatewaySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption { return agentModelsForSources(sources.List()) })
+	gatewaySvc.SetPlugins(plugins)
+	agentSvc := agent.NewService(filepath.Join(data, "agent"), s.URL, gatewaySvc.APIKey, &http.Client{Timeout: 35 * time.Minute}, func() []agent.ModelOption { return agentModelsForSources(append(sources.List(), plugins.Sources()...)) })
 	agentSvc.SetClientVersion(Version)
 	usageSvc, err := usage.New(filepath.Join(data, "data"), Version)
 	if err != nil {
@@ -140,7 +146,9 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
 	registerAgentRoutes(mux, agentSvc, requireOrigin, send, apiError)
-	registerSourceRoutes(mux, sources, gatewaySvc, requireOrigin, send, apiError)
+	registerSourceRoutes(mux, sources, gatewaySvc, requireOrigin, send, apiError, plugins)
+	registerPluginRoutes(mux, plugins, requireOrigin)
+	registerPluginMigration(mux, plugins, data, keyring.Decrypt, requireOrigin)
 	registerRuntimeRoutes(mux, runtimeRoutes{state: s, data: data, stop: stop, cfg: cfg, sources: sources, gateway: gatewaySvc, usage: usageSvc, send: send, apiError: apiError})
 	sub, _ := fs.Sub(assets, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
@@ -148,7 +156,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apiError(w, 404, "接口不存在；平台账号接入已移至后续插件方案")
 	})
-	return &closeableHandler{Handler: accessLogMiddleware(guardLocalRequests(s, mux)), usage: usageSvc}, nil
+	return &closeableHandler{Handler: accessLogMiddleware(guardLocalRequests(s, mux)), usage: usageSvc, plugins: plugins}, nil
 }
 
 func loadConfig(data string) (Config, error) {
