@@ -24,10 +24,10 @@
 - 调整目录不应改变 Skill 安装位置、协议和产品行为。
 - 模块职责、命令或路径发生变化时更新 README、局部 AGENTS.md 和规则源。
 - 客户端代码质量按 `docs/agent/client-code-quality.md` 检查；新增代码不得新增超限文件或函数，修改存量超限文件时不得继续变大。
-- WorkBuddy 国内原生渠道使用 www.workbuddy.cn 与 platform=workbuddy；先获取 authUrl 再返回登录会话并打开浏览器，账号身份从 token 元数据读取，模型来自 /v3/config。不得将 CodeBuddy VSCode 插件凭据视为 WorkBuddy 原生凭据；旧渠道账号需重新登录。
+- WorkBuddy 原生渠道逻辑已从客户端运行链路停用，保留实现供后续插件迁移。迁移时使用 www.workbuddy.cn 与 platform=workbuddy；先获取 authUrl 再返回登录会话，身份从 token 元数据读取，模型来自 /v3/config；不得将 CodeBuddy 插件凭据视为原生凭据。
 - xt-client 前端模型页正文容器统一使用 style.css 的 --content-max 和 --content-gutter 控制宽度和左右留白，不在页面样式里各自写 max-width 或左右 padding。
 - 前端浮层（tooltip、modal 等 position:fixed 元素）不得依赖页面容器定位：页面或区块的入场动画不要使用会保留 transform 的 fill 模式，浮层优先用 createPortal 挂到 body，否则祖先会成为 fixed 的包含块导致浮层错位或被裁剪。
-- xt-client 的 UAT 首次启动时只读导入正式版已登录的模型账号，并在 UAT 密钥环内重新加密保存；代理密钥、用量、配额、配置、Agent 会话、日志和运行时状态必须继续隔离。导入完成后账号由 UAT 独立维护，正式版文件不得被 UAT 修改。会轮换 refresh token 的来源在正式版与 UAT 同时刷新时存在登录态互斥风险。
+- xt-client 的 UAT 首次启动时仅只读导入正式版手动模型来源及其 API Key，并在 UAT 密钥环内重新加密后独立维护；不导入旧平台代理账号。本地网关密钥、用量、其他配置、Agent 会话、日志和运行时状态必须继续隔离，正式版文件不得被 UAT 修改。后续插件的轮换 refresh token 来源需单独确定登录态导入策略。
 
 ## 验证
 - Skill：在 xt-skills 下运行 `npm test`、`npm run test:contracts`、`npm pack --dry-run`。

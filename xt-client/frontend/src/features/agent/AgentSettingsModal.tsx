@@ -4,26 +4,11 @@ import {MCPSettings} from './MCPSettings';
 import {SkillsSettings} from './SkillsSettings';
 import {ModalFrame} from '../../components/modal/ModalFrame';
 import {ChevronDown, Plus, Search, Trash2, X} from 'lucide-react';
+import {withMissingModels} from './modelOptions';
 import type {AgentModelOption} from '../../lib/api';
 import type {AgentDefaultModels, AgentModelConfig, AgentModelDefaults, AgentModelSettings} from '../../lib/agent-model-settings';
 
-const providerNames: Record<string, string> = {
-  trae: 'Trae',
-  workbuddy: 'WorkBuddy',
-  antigravity: 'Antigravity',
-  qoder: 'Qoder',
-  codex: 'Codex',
-};
-
-function splitModel(model: string) {
-  const slash = model.indexOf('/');
-  if (slash < 0) return {provider: 'other', name: model};
-  return {provider: model.slice(0, slash), name: model.slice(slash + 1)};
-}
-
-function providerLabel(provider: string) {
-  return providerNames[provider] || provider;
-}
+const sourceKey = (model: AgentModelOption) => model.sourceId || 'unassigned';
 
 interface AgentSettingsModalProps {
   models: AgentModelOption[];
@@ -60,7 +45,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
   const groups = useMemo(() => {
     const grouped = new Map<string, AgentModelOption[]>();
     for (const item of visibleModels) {
-      const provider = splitModel(item.model).provider;
+      const provider = sourceKey(item);
       const list = grouped.get(provider) || [];
       list.push(item);
       grouped.set(provider, list);
@@ -68,13 +53,13 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     return Array.from(grouped.entries());
   }, [visibleModels]);
   const selectedCount = chosen.size;
-  const selectedModels = useMemo(() => models.filter(item => chosen.has(item.model)), [models, chosen]);
+  const selectedModels = useMemo(() => withMissingModels(models, Array.from(chosen)).filter(item => chosen.has(item.model)), [models, chosen]);
 
   function configFor(model: string, options: AgentModelOption[]) {
     const saved = configs[model];
     return {
       contextWindow: saved?.contextWindow || options.find(item => item.model === model)?.contextWindow,
-      maxOutputTokens: saved?.maxOutputTokens,
+      maxOutputTokens: saved?.maxOutputTokens || options.find(item => item.model === model)?.maxOutputTokens,
       reasoningEffort: saved?.reasoningEffort,
     };
   }
@@ -127,7 +112,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     const nextConfigs = Array.from(chosen).map(model => ({
       model,
       contextWindow: configs[model]?.contextWindow || models.find(item => item.model === model)?.contextWindow,
-      maxOutputTokens: configs[model]?.maxOutputTokens,
+      maxOutputTokens: configs[model]?.maxOutputTokens || models.find(item => item.model === model)?.maxOutputTokens,
       reasoningEffort: configs[model]?.reasoningEffort,
     }));
     if (!validate(nextConfigs)) return;
@@ -158,7 +143,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     const configured = configs[model];
     return {
       contextWindow: saved?.contextWindow || configured?.contextWindow || models.find(item => item.model === model)?.contextWindow,
-      maxOutputTokens: saved?.maxOutputTokens || configured?.maxOutputTokens,
+      maxOutputTokens: saved?.maxOutputTokens || configured?.maxOutputTokens || models.find(item => item.model === model)?.maxOutputTokens,
     };
   }
 
@@ -187,14 +172,14 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     {tab === 'skills' && <div className="agent-settings-page"><SkillsSettings active onBusyChange={setSkillsBusy}/></div>}
     {tab === 'models' && <div className="agent-settings-page">
     {formError && <p className="agent-modal-error" role="alert">{formError}</p>}
-    <div className="agent-model-refresh"><span>模型列表已缓存，账号或模型变化后可手动刷新。</span><button type="button" className="app-modal-button secondary" disabled={loading} onClick={onRetry}>{loading ? '刷新中…' : '刷新模型列表'}</button></div>
+    <div className="agent-model-refresh"><span>模型目录来自本地接口配置，修改后可重新读取。</span><button type="button" className="app-modal-button secondary" disabled={loading} onClick={onRetry}>{loading ? '刷新中…' : '刷新模型列表'}</button></div>
     <div className="agent-settings-section-head"><div><strong>执行模型</strong><p>这些模型会出现在新会话的模型选择中。</p></div><button type="button" className="app-modal-button primary" disabled={!models.length} onClick={() => {setAdding(true); setQuery(''); setExpanded(new Set());}}><Plus aria-hidden="true"/>添加模型</button></div>
     {selectedModels.length ? <div className="agent-configured-models">
       {selectedModels.map(item => {
         const config = configFor(item.model, models);
-        const name = item.label || splitModel(item.model).name;
+        const name = item.label || item.upstreamModelId || item.model;
         return <article className="agent-configured-model" key={item.model}>
-          <header><div><strong>{name}<ModelPriceBadge {...item}/></strong><code>{item.model}</code></div><button type="button" onClick={() => setChosen(current => {const next = new Set(current); next.delete(item.model); return next;})} aria-label={`移除 ${name}`} title="移除模型"><Trash2 aria-hidden="true"/></button></header>
+          <header><div><strong>{name}<ModelPriceBadge {...item}/></strong><code>{item.sourceLabel ? `${item.sourceLabel} · ` : ''}{item.upstreamModelId || item.model}{item.unavailable ? '（不可用：来源已删除或停用）' : ''}</code></div><button type="button" onClick={() => setChosen(current => {const next = new Set(current); next.delete(item.model); return next;})} aria-label={`移除 ${name}`} title="移除模型"><Trash2 aria-hidden="true"/></button></header>
           <div className="agent-model-execution">
             <span className="agent-model-execution-title">执行参数</span>
             <label><span>上下文窗口</span><div><input type="number" min="1024" step="1024" inputMode="numeric" value={config.contextWindow ?? ''} onChange={event => updateSettings(item.model, 'contextWindow', event.target.value)} placeholder={item.contextWindow ? String(item.contextWindow) : '未知'} aria-label={`${name} 上下文窗口`}/><small>tokens</small></div></label>
@@ -205,12 +190,12 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
       })}
     </div> : <div className="agent-modal-empty"><p>还没有配置执行模型。</p><button type="button" className="app-modal-button secondary" disabled={!models.length} onClick={() => setAdding(true)}>添加第一个模型</button></div>}
     {adding && <section className="agent-add-model-panel" aria-label="从模型列表添加">
-      <div className="agent-add-model-head"><div><strong>添加执行模型</strong><small>从当前账号的模型目录中选择</small></div><button type="button" onClick={() => setAdding(false)} aria-label="关闭模型添加"><X aria-hidden="true"/></button></div>
+      <div className="agent-add-model-head"><div><strong>添加执行模型</strong><small>从已启用接口的模型目录中选择</small></div><button type="button" onClick={() => setAdding(false)} aria-label="关闭模型添加"><X aria-hidden="true"/></button></div>
     <label className="agent-model-search">
       <Search aria-hidden="true"/>
       <input
         value={query}
-        onChange={event => { const value = event.target.value; setQuery(value); const term = value.trim().toLowerCase(); setExpanded(new Set(term ? models.filter(item => `${item.label} ${item.model}`.toLowerCase().includes(term) && !chosen.has(item.model)).map(item => splitModel(item.model).provider) : [])); }}
+        onChange={event => { const value = event.target.value; setQuery(value); const term = value.trim().toLowerCase(); setExpanded(new Set(term ? models.filter(item => `${item.label} ${item.model}`.toLowerCase().includes(term) && !chosen.has(item.model)).map(item => sourceKey(item)) : [])); }}
         placeholder="搜索模型或来源"
         aria-label="搜索待添加模型"
         autoComplete="off"
@@ -218,9 +203,9 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
       {query && <button type="button" onClick={() => {setQuery(''); setExpanded(new Set());}} aria-label="清除搜索"><X aria-hidden="true"/></button>}
     </label>
     <div className="agent-settings-groups">
-      {loading && <div className="agent-modal-empty" role="status">正在从已启用的账号获取模型，可能需要一些时间…</div>}
-      {error && <div className="agent-modal-empty" role="alert"><p>模型列表加载失败：{error}。已选模型仍会保留。</p><button type="button" className="app-modal-button secondary" onClick={onRetry}>重试</button> <button type="button" className="app-modal-button secondary" onClick={onAccounts}>查看账号与配额</button></div>}
-      {!loading && !error && !models.length && <div className="agent-modal-empty"><p>没有获取到可用模型，请检查账号是否已接入并启用。</p><button type="button" className="app-modal-button secondary" onClick={onAccounts}>前往账号与配额</button> <button type="button" className="app-modal-button secondary" onClick={onRetry}>重新获取</button></div>}
+      {loading && <div className="agent-modal-empty" role="status">正在读取本地模型配置…</div>}
+      {error && <div className="agent-modal-empty" role="alert"><p>模型列表加载失败：{error}。已选模型仍会保留。</p><button type="button" className="app-modal-button secondary" onClick={onRetry}>重试</button> <button type="button" className="app-modal-button secondary" onClick={onAccounts}>查看模型接口</button></div>}
+      {!loading && !error && !models.length && <div className="agent-modal-empty"><p>没有可用模型，请添加并启用模型接口。</p><button type="button" className="app-modal-button secondary" onClick={onAccounts}>前往模型接口</button> <button type="button" className="app-modal-button secondary" onClick={onRetry}>重新获取</button></div>}
       {models.length > 0 && !visibleModels.length && <div className="agent-modal-empty">没有匹配的模型。</div>}
       {groups.map(([provider, items]) => {
         const addable = items.filter(item => !chosen.has(item.model));
@@ -228,17 +213,17 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
         const open = expanded.has(provider);
         return <section className="agent-settings-group" key={provider}>
           <div className="agent-settings-group-head">
-            <button type="button" className="agent-settings-group-toggle" aria-expanded={open} onClick={() => setExpanded(current => { const next = new Set(current); if (open) next.delete(provider); else next.add(provider); return next; })}><ChevronDown className={open ? 'is-open' : ''} aria-hidden="true"/><strong>{providerLabel(provider)}</strong><small>{addable.length} 个可添加</small></button>
+            <button type="button" className="agent-settings-group-toggle" aria-expanded={open} onClick={() => setExpanded(current => { const next = new Set(current); if (open) next.delete(provider); else next.add(provider); return next; })}><ChevronDown className={open ? 'is-open' : ''} aria-hidden="true"/><strong>{items[0]?.sourceLabel || '未分配来源'}</strong><small>{addable.length} 个可添加</small></button>
           </div>
           {open && <div className="agent-model-options">
             {addable.map(item => {
-              const {name} = splitModel(item.model);
+              const name = item.upstreamModelId || item.model;
               return <div className="agent-model-config-card" key={item.model}>
                 <button type="button" className="agent-model-choice" onClick={() => {toggleModel(item.model); setAdding(false);}}>
                   <span className="agent-model-check"><Plus aria-hidden="true"/></span>
                   <span className="agent-model-choice-copy">
                     <strong>{item.label || name}<ModelPriceBadge {...item}/></strong>
-                    <code>{item.model}</code>
+                    <code>{item.sourceLabel ? `${item.sourceLabel} · ` : ''}{item.upstreamModelId || item.model}{item.unavailable ? '（不可用：来源已删除或停用）' : ''}</code>
                   </span>
                 </button>
               </div>;
@@ -260,7 +245,7 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
         const settings = defaultSettingsFor(model, defaultSettings[role]);
         return <section className="agent-default-model" key={role}>
           <div><strong>{title}</strong><p>{description}</p></div>
-          <label className="agent-default-select"><span>{title}模型</span><select value={model} onChange={event => {const value = event.target.value; setDefaults(current => ({...current, [role]: value || undefined})); setDefaultSettings(current => ({...current, [role]: undefined}));}}><option value="">跟随会话模型</option>{models.map(item => <option key={item.model} value={item.model}>{item.label || item.model}</option>)}</select></label>
+          <label className="agent-default-select"><span>{title}模型</span><select value={model} onChange={event => {const value = event.target.value; setDefaults(current => ({...current, [role]: value || undefined})); setDefaultSettings(current => ({...current, [role]: undefined}));}}><option value="">跟随会话模型</option>{model && !models.some(item => item.model === model) && <option value={model}>{model}（不可用）</option>}{models.map(item => <option key={item.model} value={item.model}>{item.sourceLabel ? `${item.sourceLabel} · ` : ''}{item.label || item.model}</option>)}</select></label>
           {model && <div className="agent-model-execution">
             <span className="agent-model-execution-title">调用参数</span>
             <label><span>上下文窗口</span><div><input type="number" min="1024" step="1024" inputMode="numeric" value={settings.contextWindow ?? ''} onChange={event => updateDefaultSetting(role, 'contextWindow', event.target.value)} aria-label={`${title}上下文窗口`}/><small>tokens</small></div></label>

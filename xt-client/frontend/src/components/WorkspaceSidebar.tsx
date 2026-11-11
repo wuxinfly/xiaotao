@@ -6,7 +6,7 @@ type Props = {page: Page; onSelect: (page: Page) => void};
 
 const items: {page: Page; label: string; Icon: typeof ChartNoAxesColumn}[] = [
   {page: 'dashboard', label: '仪表盘', Icon: ChartNoAxesColumn},
-  {page: 'accounts', label: '账号与配额', Icon: UserRoundCog},
+  {page: 'accounts', label: '模型接口', Icon: UserRoundCog},
 ];
 
 function WorkspaceNav({page, onSelect, ...props}: Props & {'aria-label'?: string}) {

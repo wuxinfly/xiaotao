@@ -1,51 +1,50 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {spawn} from 'node:child_process';
-import {once} from 'node:events';
-import {chromium} from 'playwright';
+import {fillSource, saveSource, sourceBrowser} from './source-browser-fixture.mjs';
 
-test('Qoder checkin: regional cards, unavailable activity, replay and scoped batch', {timeout:60000}, async () => {
- const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5199','--strictPort'],{stdio:['ignore','pipe','pipe']});
- let browser;
- try {
-  await Promise.race([new Promise(resolve=>server.stdout.on('data',d=>{if(d.toString().includes('ready in'))resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
-  browser=await chromium.launch({channel:process.env.XIAOTAO_TEST_BROWSER||'msedge',headless:true});
-  const page=await browser.newPage({viewport:{width:1100,height:850},reducedMotion:'reduce'});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let claimed=false;const posts=[];const statusReads=[];
-  const accounts=[{id:'cn',region:'cn',nickname:'CN fixture'},{id:'global',region:'global',nickname:'Global fixture'}].map(a=>({...a,uid:a.id,provider:'qoder',enabled:true,authState:'valid',addedAt:1}));
-  await page.route('**/api/**',async route=>{
-   const req=route.request();const url=new URL(req.url());const path=url.pathname;
-   if(req.method()==='POST')posts.push(path+url.search);
-   if(path==='/api/accounts')return route.fulfill({json:{accounts}});
-   if(path==='/api/providers')return route.fulfill({json:{providers:[{id:'qoder',displayName:'Qoder',regions:['cn','global'],billing:'credit'}]}});
-   if(path.endsWith('/checkin')){
-    const id=path.split('/')[3];
-    if(req.method()==='POST') {const replayed=claimed;claimed=true;return route.fulfill({json:{ok:!replayed,checkedIn:true,extraCredits:replayed?0:37,message:'当前活动奖励已领取'}});}
-    statusReads.push(id);
-    return route.fulfill({json:{supported:true,active:id==='global',checkedIn:id==='global'&&claimed,message:id==='cn'?'暂无可领取活动':claimed?'当前活动奖励已领取':'有活动奖励可领取'}});
-   }
-   if(path==='/api/checkin/claim-all')return route.fulfill({json:{results:{cn:{ok:false,checkedIn:false,error:'fixture failure'},global:{ok:false,checkedIn:true,message:'当前活动奖励已领取'}}}});
-   return route.fulfill({json:{sessions:[],models:[],accounts:[],providers:[],mode:'full',key:'fixture'}});
-  });
-  await page.goto('http://127.0.0.1:5199');
-  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('xiaotao:navigate',{detail:'accounts'})));
-  const group=page.locator('.provider-group-section').filter({hasText:'Qoder'});
-  await group.getByTitle('展开分组',{exact:true}).click();
-  const cn=page.locator('.modern-account-card').filter({hasText:'CN fixture'});
-  const global=page.locator('.modern-account-card').filter({hasText:'Global fixture'});
-  await cn.getByTitle('暂无可领取活动',{exact:true}).waitFor();
-  assert.equal(await cn.locator('.badge-checkin-todo').count(),0);
-  await global.getByRole('button',{name:'每日签到打卡',exact:true}).click();
-  await global.locator('.badge-checkin-done').waitFor();
-  assert.ok(statusReads.includes('cn')&&statusReads.includes('global'));
-  assert.ok(posts.includes('/api/accounts/global/checkin'));
-  await global.getByRole('button',{name:'每日签到打卡',exact:true}).click();
-  await page.getByText('当前活动奖励已领取',{exact:true}).first().waitFor();
-  await Promise.all([page.waitForResponse(r=>r.url().includes('/api/checkin/claim-all')),group.getByRole('button',{name:'一键打卡',exact:true}).click()]);
-  assert.ok(posts.includes('/api/checkin/claim-all?provider=qoder'));
-  await page.getByText('1 个账号签到失败，请单独打卡查看原因',{exact:true}).waitFor();
-  for(const width of [540,1100]){await page.setViewportSize({width,height:850});await global.getByRole('button',{name:'每日签到打卡',exact:true}).waitFor();}
+test('manual source CRUD replaces platform login/checkin; blank edit key preserves secret', {timeout:60000}, () => sourceBrowser(5199, async ({page,state,errors,navigate}) => {
+  await navigate('accounts');
+  await page.getByRole('heading', {name:'添加第一个模型接口'}).waitFor();
+  assert.equal(await page.getByRole('button', {name:/登录|签到|打卡/}).count(), 0);
+  await fillSource(page, 'Primary');
+  await page.getByLabel('模型 1 上下文窗口').fill('131072');
+  await page.getByLabel('模型 1 最大输出').fill('8192');
+  await page.getByRole('checkbox', {name:'支持图片'}).check();
+  await page.getByRole('checkbox', {name:'支持推理'}).check();
+  await page.getByLabel('模型 1 推理档位').fill('low,high');
+  await page.getByRole('button', {name:'添加模型', exact:true}).click();
+  await page.getByLabel('模型 2 上游模型 ID').fill('org/secondary');
+  await saveSource(page);
+  assert.equal(state.sources[0].models.length, 2);
+  assert.equal(state.saves[0].enabled, true);
+  assert.equal(state.saves[0].models[0].id, undefined);
+  assert.deepEqual(state.sources[0].models[0].reasoningEfforts, ['low','high']);
+  const card = page.getByRole('article', {name:'Primary', exact:true});
+  await card.getByRole('button', {name:'编辑',exact:true}).click();
+  assert.equal(await page.getByLabel('API Key', {exact:true}).inputValue(), '');
+  await page.getByLabel('来源名称', {exact:true}).fill('Primary edited');
+  await saveSource(page);
+  assert.equal(Object.hasOwn(state.saves.at(-1), 'apiKey'), false);
+  assert.equal(state.saves.at(-1).models[0].id, 'source-1-route-0');
+  const edited = page.getByRole('article', {name:'Primary edited',exact:true});
+  await edited.getByRole('button', {name:'测试连接',exact:true}).click();
+  await edited.getByText('连接测试成功').waitFor();
+  assert.deepEqual(state.tests, ['/api/model-sources/source-1/test']);
+  state.failTest=true;
+  await edited.getByRole('button', {name:'测试连接',exact:true}).click();
+  await edited.getByRole('alert').filter({hasText:'上游拒绝测试'}).waitFor();
+  await edited.getByRole('checkbox').click();
+  await edited.getByText(/已停用/).waitFor();
+  await edited.getByRole('checkbox').click();
+  await edited.getByText(/已启用/).waitFor();
+  assert.equal(Object.hasOwn(state.saves.at(-1), 'apiKey'), false);
+  await edited.getByRole('button', {name:'删除',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button', {name:'取消',exact:true}).click();
+  assert.equal(state.sources.length,1);
+  await edited.getByRole('button', {name:'删除',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button', {name:'删除接口',exact:true}).click();
+  await page.getByRole('heading', {name:'添加第一个模型接口'}).waitFor();
+  assert.equal(state.sources.length,0);
+  assert.equal(state.requests.some(item => /auth|checkin|quota|providers/.test(item.path)),false);
   assert.deepEqual(errors,[]);
- } finally {await browser?.close();server.kill();}
-});
+}));

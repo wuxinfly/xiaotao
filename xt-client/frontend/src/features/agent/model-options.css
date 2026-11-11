@@ -1,0 +1,2 @@
+.agent-model-source-group > small { display: block; padding: 8px 10px; color: var(--muted); }
+.agent-model-source-group > button { display: flex; justify-content: space-between; width: 100%; text-align: left; }

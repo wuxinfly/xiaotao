@@ -19,5 +19,6 @@ xt-skills/adapters/deepseek-harness/lib/
 xt-skills/adapters/deepseek-harness/adapter/
 website/.astro/
 website/dist/
+xt-client/frontend/test-results/
 !/.xiaotao/memory/imports/
 !/.xiaotao/memory/imports/**

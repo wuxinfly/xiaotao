@@ -4,330 +4,262 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+
+	"xiaotao/xt-client/internal/modelsource"
 	"xiaotao/xt-client/internal/runtimeenv"
 	"xiaotao/xt-client/internal/secrets"
 	"xiaotao/xt-client/internal/storage"
 )
 
-func TestConfigAndOrigin(t *testing.T) {
-	dir := t.TempDir()
-	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	var h http.Handler
-	open := func() {
-		t.Helper()
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-		next, err := Handler(s, dir, func() {})
-		if err != nil {
-			t.Fatal(err)
-		}
-		h = next
+type sourceTestHandler struct {
+	http.Handler
+	once sync.Once
+}
+
+func (h *sourceTestHandler) Close() error {
+	var err error
+	h.once.Do(func() { err = h.Handler.(interface{ Close() error }).Close() })
+	return err
+}
+
+func newSourceTestApp(t *testing.T, dir string) (http.Handler, State) {
+	t.Helper()
+	state := State{URL: "http://127.0.0.1:12345", Token: "management-token", PID: 42}
+	h, err := Handler(state, dir, func() {})
+	if err != nil {
+		t.Fatal(err)
 	}
-	open()
-	defer func() {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
-	call := func(method, path, origin, host, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, s.URL+path, strings.NewReader(body))
-		r.Host = host
-		if origin != "" {
-			r.Header.Set("Origin", origin)
-		}
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
-	}
-	host := "127.0.0.1:12345"
-	if w := call("PUT", "/api/config", "http://evil.example", host, "{}"); w.Code != 403 {
-		t.Fatalf("cross origin: %d", w.Code)
-	}
-	if w := call("GET", "/api/status", "", "evil.example", ""); w.Code != 403 {
-		t.Fatalf("host: %d", w.Code)
-	}
-	if w := call("PUT", "/api/config", s.URL, host, `{"name":"测试空间"}`); w.Code != 200 {
-		t.Fatalf("save: %d %s", w.Code, w.Body.String())
-	}
-	// Second write exercises replacement of an existing file on Windows.
-	if w := call("PUT", "/api/config", s.URL, host, `{"name":"再次保存"}`); w.Code != 200 {
-		t.Fatalf("replace: %d", w.Code)
-	}
-	open()
-	if w := call("GET", "/api/config", "", host, ""); !strings.Contains(w.Body.String(), "再次保存") {
-		t.Fatal(w.Body.String())
-	}
-	if w := call("GET", "/", "", host, ""); w.Code != 200 || !strings.Contains(w.Body.String(), "小涛") {
-		t.Fatalf("page missing: status=%d body=%s", w.Code, w.Body.String())
-	}
-	// WebView video playback needs byte ranges for seeking and metadata reads.
-	r := httptest.NewRequest("GET", s.URL+"/startup.mp4", nil)
-	r.Header.Set("Range", "bytes=0-31")
+	wrapped := &sourceTestHandler{Handler: h}
+	t.Cleanup(func() { _ = wrapped.Close() })
+	return wrapped, state
+}
+
+func appHTTP(t *testing.T, h http.Handler, state State, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(method, state.URL+path, strings.NewReader(body))
+	r.Header.Set("Origin", state.URL)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != 206 || w.Body.Len() != 32 || w.Header().Get("Content-Type") != "video/mp4" {
-		t.Fatalf("startup video range: %d %s (%d bytes)", w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+	return w
+}
+
+func TestConfigAndOrigin(t *testing.T) {
+	dir := t.TempDir()
+	h, state := newSourceTestApp(t, dir)
+	r := httptest.NewRequest("PUT", state.URL+"/api/config", strings.NewReader("{}"))
+	r.Header.Set("Origin", "http://evil.example")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("cross origin: %d", w.Code)
 	}
-	if w := call("GET", "/v1/models", "", host, ""); w.Code != 401 {
-		t.Fatalf("model endpoint without key: %d", w.Code)
+	r = httptest.NewRequest("GET", state.URL+"/api/status", nil)
+	r.Host = "evil.example"
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("host: %d", w.Code)
+	}
+	for _, name := range []string{"测试空间", "再次保存"} {
+		w = appHTTP(t, h, state, "PUT", "/api/config", `{"name":"`+name+`"}`)
+		if w.Code != 200 {
+			t.Fatalf("save: %d %s", w.Code, w.Body.String())
+		}
+	}
+	if closer, ok := h.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
+	h, state = newSourceTestApp(t, dir)
+	if w = appHTTP(t, h, state, "GET", "/api/config", ""); !strings.Contains(w.Body.String(), "再次保存") {
+		t.Fatal(w.Body.String())
+	}
+	if w = appHTTP(t, h, state, "GET", "/", ""); w.Code != 200 || !strings.Contains(w.Body.String(), "小涛") {
+		t.Fatalf("page missing: %d", w.Code)
+	}
+	r = httptest.NewRequest("GET", state.URL+"/startup.mp4", nil)
+	r.Header.Set("Range", "bytes=0-31")
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 206 || w.Body.Len() != 32 || w.Header().Get("Content-Type") != "video/mp4" {
+		t.Fatalf("video range: %d %d", w.Code, w.Body.Len())
+	}
+	if w = appHTTP(t, h, state, "GET", "/v1/models", ""); w.Code != 401 {
+		t.Fatalf("models without key: %d", w.Code)
 	}
 }
+
 func TestCorruptConfigPreserved(t *testing.T) {
 	dir := t.TempDir()
-	p := filepath.Join(dir, "config.json")
-	os.WriteFile(p, []byte("broken"), 0600)
-	if _, e := Handler(State{}, dir, func() {}); e == nil {
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Handler(State{}, dir, func() {}); err == nil {
 		t.Fatal("expected error")
 	}
-	b, _ := os.ReadFile(p)
-	if string(b) != "broken" {
+	raw, _ := os.ReadFile(path)
+	if string(raw) != "broken" {
 		t.Fatal("overwrote invalid data")
 	}
 }
 
 func TestDashboardEndpoints(t *testing.T) {
-	dir := t.TempDir()
-	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	h, e := Handler(s, dir, func() {})
-	if e != nil {
-		t.Fatal(e)
+	h, state := newSourceTestApp(t, t.TempDir())
+	r := httptest.NewRequest("GET", state.URL+"/api/dashboard", nil)
+	r.Header.Set("Origin", "http://evil.example")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("cross origin: %d", w.Code)
 	}
-	defer func() {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
-
-	host := "127.0.0.1:12345"
-
-	// Cross-origin request blocked
-	rCross := httptest.NewRequest("GET", s.URL+"/api/dashboard", nil)
-	rCross.Host = host
-	rCross.Header.Set("Origin", "http://malicious.com")
-	wCross := httptest.NewRecorder()
-	h.ServeHTTP(wCross, rCross)
-	if wCross.Code != 403 {
-		t.Fatalf("expected 403 for cross-origin /api/dashboard, got %d", wCross.Code)
-	}
-
-	// Same-origin request allowed
-	rSame := httptest.NewRequest("GET", s.URL+"/api/dashboard", nil)
-	rSame.Host = host
-	rSame.Header.Set("Origin", s.URL)
-	wSame := httptest.NewRecorder()
-	h.ServeHTTP(wSame, rSame)
-	if wSame.Code != 200 {
-		t.Fatalf("expected 200 for /api/dashboard, got %d %s", wSame.Code, wSame.Body.String())
-	}
-	if !strings.Contains(wSame.Body.String(), "currentSession") || !strings.Contains(wSame.Body.String(), "heatmap") {
-		t.Fatalf("expected dashboard snapshot in response, got %s", wSame.Body.String())
+	w = appHTTP(t, h, state, "GET", "/api/dashboard", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), "currentSession") || !strings.Contains(w.Body.String(), "heatmap") {
+		t.Fatal(w.Body.String())
 	}
 }
 
-func TestUATImportsProductionModelAccountsOnce(t *testing.T) {
+func TestPlatformRoutesRemovedAndLegacyDataPreserved(t *testing.T) {
+	dir := t.TempDir()
+	old, err := storage.Open(filepath.Join(dir, "accounts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = old.UpsertAccount(&storage.Account{ID: "trae:1", Provider: "trae", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	keyring, err := secrets.Open(filepath.Join(dir, "keys"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = old.SaveSecret("trae:1", []byte("legacy-token"), keyring.Encrypt); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshotFiles(t, filepath.Join(dir, "accounts"))
+	h, state := newSourceTestApp(t, dir)
+	for _, tc := range []struct{ method, path string }{
+		{"POST", "/api/auth/trae"}, {"POST", "/api/auth/codex/import"}, {"GET", "/api/auth/workbuddy/session"},
+		{"GET", "/api/providers"}, {"POST", "/api/accounts/order"}, {"POST", "/api/accounts/trae:1/rename"},
+		{"POST", "/api/accounts/trae:1/quota"}, {"GET", "/api/accounts/trae:1/checkin"}, {"POST", "/api/checkin/claim-all"}, {"POST", "/api/proxy/models"},
+	} {
+		if w := appHTTP(t, h, state, tc.method, tc.path, "{}"); w.Code != 404 {
+			t.Fatalf("removed %s: %d %s", tc.path, w.Code, w.Body.String())
+		}
+	}
+	if w := appHTTP(t, h, state, "GET", "/api/accounts", ""); w.Code != 200 || strings.Contains(w.Body.String(), "trae:1") {
+		t.Fatal(w.Body.String())
+	}
+	if after := snapshotFiles(t, filepath.Join(dir, "accounts")); before != after {
+		t.Fatal("legacy platform accounts modified")
+	}
+}
+
+func TestUATImportsManualSourcesOnceAndReencrypts(t *testing.T) {
 	base := t.TempDir()
-	oldActive, oldLocalAppData := runtimeenv.Active, os.Getenv("LOCALAPPDATA")
+	oldEnv := runtimeenv.Active
 	runtimeenv.Active = runtimeenv.UAT
+	t.Cleanup(func() { runtimeenv.Active = oldEnv })
 	t.Setenv("LOCALAPPDATA", base)
-	t.Cleanup(func() { runtimeenv.Active = oldActive; os.Setenv("LOCALAPPDATA", oldLocalAppData) })
 	production := filepath.Join(base, "XiaoTao")
-	productionAccounts := filepath.Join(production, "accounts")
-	productionKeyring := filepath.Join(production, "keys")
-	source, err := storage.Open(productionAccounts)
+	sourceKeys, err := secrets.Open(filepath.Join(production, "keys"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceKeyring, err := secrets.Open(productionKeyring)
+	source, err := modelsource.Open(production, sourceKeys.Encrypt, sourceKeys.Decrypt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	account := &storage.Account{ID: "trae:1", Provider: "trae", Nickname: "正式账号", Enabled: true, UsageTokens: 10, UsageCalls: 2}
-	if err := source.UpsertAccount(account); err != nil {
+	key := "production-upstream-key"
+	saved, err := source.Save("", modelsource.Input{Label: "正式接口", BaseURL: "https://api.example/v1", Protocol: "openai-chat", APIKey: &key, Models: []modelsource.Model{{UpstreamModelID: "org/model", ContextWindow: 32000, MaxOutputTokens: 2048}}})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := source.SaveSecret(account.ID, []byte(`{"accessToken":"token"}`), sourceKeyring.Encrypt); err != nil {
-		t.Fatal(err)
-	}
-	if err := source.SaveSecret("proxy", []byte("production-proxy-key"), sourceKeyring.Encrypt); err != nil {
-		t.Fatal(err)
-	}
-	sourceBefore := snapshotFiles(t, productionAccounts, productionKeyring)
-
+	before := snapshotFiles(t, filepath.Join(production, "model-sources"), filepath.Join(production, "keys"))
 	uat := filepath.Join(base, "XiaoTao-uat")
-	dst, err := storage.Open(filepath.Join(uat, "accounts"))
+	newSourceTestApp(t, uat)
+	targetKeys, err := secrets.Open(filepath.Join(uat, "keys"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dstKeyring, err := secrets.Open(filepath.Join(uat, "keys"))
+	target, err := modelsource.Open(uat, targetKeys.Encrypt, targetKeys.Decrypt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := importModelAccounts(dst, dstKeyring, uat); err != nil {
+	got, model, plain, err := target.Resolve(saved.Models[0].ID)
+	if err != nil || plain != key || got.ID != saved.ID || model.MaxOutputTokens != 2048 {
+		t.Fatalf("import: %+v %+v %q %v", got, model, plain, err)
+	}
+	if before != snapshotFiles(t, filepath.Join(production, "model-sources"), filepath.Join(production, "keys")) {
+		t.Fatal("production files changed")
+	}
+	productionRaw, _ := os.ReadFile(filepath.Join(production, "model-sources", "sources.json"))
+	uatRaw, _ := os.ReadFile(filepath.Join(uat, "model-sources", "sources.json"))
+	if bytes.Equal(productionRaw, uatRaw) {
+		t.Fatal("credentials were copied without re-encryption")
+	}
+	if err = target.Delete(saved.ID); err != nil {
 		t.Fatal(err)
 	}
-	imported, ok := dst.Account(account.ID)
-	if !ok || imported.UsageTokens != 0 || imported.UsageCalls != 0 || imported.Quota != nil {
-		t.Fatalf("unexpected imported account: %#v", imported)
-	}
-	raw, err := dst.LoadSecret(account.ID, dstKeyring.Decrypt)
-	if err != nil || string(raw) != `{"accessToken":"token"}` {
-		t.Fatal("account credential was not re-encrypted in UAT")
-	}
-	if _, err := dst.LoadSecret("proxy", dstKeyring.Decrypt); err == nil {
-		t.Fatal("production proxy key was imported")
-	}
-	if got := snapshotFiles(t, productionAccounts, productionKeyring); got != sourceBefore {
-		t.Fatal("production account files changed during import")
-	}
-	if err := importModelAccounts(dst, dstKeyring, uat); err != nil {
+	if err = importManualModelSources(target, targetKeys, uat); err != nil {
 		t.Fatal(err)
 	}
-	accounts := dst.Accounts()
-	if len(accounts) != 1 {
-		t.Fatalf("repeated import changed account count: %d", len(accounts))
+	if len(target.List()) != 0 {
+		t.Fatal("deleted source reimported")
+	}
+	// An explicitly empty production configuration must still complete import,
+	// even when the new UAT has no model-sources directory yet.
+	if err = source.Delete(saved.ID); err != nil {
+		t.Fatal(err)
+	}
+	emptyUAT := filepath.Join(base, "XiaoTao-empty-uat")
+	newSourceTestApp(t, emptyUAT)
+	if _, err = os.Stat(filepath.Join(emptyUAT, "model-sources", "import.json")); err != nil {
+		t.Fatalf("empty import marker missing: %v", err)
 	}
 }
 
-func TestCheckinEndpoints(t *testing.T) {
+func TestGatewayKeyPreservedAndIndependent(t *testing.T) {
 	dir := t.TempDir()
-	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	h, err := Handler(s, dir, func() {})
+	keys, err := secrets.Open(filepath.Join(dir, "keys"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
-
-	call := func(method, path string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, s.URL+path, nil)
-		r.Host = "127.0.0.1:12345"
-		r.Header.Set("Origin", s.URL)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
-	}
-
-	// 1. Account not found
-	w := call("GET", "/api/accounts/non-existent/checkin")
-	if !strings.Contains(w.Body.String(), "account not found") {
-		t.Fatalf("expected error for missing account, got %s", w.Body.String())
-	}
-
-	// 2. Claim all (empty accounts returns 200 ok)
-	w = call("POST", "/api/checkin/claim-all")
-	if w.Code != 200 {
-		t.Fatalf("expected 200 for claim-all, got %d", w.Code)
-	}
-}
-
-func TestAccountAliasEndpoint(t *testing.T) {
-	dir := t.TempDir()
-	store, err := storage.Open(filepath.Join(dir, "accounts"))
+	legacy, err := storage.Open(filepath.Join(dir, "accounts"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertAccount(&storage.Account{ID: "trae:1", Provider: "trae", Enabled: true}); err != nil {
+	oldKey := strings.Repeat("a", 48)
+	if err = legacy.SaveSecret("proxy", []byte(oldKey), keys.Encrypt); err != nil {
 		t.Fatal(err)
 	}
-	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	h, err := Handler(s, dir, func() {})
-	if err != nil {
-		t.Fatal(err)
+	before := snapshotFiles(t, filepath.Join(dir, "accounts"))
+	h, state := newSourceTestApp(t, dir)
+	w := appHTTP(t, h, state, "GET", "/api/proxy/key", "")
+	var initial struct{ Key string }
+	_ = json.Unmarshal(w.Body.Bytes(), &initial)
+	if initial.Key != oldKey {
+		t.Fatalf("old gateway key lost: %s", w.Body.String())
 	}
-	defer func() {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
-	call := func(body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", s.URL+"/api/accounts/trae:1/rename", strings.NewReader(body))
-		r.Host = "127.0.0.1:12345"
-		r.Header.Set("Origin", s.URL)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
+	w = appHTTP(t, h, state, "POST", "/api/proxy/key", "{}")
+	var rotated struct{ Key string }
+	_ = json.Unmarshal(w.Body.Bytes(), &rotated)
+	if w.Code != 200 || rotated.Key == oldKey || len(strings.TrimPrefix(rotated.Key, "xt_")) != 48 {
+		t.Fatal(w.Body.String())
 	}
-	for _, tc := range []struct {
-		body, expected string
-		code           int
-	}{
-		{`{"alias":"  工作账号  "}`, `"alias":"工作账号"`, 200},
-		{`{"enabled":false}`, `"alias":"工作账号"`, 200},
-		{`{"alias":""}`, `"alias":""`, 200},
-		{`{"alias":"` + strings.Repeat("中", 41) + `"}`, "alias too long", 400},
-	} {
-		w := call(tc.body)
-		if w.Code != tc.code || !strings.Contains(w.Body.String(), tc.expected) {
-			t.Fatalf("body %s: got %d %s", tc.body, w.Code, w.Body.String())
-		}
+	if before != snapshotFiles(t, filepath.Join(dir, "accounts")) {
+		t.Fatal("key rotation modified frozen account file")
 	}
-}
-
-func TestReorderAccountsEndpoint(t *testing.T) {
-	dir := t.TempDir()
-	store, err := storage.Open(filepath.Join(dir, "accounts"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, acct := range []*storage.Account{
-		{ID: "trae:first", Provider: "trae", AddedAt: 1, Enabled: true},
-		{ID: "trae:second", Provider: "trae", AddedAt: 2, Enabled: true},
-		{ID: "workbuddy:first", Provider: "workbuddy", AddedAt: 3, Enabled: true},
-	} {
-		if err := store.UpsertAccount(acct); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	s := State{URL: "http://127.0.0.1:12345", Token: "secret", PID: 42}
-	h, err := Handler(s, dir, func() {})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}()
-	call := func(method, path, body string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest(method, s.URL+path, strings.NewReader(body))
-		r.Host = "127.0.0.1:12345"
-		r.Header.Set("Origin", s.URL)
-		w := httptest.NewRecorder()
-		h.ServeHTTP(w, r)
-		return w
-	}
-
-	w := call("POST", "/api/accounts/order", `{"providerId":"trae","accountIds":["trae:second","trae:first"]}`)
-	if w.Code != 200 {
-		t.Fatalf("reorder failed: %d %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), `"id":"trae:second"`) {
-		t.Fatalf("reordered response missing second account: %s", w.Body.String())
-	}
-
-	w = call("POST", "/api/accounts/order", `{"providerId":"trae","accountIds":["trae:second"]}`)
-	if w.Code != 400 {
-		t.Fatalf("incomplete order should fail: %d %s", w.Code, w.Body.String())
-	}
-
-	w = call("GET", "/api/accounts", "")
-	if w.Code != 200 {
-		t.Fatalf("list accounts failed: %d", w.Code)
-	}
-	body := w.Body.String()
-	if strings.Index(body, `"id":"trae:second"`) > strings.Index(body, `"id":"trae:first"`) {
-		t.Fatalf("reordered accounts were not persisted: %s", body)
+	h, state = newSourceTestApp(t, dir)
+	w = appHTTP(t, h, state, "GET", "/api/proxy/key", "")
+	if !strings.Contains(w.Body.String(), rotated.Key) {
+		t.Fatal("gateway key rotation not persisted")
 	}
 }
 
@@ -343,10 +275,7 @@ func snapshotFiles(t *testing.T, dirs ...string) string {
 			if err != nil {
 				return err
 			}
-			out.WriteString(path)
-			out.WriteString(":")
-			out.WriteString(info.ModTime().String())
-			out.WriteString(":")
+			out.WriteString(path + ":" + info.ModTime().String() + ":")
 			if !entry.IsDir() {
 				raw, err := os.ReadFile(path)
 				if err != nil {

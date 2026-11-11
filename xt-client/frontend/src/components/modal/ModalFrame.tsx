@@ -53,7 +53,7 @@ export function ModalFrame({title, description, className = '', origin, onClose,
     const previous = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
     const focusables = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex="0"]',
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
     ) ?? []);
     focusables()[0]?.focus();
 

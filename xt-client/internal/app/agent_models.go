@@ -1,64 +1,25 @@
 package app
 
 import (
-	"sync"
 	"xiaotao/xt-client/internal/agent"
-	"xiaotao/xt-client/internal/providers"
-	"xiaotao/xt-client/internal/storage"
+	"xiaotao/xt-client/internal/modelsource"
 )
 
-// Aggregate the refresh results directly: reading again would retry an empty,
-// failed catalog and make one click send two upstream requests.
-func refreshAgentModelsForAccounts(accounts []*storage.Account, refresh func(storage.Account) ([]providers.ModelInfo, string, error)) ([]agent.ModelOption, []string) {
-	var mu sync.Mutex
-	failed := map[string]bool{}
-	models := agentModelsForAccounts(accounts, func(acct storage.Account) []providers.ModelInfo {
-		models, _, err := refresh(acct)
-		if err != nil {
-			mu.Lock()
-			failed[acct.ID] = true
-			mu.Unlock()
-		}
-		return models
-	})
-	errors := []string{}
-	for _, acct := range accounts {
-		if failed[acct.ID] {
-			errors = append(errors, acct.Provider+": 模型目录刷新失败，已保留原有目录")
-		}
-	}
-	return models, errors
-}
-
-func agentModelsForAccounts(accounts []*storage.Account, fetch func(storage.Account) []providers.ModelInfo) []agent.ModelOption {
-	results := make([][]agent.ModelOption, len(accounts))
-	var wg sync.WaitGroup
-	for i, acct := range accounts {
-		if !acct.Enabled {
+// A saved source is the catalog. Reading it never performs upstream discovery.
+func agentModelsForSources(sources []modelsource.Source) []agent.ModelOption {
+	out := []agent.ModelOption{}
+	for _, source := range sources {
+		if !source.Enabled || !source.HasAPIKey {
 			continue
 		}
-		wg.Add(1)
-		go func(i int, acct storage.Account) {
-			defer wg.Done()
-			for _, model := range fetch(acct) {
-				id := acct.Provider + "/" + model.ID
-				label := id
-				if model.DisplayName != "" {
-					label = model.DisplayName + " · " + acct.Provider
-				}
-				results[i] = append(results[i], agent.ModelOption{Model: id, Label: label, PriceFactor: model.PriceFactor, IsFree: model.IsFree, SupportsImages: model.Multimodal, SupportsReasoning: model.Reasoning, ReasoningEfforts: model.Efforts, ContextWindow: int64(model.MaxInputTokens)})
-			}
-		}(i, *acct)
-	}
-	wg.Wait()
-	out := []agent.ModelOption{}
-	seen := map[string]bool{}
-	for _, result := range results {
-		for _, model := range result {
-			if !seen[model.Model] {
-				seen[model.Model] = true
-				out = append(out, model)
-			}
+		for _, model := range source.Models {
+			out = append(out, agent.ModelOption{
+				Model: model.ID, Label: model.Label + " · " + source.Label,
+				SourceID: source.ID, SourceLabel: source.Label, UpstreamModelID: model.UpstreamModelID,
+				ContextWindow: int64(model.ContextWindow), MaxOutputTokens: int64(model.MaxOutputTokens),
+				SupportsImages: model.SupportsImages, SupportsReasoning: model.SupportsReasoning,
+				ReasoningEfforts: append([]string(nil), model.ReasoningEfforts...),
+			})
 		}
 	}
 	return out

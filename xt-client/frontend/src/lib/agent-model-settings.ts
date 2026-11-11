@@ -75,9 +75,11 @@ function readDefaultModelSettings(): AgentModelDefaults {
 export function modelConfigFor(configs: AgentModelConfig[], model: string, options: AgentModelOption[]): AgentModelConfig | undefined {
   if (!model) return undefined;
   const saved = configs.find(item => item.model === model);
-  const contextWindow = saved?.contextWindow || options.find(item => item.model === model)?.contextWindow;
-  if (!contextWindow && !saved?.maxOutputTokens && !saved?.reasoningEffort) return undefined;
-  return {model, contextWindow, maxOutputTokens: saved?.maxOutputTokens, reasoningEffort: saved?.reasoningEffort};
+  const option = options.find(item => item.model === model);
+  const contextWindow = saved?.contextWindow || option?.contextWindow;
+  const maxOutputTokens = saved?.maxOutputTokens || option?.maxOutputTokens;
+  if (!contextWindow && !maxOutputTokens && !saved?.reasoningEffort) return undefined;
+  return {model, contextWindow, maxOutputTokens, reasoningEffort: saved?.reasoningEffort};
 }
 
 export function modelSettingsFor(configs: AgentModelConfig[], model: string, options: AgentModelOption[]) {
@@ -91,7 +93,7 @@ export function utilityModelFor(role: keyof AgentDefaultModels, defaults: AgentD
   if (!model) return {model: '', settings: undefined as AgentModelSettings | undefined};
   const saved = settings[role];
   const config = modelConfigFor(configs, model, options);
-  return {model, settings: saved || (config ? {contextWindow: config.contextWindow, maxOutputTokens: config.maxOutputTokens} : undefined)};
+  return {model, settings: config || saved ? {contextWindow: saved?.contextWindow || config?.contextWindow, maxOutputTokens: saved?.maxOutputTokens || config?.maxOutputTokens, reasoningEffort: saved?.reasoningEffort} : undefined};
 }
 
 // useAgentModelSettings holds the agent-side model selections (enabled models,
