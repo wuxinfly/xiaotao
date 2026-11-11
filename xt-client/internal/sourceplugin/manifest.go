@@ -73,7 +73,7 @@ func ReadManifest(dir string) (Manifest, string, error) {
 		switch c {
 		case "chat":
 			chat = true
-		case "login", "refresh", "models", "quota", "checkin":
+		case "login", "browser-login", "refresh", "models", "quota", "checkin":
 		default:
 			return m, "", errors.New("unknown capability")
 		}

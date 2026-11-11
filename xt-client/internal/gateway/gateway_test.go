@@ -33,7 +33,8 @@ func setupGateway(t *testing.T, handler http.HandlerFunc) (*Service, modelsource
 		t.Fatal(err)
 	}
 	key := "isolated-upstream-secret"
-	source, err := store.Save("", modelsource.Input{Label: "Test", Protocol: "openai-chat", BaseURL: server.URL + "/v1/chat/completions", APIKey: &key, Models: []modelsource.Model{{UpstreamModelID: "provider/model", Label: "Configured", ContextWindow: 4096, MaxOutputTokens: 256, SupportsImages: true, SupportsReasoning: true, ReasoningEfforts: []string{"low", "high"}}}})
+	factor := 0.5
+	source, err := store.Save("", modelsource.Input{Label: "Test", Protocol: "openai-chat", BaseURL: server.URL + "/v1/chat/completions", APIKey: &key, Models: []modelsource.Model{{UpstreamModelID: "provider/model", Label: "Configured", ContextWindow: 4096, MaxOutputTokens: 256, SupportsImages: true, SupportsReasoning: true, ReasoningEfforts: []string{"low", "high"}, PriceFactor: &factor}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,6 +320,9 @@ func TestAuthenticationRoutesAndKeyRotation(t *testing.T) {
 	models := svc.Models()
 	if len(models) != 1 || models[0]["id"] != src.Models[0].ID {
 		t.Fatal("wrong models")
+	}
+	if models[0]["price_factor"] != 0.5 {
+		t.Fatalf("price factor missing: %+v", models[0])
 	}
 	if models[0]["supports_images"] != true || models[0]["max_input_tokens"] != 4096 || models[0]["max_output_tokens"] != 256 || models[0]["source_id"] != src.ID {
 		t.Fatalf("public model capability contract lost: %+v", models[0])

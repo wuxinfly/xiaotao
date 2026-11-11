@@ -34,6 +34,10 @@ func registerPluginMigration(mux *http.ServeMux, m *sourceplugin.Manager, data s
 			http.Error(w, "same-origin required", 403)
 			return
 		}
+		if !m.Supports("xiaotao.trae", "browser-login") {
+			http.Error(w, "请先更新 Trae 插件", 400)
+			return
+		}
 		var input struct {
 			ID string `json:"id"`
 		}
@@ -62,6 +66,8 @@ func registerPluginMigration(mux *http.ServeMux, m *sourceplugin.Manager, data s
 			return
 		}
 		credential["Region"] = "cn"
+		credential["UID"] = account.UID
+		credential["Nickname"] = account.Nickname
 		credential["MachineID"] = account.MachineID
 		credential["DeviceID"] = account.DeviceID
 		raw, _ = json.Marshal(credential)

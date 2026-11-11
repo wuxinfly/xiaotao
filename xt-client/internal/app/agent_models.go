@@ -19,6 +19,7 @@ func agentModelsForSources(sources []modelsource.Source) []agent.ModelOption {
 				ContextWindow: int64(model.ContextWindow), MaxOutputTokens: int64(model.MaxOutputTokens),
 				SupportsImages: model.SupportsImages, SupportsReasoning: model.SupportsReasoning,
 				ReasoningEfforts: append([]string(nil), model.ReasoningEfforts...),
+				PriceFactor:      model.PriceFactor, IsFree: model.IsFree,
 			})
 		}
 	}

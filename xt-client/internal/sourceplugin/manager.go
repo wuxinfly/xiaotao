@@ -1,7 +1,6 @@
 package sourceplugin
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,11 +17,14 @@ import (
 )
 
 type Saved struct {
-	ID       string   `json:"id"`
-	Manifest Manifest `json:"manifest"`
-	Enabled  bool     `json:"enabled"`
-	Models   []Model  `json:"models"`
-	Secret   []byte   `json:"secret,omitempty"`
+	ID            string          `json:"id"`
+	Manifest      Manifest        `json:"manifest"`
+	Enabled       bool            `json:"enabled"`
+	Models        []Model         `json:"models"`
+	ModelSettings *ModelSettings  `json:"modelSettings,omitempty"`
+	PackageDir    string          `json:"packageDir,omitempty"`
+	Accounts      []PluginAccount `json:"accounts,omitempty"`
+	Secret        []byte          `json:"secret,omitempty"`
 }
 type Manager struct {
 	mu               sync.Mutex
@@ -45,11 +49,18 @@ func Open(dir string, encrypt, decrypt func([]byte) ([]byte, error)) (*Manager, 
 		return nil, errors.New("invalid plugin state")
 	}
 	seen := map[string]bool{}
-	for _, e := range m.entries {
+	for i, e := range m.entries {
 		if !identifier.MatchString(e.ID) || e.Manifest.ID != e.ID || seen[e.ID] {
 			return nil, errors.New("invalid plugin state identity")
 		}
 		seen[e.ID] = true
+		if e.PackageDir != "" && (!strings.HasPrefix(e.PackageDir, ".install-") || filepath.Base(e.PackageDir) != e.PackageDir || filepath.VolumeName(e.PackageDir) != "") {
+			return nil, errors.New("invalid plugin package directory")
+		}
+		if len(e.Secret) > 0 && len(e.Accounts) == 0 {
+			m.entries[i].Accounts = []PluginAccount{{ID: "original", Name: "已导入账号", Secret: e.Secret}}
+			m.entries[i].Secret = nil
+		}
 	}
 	return m, nil
 }
@@ -84,8 +95,15 @@ func (m *Manager) List() []Saved {
 	defer m.mu.Unlock()
 	out := make([]Saved, 0, len(m.entries))
 	for _, e := range m.entries {
+		e.Accounts = publicAccounts(e.Accounts)
 		e.Secret = nil
 		e.Models = append([]Model(nil), e.Models...)
+		if e.ModelSettings != nil {
+			settings := *e.ModelSettings
+			settings.SelectedKeys = slices.Clone(settings.SelectedKeys)
+			settings.CustomIDs = slices.Clone(settings.CustomIDs)
+			e.ModelSettings = &settings
+		}
 		out = append(out, e)
 	}
 	return out
@@ -98,8 +116,8 @@ func (m *Manager) Sources() []modelsource.Source {
 	out := []modelsource.Source{}
 	for _, e := range m.List() {
 		src := modelsource.Source{ID: e.ID, Label: e.Manifest.Name, Kind: "plugin", Enabled: e.Enabled, HasAPIKey: true}
-		for _, v := range e.Models {
-			src.Models = append(src.Models, modelsource.Model{ID: route(e.ID, v.Key), Label: v.Label, UpstreamModelID: v.UpstreamID, ContextWindow: v.ContextWindow, SupportsImages: v.SupportsImages, SupportsReasoning: v.SupportsReasoning, ReasoningEfforts: v.ReasoningEfforts})
+		for _, v := range e.selectedModels() {
+			src.Models = append(src.Models, modelsource.Model{ID: route(e.ID, v.Key), Label: v.Label, UpstreamModelID: v.UpstreamID, ContextWindow: v.ContextWindow, SupportsImages: v.SupportsImages, SupportsReasoning: v.SupportsReasoning, ReasoningEfforts: v.ReasoningEfforts, PriceFactor: v.PriceFactor, IsFree: v.IsFree})
 		}
 		out = append(out, src)
 	}
@@ -122,6 +140,10 @@ func (m *Manager) Resolve(id string) (modelsource.Source, modelsource.Model, err
 // Operations serialize credential refresh and re-login with state writes. The
 // mutex is acquired only for state snapshots and compare-and-swap, never network IO.
 func (m *Manager) Run(ctx context.Context, id, method string, input json.RawMessage, body map[string]any, model string, notify func(Message)) (Result, error) {
+	return m.RunForAccount(ctx, id, "", method, input, body, model, notify)
+}
+
+func (m *Manager) RunForAccount(ctx context.Context, id, accountID, method string, input json.RawMessage, body map[string]any, model string, notify func(Message)) (Result, error) {
 	m.mu.Lock()
 	gate := m.gates[id]
 	if gate == nil {
@@ -157,15 +179,23 @@ func (m *Manager) Run(ctx context.Context, id, method string, input json.RawMess
 	if !found || !saved.Enabled {
 		return Result{}, errors.New("plugin unavailable")
 	}
+	adding := method == "login/browser" || method == "login/import" || method == "credentials/import"
+	account, err := saved.accountFor(accountID, adding)
+	if err != nil {
+		return Result{}, err
+	}
 	var credential []byte
-	var err error
-	if len(saved.Secret) > 0 {
-		credential, err = m.decrypt(saved.Secret)
+	if len(account.Secret) > 0 {
+		credential, err = m.decrypt(account.Secret)
 		if err != nil {
 			return Result{}, errors.New("cannot decrypt plugin credential")
 		}
 	}
-	p, err := Start(ctx, filepath.Join(m.dir, id), notify)
+	packageDir := saved.PackageDir
+	if packageDir == "" {
+		packageDir = id
+	}
+	p, err := Start(ctx, filepath.Join(m.dir, packageDir), notify)
 	if err != nil {
 		return Result{}, err
 	}
@@ -191,20 +221,18 @@ func (m *Manager) Run(ctx context.Context, id, method string, input json.RawMess
 		if e.ID != id {
 			continue
 		}
-		if !e.Enabled || string(e.Secret) != string(saved.Secret) {
-			return Result{}, errors.New("plugin credential changed; retry request")
+		if !e.Enabled {
+			return Result{}, errors.New("plugin disabled")
 		}
 		next := e
-		if len(result.Credential) > 0 && !bytes.Equal(result.Credential, credential) {
-			next.Secret, err = m.encrypt(result.Credential)
-			if err != nil {
-				return Result{}, err
-			}
+		changed, err := m.applyAccountResult(&next, account, result, credential, adding)
+		if err != nil {
+			return Result{}, err
 		}
-		if result.Models != nil {
+		if result.Models != nil && !adding {
 			next.Models = result.Models
 		}
-		if result.Models == nil && bytes.Equal(next.Secret, e.Secret) {
+		if (result.Models == nil || adding) && !changed {
 			return result, nil
 		}
 		m.entries[i] = next

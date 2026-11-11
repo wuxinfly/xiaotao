@@ -34,7 +34,8 @@ func helper() {
 		case "login/import":
 			result = Result{Credential: json.RawMessage(`{"token":"private"}`)}
 		case "models/refresh":
-			result = Result{Models: []Model{{Key: "stable", UpstreamID: "org/model", Label: "Example"}}}
+			factor := 0.31
+			result = Result{Models: []Model{{Key: "stable", UpstreamID: "org/model", Label: "Example", PriceFactor: &factor}}}
 		case "wait":
 			time.Sleep(time.Minute)
 		case "crash":
@@ -113,7 +114,11 @@ func TestManagerLifecycle(t *testing.T) {
 	if len(m.List()[0].Secret) != 0 {
 		t.Fatal("credential exposed")
 	}
-	first := m.Sources()[0].Models[0].ID
+	catalog := m.Sources()[0].Models[0]
+	if catalog.PriceFactor == nil || *catalog.PriceFactor != 0.31 {
+		t.Fatal("price factor lost")
+	}
+	first := catalog.ID
 	if _, _, err := m.Resolve(first); err != nil {
 		t.Fatal(err)
 	}

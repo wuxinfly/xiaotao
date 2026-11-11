@@ -24,6 +24,7 @@ func TestManifestBoundary(t *testing.T) {
 		{"escape", func(m *Manifest) { m.Entrypoint = "../provider" }, false},
 		{"missing", func(m *Manifest) { m.Entrypoint = "absent" }, false},
 		{"no chat", func(m *Manifest) { m.Capabilities = []string{"login"} }, false},
+		{"browser login", func(m *Manifest) { m.Capabilities = []string{"chat", "browser-login"} }, true},
 		{"unknown", func(m *Manifest) { m.Capabilities = []string{"chat", "execute"} }, false},
 	}
 	for _, tt := range tests {

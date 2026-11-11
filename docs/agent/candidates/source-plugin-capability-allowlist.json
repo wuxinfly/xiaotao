@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "candidate_id": "source-plugin-capability-allowlist",
+  "created_at": "2026-11-11T13:55:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.source-plugin-capability-allowlist",
+  "text": "模型来源插件 manifest 声明的能力必须同时出现在 `xt-client/internal/sourceplugin/manifest.go` 的允许列表中。当前允许 chat、login、browser-login、refresh、models、quota、checkin；遗漏会让新版本包安装和更新被直接拒绝。",
+  "rationale": "Trae 0.2.0 的 manifest 已声明 browser-login，文档也把它列为可选能力，但宿主白名单只允许 login，导致 0.2.0 无法安装和更新，界面停在 0.1.0，旧账号迁移与添加账号被连带禁用。修复后新增清单、安装和本机包发现回归。",
+  "observations": 1,
+  "source_refs": [
+    "xt-client/internal/sourceplugin/manifest.go",
+    "xt-client/internal/sourceplugin/manifest_test.go",
+    "xt-client/internal/sourceplugin/install_test.go",
+    "docs/plugins/README.md",
+    "xt-client/plugins/trae/manifest.json"
+  ]
+}

@@ -2,7 +2,7 @@
 
 日期：2026-10-31（2026-11-01 更新 Antigravity 接入状态）。
 
-状态：产品方向与总体技术路线已确认，客户端实现进行中。2026-11-10 起模型核心改为手动 API 来源，原内置平台接入停止运行；下述历史平台记录仅供迁移参考。当前行为以[手动模型来源](../plans/2026-11-10-manual-model-sources.md)和客户端 README 为准；插件机制与平台迁移属于[后续第 3、4 部分](../plans/2026-11-10-model-source-plugins.md)，尚未实现。标为建议或待定的事项不视为已经确定。
+状态：产品方向与总体技术路线已确认，客户端实现进行中。2026-11-10 起模型核心改为手动 API 来源，原内置平台接入停止运行；下述历史平台记录仅供迁移参考。当前行为以[手动模型来源](../plans/2026-11-10-manual-model-sources.md)和客户端 README 为准。Trae 模型来源插件已接入本地安装更新、浏览器授权、旧账号迁移、模型发现和统一网关；其他平台迁移仍在[第 3、4 部分计划](../plans/2026-11-10-model-source-plugins.md)中，状态见[实施进度](../plans/2026-11-11-source-plugin-progress.md)。标为建议或待定的事项不视为已经确定。
 
 2026-11-01 Codex 跟进：新增独立 Go Provider，覆盖 OAuth 2.0 PKCE 流程与 ~/.codex/auth.json 导入，实现 Chat ↔ Responses 双向投影与流式/非流式聚合，接入真实 /backend-api/wham/usage 窗口配额。模型 ID 带 codex/ 前缀，默认包含 gpt-6.1-sol / gpt-6-astra 等。首期范围不包含多账号 failover、生图与 Anthropic Messages。
 2026-11-01 Qoder 跟进：新增独立 Go Provider，覆盖 cn/global 设备授权、刷新、账号模型目录、COSY 聊天与积分查询。可选 ModelFetcher 能力传入 context 和 Credential，既有静态 ListModels 保持兼容；Qoder 缓存按账号/区域/凭据版本隔离，失败不回退静态候选。聊天、目录、额度共用刷新互斥及凭据比较替换，防止轮换重放、删除后复活和重新登录被覆盖。页面使用现有账号管理与代理密钥，模型要求 qoder/ 前缀。当前为 mock 与构建验证通过，真实账号及桌面交互验收待完成，详见 Qoder 实施计划。

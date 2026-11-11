@@ -20,6 +20,14 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 		return sourceplugin.Result{}, errors.New("invalid credential")
 	}
 	result := sourceplugin.Result{}
+	if method == "login/browser" {
+		token, err := browserLogin(ctx)
+		if err != nil {
+			return result, err
+		}
+		method = "login/import"
+		op.Input, _ = json.Marshal(map[string]string{"refreshToken": token})
+	}
 	if method == "credentials/import" {
 		if json.Unmarshal(op.Input, &c) != nil || c.RefreshToken == "" || (c.Region != "" && c.Region != "cn") {
 			return result, errors.New("invalid legacy credential")
@@ -32,6 +40,7 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 		}
 		c.Region = "cn"
 		result.Credential, _ = json.Marshal(c)
+		result.Account = accountInfo(c)
 		result.Models = []sourceplugin.Model{}
 		return result, nil
 	}
@@ -52,13 +61,33 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 		if err != nil {
 			return result, err
 		}
+		next.UID = c.UID
+		next.Nickname = c.Nickname
 		next.MachineID = c.MachineID
 		next.DeviceID = c.DeviceID
 		c = *next
 	}
+	if method == "login/import" {
+		if uid, name, err := trae.UserInfo(&c); err == nil {
+			c.UID, c.Nickname = uid, name
+		}
+	}
+	if c.UID == "" {
+		c.UID = trae.JWTUserID(c.AccessToken)
+		if c.UID == "" {
+			uid, name, err := trae.UserInfo(&c)
+			if err == nil {
+				c.UID, c.Nickname = uid, name
+			}
+		}
+	}
 	// Persist refreshed credentials even when the subsequent action fails: host
 	// performs refresh as a separate operation before model requests.
+	if method == "login/import" && c.UID == "" {
+		return result, errors.New("Trae account identity unavailable")
+	}
 	result.Credential, _ = json.Marshal(c)
+	result.Account = accountInfo(c)
 	switch method {
 	case "login/import", "credentials/refresh":
 		if method == "login/import" {
@@ -76,7 +105,7 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 			if upstream == "" {
 				upstream = trae.UpstreamModel(m.ID)
 			}
-			result.Models = append(result.Models, sourceplugin.Model{Key: m.ID, UpstreamID: upstream, Label: m.DisplayName, ContextWindow: m.MaxInputTokens, SupportsImages: m.Multimodal, SupportsReasoning: m.Reasoning, ReasoningEfforts: m.Efforts})
+			result.Models = append(result.Models, sourceplugin.Model{Key: m.ID, UpstreamID: upstream, Label: m.DisplayName, ContextWindow: m.MaxInputTokens, SupportsImages: m.Multimodal, SupportsReasoning: m.Reasoning, ReasoningEfforts: m.Efforts, PriceFactor: m.PriceFactor})
 		}
 	case "quota/get":
 		value, err := trae.FetchQuota(&c, c.MachineID, c.DeviceID)
@@ -97,6 +126,9 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 		}
 		result.Value, _ = json.Marshal(value)
 	case "chat/start":
+		if c.UID == "" {
+			return result, errors.New("cannot determine Trae account identity")
+		}
 		body, err := nativeBody(op.Body)
 		if err != nil {
 			return result, err
@@ -203,4 +235,15 @@ func nativeBody(body map[string]any) (map[string]any, error) {
 		out["tools"] = converted
 	}
 	return out, nil
+}
+
+func accountInfo(c providers.Credential) *sourceplugin.AccountInfo {
+	if c.UID == "" {
+		return nil
+	}
+	name := c.Nickname
+	if name == "" {
+		name = "用户 " + c.UID
+	}
+	return &sourceplugin.AccountInfo{ID: c.UID, Name: name}
 }

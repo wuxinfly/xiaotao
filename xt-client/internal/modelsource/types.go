@@ -21,6 +21,9 @@ type Model struct {
 	SupportsImages    bool     `json:"supportsImages"`
 	SupportsReasoning bool     `json:"supportsReasoning"`
 	ReasoningEfforts  []string `json:"reasoningEfforts,omitempty"`
+	// PriceFactor and IsFree come from upstream metadata and are display-only; they never change billing.
+	PriceFactor *float64 `json:"priceFactor,omitempty"`
+	IsFree      *bool    `json:"isFree,omitempty"`
 }
 
 type Source struct {

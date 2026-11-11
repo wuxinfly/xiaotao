@@ -47,6 +47,7 @@ func Start(ctx context.Context, dir string, notify func(Message)) (*Process, err
 		return nil, err
 	}
 	cmd := exec.CommandContext(ctx, entry)
+	hideCommandWindow(cmd)
 	cmd.Dir = dir
 	// Do not forward stderr to application logs: third-party output may contain secrets.
 	cmd.Stderr = io.Discard

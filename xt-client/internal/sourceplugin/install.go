@@ -10,7 +10,11 @@ import (
 
 // Install copies a user-selected local package without executing it. Symlinks,
 // devices and oversized packages are refused. Existing identities cannot overwrite.
-func (m *Manager) Install(dir string) (Saved, error) {
+func (m *Manager) Install(dir string) (Saved, error) { return m.install(dir, false) }
+
+func (m *Manager) Update(dir string) (Saved, error) { return m.install(dir, true) }
+
+func (m *Manager) install(dir string, update bool) (Saved, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return Saved{}, err
@@ -21,10 +25,19 @@ func (m *Manager) Install(dir string) (Saved, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, e := range m.entries {
-		if e.ID == manifest.ID {
-			return Saved{}, errors.New("plugin already installed")
+	index := -1
+	for i, entry := range m.entries {
+		if entry.ID != manifest.ID {
+			continue
 		}
+		if !update || entry.Enabled || m.active[entry.ID] != nil || entry.Manifest.Version == manifest.Version {
+			return Saved{}, errors.New("停用插件后，选择同 ID 的不同版本更新")
+		}
+		index = i
+		break
+	}
+	if update && index < 0 {
+		return Saved{}, errors.New("没有找到同 ID 的已安装插件")
 	}
 	if err = os.MkdirAll(m.dir, 0700); err != nil {
 		return Saved{}, err
@@ -33,7 +46,12 @@ func (m *Manager) Install(dir string) (Saved, error) {
 	if err != nil {
 		return Saved{}, err
 	}
-	defer os.RemoveAll(tmp)
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.RemoveAll(tmp)
+		}
+	}()
 	var total int64
 	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -78,22 +96,36 @@ func (m *Manager) Install(dir string) (Saved, error) {
 		return Saved{}, err
 	}
 	checked, _, err := ReadManifest(tmp)
-	if err != nil || checked.ID != manifest.ID {
+	if err != nil || checked.ID != manifest.ID || checked.Version != manifest.Version {
 		return Saved{}, errors.New("copied package validation failed")
 	}
-	target := filepath.Join(m.dir, manifest.ID)
-	if err = os.Rename(tmp, target); err != nil {
-		return Saved{}, err
+	entry := Saved{ID: manifest.ID, Models: []Model{}}
+	if index >= 0 {
+		entry = m.entries[index]
 	}
-	entry := Saved{ID: manifest.ID, Manifest: checked, Enabled: false, Models: []Model{}}
-	m.entries = append(m.entries, entry)
-	if err = m.persist(); err != nil {
-		m.entries = m.entries[:len(m.entries)-1]
-		os.RemoveAll(target)
-		return Saved{}, err
+	entry.Manifest = checked
+	// Publish the completed directory through the state file; Windows may lock copied executables during directory renames.
+	entry.PackageDir = filepath.Base(tmp)
+	if index >= 0 {
+		previous := m.entries[index]
+		m.entries[index] = entry
+		if err := m.persist(); err != nil {
+			m.entries[index] = previous
+			return Saved{}, err
+		}
+	} else {
+		m.entries = append(m.entries, entry)
+		if err := m.persist(); err != nil {
+			m.entries = m.entries[:len(m.entries)-1]
+			return Saved{}, err
+		}
 	}
+	committed = true
+	entry.Accounts = publicAccounts(entry.Accounts)
+	entry.Secret = nil
 	return entry, nil
 }
+
 func (m *Manager) Enable(id string, enabled bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

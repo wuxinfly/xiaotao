@@ -92,6 +92,12 @@ func (s *Service) Models() []map[string]any {
 			if m.MaxOutputTokens > 0 {
 				entry["max_output_tokens"] = m.MaxOutputTokens
 			}
+			if m.PriceFactor != nil {
+				entry["price_factor"] = *m.PriceFactor
+			}
+			if m.IsFree != nil {
+				entry["is_free"] = *m.IsFree
+			}
 			result = append(result, entry)
 		}
 	}

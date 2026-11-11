@@ -14,7 +14,8 @@ import (
 func (s *Service) SetPlugins(plugins *sourceplugin.Manager) { s.plugins = plugins }
 func (s *Service) pluginSend(ctx context.Context, src modelsource.Source, body map[string]any) (*http.Response, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
-	_, err := s.plugins.Run(ctx, src.ID, "credentials/refresh", nil, nil, "", nil)
+	accountID := s.plugins.PrimaryAccount(src.ID)
+	_, err := s.plugins.RunForAccount(ctx, src.ID, accountID, "credentials/refresh", nil, nil, "", nil)
 	if err != nil {
 		cancel()
 		return nil, func() {}, err
@@ -25,7 +26,7 @@ func (s *Service) pluginSend(ctx context.Context, src modelsource.Source, body m
 	go func() {
 		defer timer.Stop()
 		defer writer.Close()
-		result, err := s.plugins.Run(ctx, src.ID, "chat/start", nil, body, body["model"].(string), func(msg sourceplugin.Message) {
+		result, err := s.plugins.RunForAccount(ctx, src.ID, accountID, "chat/start", nil, body, body["model"].(string), func(msg sourceplugin.Message) {
 			if msg.Method != "chat/delta" || !stream {
 				return
 			}
