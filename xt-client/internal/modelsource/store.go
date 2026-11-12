@@ -105,7 +105,7 @@ func (s *Store) public(e entry) Source {
 	src.HasAPIKey = len(e.Secret) > 0
 	src.Models = append([]Model{}, src.Models...)
 	for i := range src.Models {
-		src.Models[i].CallID = s.routes[src.Models[i].ID]
+		src.Models[i].CallID = ReadableCallID(s.routes[src.Models[i].ID])
 		src.Models[i].ReasoningEfforts = append([]string(nil), src.Models[i].ReasoningEfforts...)
 	}
 	return src
@@ -232,12 +232,12 @@ func (s *Store) Resolve(modelID string) (Source, Model, string, error) {
 			continue
 		}
 		for _, m := range e.Source.Models {
-			if m.ID == modelID || s.routes[m.ID] == modelID {
+			if m.ID == modelID || ReadableCallID(s.routes[m.ID]) == ReadableCallID(modelID) {
 				key, err := s.decrypt(e.Secret)
 				if err != nil || len(key) == 0 {
 					return Source{}, Model{}, "", errors.New("cannot decrypt model source key")
 				}
-				m.CallID = s.routes[m.ID]
+				m.CallID = ReadableCallID(s.routes[m.ID])
 				m.ReasoningEfforts = append([]string(nil), m.ReasoningEfforts...)
 				return s.public(e), m, string(key), nil
 			}

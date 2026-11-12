@@ -36,14 +36,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	var m modelsource.Model
 	var key string
 	var err error
-	if s.store == nil {
-		err = modelsource.ErrNotFound
-	} else {
-		src, m, key, err = s.store.Resolve(modelID)
-	}
-	if err != nil && s.plugins != nil {
-		src, m, err = s.plugins.Resolve(modelID)
-	}
+	src, m, key, err = s.resolveCall(modelID)
 	id := requestID()
 	s.mu.RLock()
 	u := s.usage

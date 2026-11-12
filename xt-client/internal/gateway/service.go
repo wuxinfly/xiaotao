@@ -1,4 +1,4 @@
-// Package gateway exposes standard OpenAI Chat Completions for manual sources only.
+// Package gateway exposes standard OpenAI Chat Completions for manual and plugin sources.
 package gateway
 
 import (
@@ -70,10 +70,7 @@ func (s *Service) Models() []map[string]any {
 	if s.store == nil {
 		return result
 	}
-	sources := s.store.List()
-	if s.plugins != nil {
-		sources = append(sources, s.plugins.Sources()...)
-	}
+	sources := s.callSources()
 	for _, src := range sources {
 		if !src.Enabled || !src.HasAPIKey {
 			continue

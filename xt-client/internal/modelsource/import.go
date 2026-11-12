@@ -2,6 +2,7 @@ package modelsource
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 )
@@ -43,7 +44,18 @@ func (s *Store) ImportFrom(sourceDataDir string, sourceDecrypt func([]byte) ([]b
 		next = append(next, e)
 	}
 	previous := s.routes
-	s.routes = source.routes
+	s.routes = maps.Clone(source.routes)
+	for identity, prefix := range previous {
+		if existing := s.routes[identity]; existing != "" && existing != prefix {
+			s.routes = previous
+			return 0, ErrInvalid
+		}
+		s.routes[identity] = prefix
+	}
+	if err := validateRoutes(s.routes, next); err != nil {
+		s.routes = previous
+		return 0, err
+	}
 	if err := s.commit(next); err != nil {
 		s.routes = previous
 		return 0, err

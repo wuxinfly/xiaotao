@@ -129,7 +129,7 @@ func (m *Manager) Resolve(id string) (modelsource.Source, modelsource.Model, err
 			continue
 		}
 		for _, v := range src.Models {
-			if v.ID == id || v.CallID == id {
+			if v.ID == id || v.CallID == modelsource.ReadableCallID(id) {
 				return src, v, nil
 			}
 		}
