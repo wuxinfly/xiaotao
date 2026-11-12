@@ -54,11 +54,12 @@ export function ModalFrame({title, description, className = '', origin, onClose,
     const dialog = dialogRef.current;
     const focusables = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
-    ) ?? []);
+    ) ?? []).filter(node => !node.matches(':disabled') && !node.closest('[inert], [hidden], [aria-hidden="true"]') && node.getClientRects().length > 0);
     focusables()[0]?.focus();
 
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (event.target instanceof Element && event.target.closest('[data-escape-layer]')) return;
         event.preventDefault();
         closeRef.current();
         return;

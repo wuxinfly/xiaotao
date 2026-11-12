@@ -12,6 +12,7 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     // Fall through to the legacy path.
   }
+  const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const area = document.createElement('textarea');
   area.value = text;
   area.setAttribute('readonly', '');
@@ -25,5 +26,6 @@ export async function copyText(text: string): Promise<boolean> {
     return false;
   } finally {
     document.body.removeChild(area);
+    previous?.focus({preventScroll: true});
   }
 }

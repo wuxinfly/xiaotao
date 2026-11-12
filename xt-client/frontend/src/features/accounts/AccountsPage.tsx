@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {Plus, RefreshCw, Server} from 'lucide-react';
+import {Plus, RefreshCw, Server, List} from 'lucide-react';
 import {ModalPresence} from '../../components/modal/ModalFrame';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 import {modelCatalogChanged, modelSources, sourceInput, sourceProtocols, type Source} from '../../lib/model-sources';
@@ -7,6 +7,7 @@ import {LocalGateway} from './LocalGateway';
 import {SourceEditor} from './SourceEditor';
 import './sources.css';
 import {PluginsPanel} from './PluginsPanel';
+import {GatewayModelsModal} from './GatewayModelsModal';
 
 export function AccountsPage() {
   const [sources, setSources] = useState<Source[]>([]);
@@ -15,6 +16,7 @@ export function AccountsPage() {
   const [error, setError] = useState('');
   const [editor, setEditor] = useState<Source | 'new' | null>(null);
   const [busy, setBusy] = useState('');
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [feedback, setFeedback] = useState<{id: string; text: string; failed?: boolean} | null>(null);
   const live = useRef(true);
   const operation = useRef<AbortController | null>(null);
@@ -42,7 +44,7 @@ export function AccountsPage() {
     finally {operation.current = null; if (live.current) setBusy('');}
   }
   return <section className="content-column model-sources-page">
-    <header className="source-page-header"><div><h1>模型接口</h1><p>填写自己的 API 地址、密钥和模型，供小涛调用。</p></div><div className="source-actions"><button type="button" className="app-modal-button secondary" disabled={loading || !!busy || !!editor} onClick={() => setAttempt(value => value + 1)} aria-label="重新加载接口"><RefreshCw size={16}/></button><button type="button" className="app-modal-button primary" disabled={!!busy || loading} onClick={() => setEditor('new')}><Plus size={16}/>添加接口</button></div></header>
+    <header className="source-page-header"><div><h1>模型接口</h1><p>填写自己的 API 地址、密钥和模型，供小涛调用。</p></div><div className="source-actions"><button type="button" className="app-modal-button secondary" disabled={!!editor} onClick={() => setCatalogOpen(true)}><List size={16}/>模型调用清单</button><button type="button" className="app-modal-button secondary" disabled={loading || !!busy || !!editor} onClick={() => setAttempt(value => value + 1)} aria-label="重新加载接口"><RefreshCw size={16}/></button><button type="button" className="app-modal-button primary" disabled={!!busy || loading} onClick={() => setEditor('new')}><Plus size={16}/>添加接口</button></div></header>
     {loading && <p role="status">正在读取本地模型接口…</p>}
     {error && <div className="source-error" role="alert">加载失败：{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>重试</button></div>}
     {!loading && !error && !sources.length && <div className="source-empty"><Server size={32}/><h2>添加第一个模型接口</h2><p>准备好 API URL、API Key 和上游模型 ID，按服务要求选择上游格式。</p><button type="button" className="app-modal-button primary" onClick={() => setEditor('new')}>添加接口</button></div>}
@@ -53,6 +55,7 @@ export function AccountsPage() {
     </article>)}</div>
     <PluginsPanel/>
     <LocalGateway/>
+    <ModalPresence>{catalogOpen && <GatewayModelsModal onClose={() => setCatalogOpen(false)}/>}</ModalPresence>
     <ModalPresence>{editor && <SourceEditor key={editor === 'new' ? 'new' : editor.id} source={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} onSaved={saved => {setSources(current => current.some(item => item.id === saved.id) ? current.map(item => item.id === saved.id ? saved : item) : [...current, saved]); setEditor(null);}}/>}</ModalPresence>
   </section>;
 }

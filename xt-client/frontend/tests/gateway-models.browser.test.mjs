@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {mkdirSync} from 'node:fs';
+import {sourceBrowser} from './source-browser-fixture.mjs';
+
+test('public model catalog is modal, searchable and copies public IDs and exact configurations', {timeout:60000}, () => sourceBrowser(5229, async ({page,errors,navigate}) => {
+  const models=[{id:'我的接口/中文%2F模型',label:'中文旗舰模型',source_id:'manual',source_label:'我的接口',upstream_model_id:'中文/模型',max_input_tokens:262144,max_output_tokens:8192,supports_images:true,supports_reasoning:true,reasoning_efforts:['low','high']},{id:'trae/claude-sonnet-4',label:'Claude Sonnet 4',source_id:'xiaotao.trae',source_label:'Trae 国内版',upstream_model_id:'claude-sonnet-4',supports_images:false,supports_reasoning:false}];
+  let reads=0,fail=false;
+  await page.route('**/api/gateway/models', route=>{reads++;return route.fulfill(fail?{status:502,json:{error:{message:'catalog unavailable'}}}:{json:{models}});});
+  await page.context().grantPermissions(['clipboard-read','clipboard-write']);
+  await navigate('accounts');
+  await page.getByRole('button',{name:'模型调用清单',exact:true}).waitFor();
+  assert.equal(reads,0,'no extra catalog content or request before opening');
+  await page.getByRole('button',{name:'模型调用清单',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'模型调用清单'});
+  await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).waitFor();
+  assert.equal(reads,1);
+  await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),models[0].id);
+  await page.locator('.gateway-model-row').filter({hasText:'中文旗舰模型'}).getByRole('button',{name:'复制配置',exact:true}).click();
+  const config=JSON.parse(await page.evaluate(()=>navigator.clipboard.readText()));
+  assert.deepEqual(config,{model:models[0].id,contextWindow:262144,maxOutputTokens:8192,supportsImages:true,supportsReasoning:true,reasoningEfforts:['low','high']});
+  await page.locator('.gateway-model-row').filter({hasText:'Claude Sonnet 4'}).getByRole('button',{name:'复制配置',exact:true}).click();
+  const unknown=JSON.parse(await page.evaluate(()=>navigator.clipboard.readText()));
+  assert.equal('contextWindow' in unknown,false);assert.equal('maxOutputTokens' in unknown,false);
+  assert.equal(await dialog.getByText('未配置',{exact:true}).count(),2);
+  await page.getByLabel('搜索模型调用清单').fill('trae/');
+  assert.equal(await page.locator('.gateway-model-row').count(),1);
+  await page.getByRole('button',{name:'复制当前 ID 列表'}).click();
+  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),models[1].id);
+  await page.getByLabel('搜索模型调用清单').fill('does-not-exist');
+  await dialog.getByText('没有匹配的模型',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'清除筛选',exact:true}).click();
+  mkdirSync('../../work/ui',{recursive:true});
+  await page.screenshot({path:'../../work/ui/gateway-models-desktop.png'});
+  for (const width of [700,540,375]) {
+    await page.setViewportSize({width,height:850});
+    assert.equal(await dialog.evaluate(node=>node.scrollWidth>node.clientWidth),false);
+    assert.equal(await page.locator('.gateway-models-list').evaluate(node=>node.scrollWidth>node.clientWidth),false);
+  }
+  await page.screenshot({path:'../../work/ui/gateway-models-mobile.png'});
+  fail=true;await page.getByRole('button',{name:'刷新模型调用清单'}).click();
+  await dialog.getByRole('alert').filter({hasText:'读取失败'}).waitFor();
+  fail=false;await page.getByRole('button',{name:'重试',exact:true}).click();
+  await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).waitFor();
+  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{}});document.execCommand=()=>{window.__legacyClipboard=document.querySelector('textarea')?.value;return true;};});
+  await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).click();
+  assert.equal(await page.evaluate(()=>window.__legacyClipboard),models[0].id);
+  assert.equal(await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).evaluate(node=>node===document.activeElement),true);
+  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}});document.execCommand=()=>false;});
+  await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).click();
+  await dialog.getByRole('alert').filter({hasText:'复制失败'}).waitFor();
+  await page.keyboard.press('Escape');
+  await dialog.waitFor({state:'hidden'});
+  assert.equal(await page.getByRole('button',{name:'模型调用清单',exact:true}).evaluate(node=>node===document.activeElement),true);
+  assert.deepEqual(errors,[]);
+}));

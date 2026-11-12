@@ -11,12 +11,8 @@ test('sources with identical upstream IDs remain distinct and Agent catalog foll
   assert.notEqual(state.sources[0].models[0].id,state.sources[1].models[0].id);
   await navigate('agent');
   await page.getByRole('button', {name:'打开 Agent 设置'}).click();
-  await page.getByRole('button', {name:'添加第一个模型',exact:true}).click();
-  await page.locator('.agent-settings-group-toggle').filter({hasText:'Source A'}).click();
-  await page.locator('.agent-model-choice').filter({hasText:'Shared model'}).click();
-  await page.getByRole('button', {name:'添加模型',exact:true}).click();
-  await page.locator('.agent-settings-group-toggle').filter({hasText:'Source B'}).click();
-  await page.locator('.agent-model-choice').filter({hasText:'Shared model'}).click();
+  await page.getByRole('checkbox', {name:'Shared model · Source A',exact:true}).click();
+  await page.getByRole('checkbox', {name:'Shared model · Source B',exact:true}).click();
   await page.getByRole('button', {name:'保存设置',exact:true}).click();
   const enabled = await page.evaluate(() => JSON.parse(localStorage.getItem('xiaotao.agent.enabledModels')));
   assert.deepEqual(enabled,['source-1-route-0','source-2-route-0']);
@@ -34,10 +30,10 @@ test('sources with identical upstream IDs remain distinct and Agent catalog foll
   await missing.waitFor(); assert.equal(await missing.isDisabled(),true);
   await page.keyboard.press('Escape');
   await page.getByRole('button', {name:'打开 Agent 设置'}).click();
-  await page.getByText('（不可用：来源已删除或停用）', {exact:false}).waitFor();
+  await page.locator('.model-library-card.is-unavailable').waitFor();
   const reads=state.modelReads;
   await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/agent/models/refresh')), page.getByRole('button', {name:'刷新模型列表',exact:true}).click()]);
   assert.ok(state.modelReads > reads);
-  assert.equal(state.requests.some(item => item.path==='/api/proxy/models'),false);
+  assert.equal(state.requests.some(item => item.path==='/api/proxy/models' || item.path==='/api/gateway/models'),false);
   assert.deepEqual(errors,[]);
 }));

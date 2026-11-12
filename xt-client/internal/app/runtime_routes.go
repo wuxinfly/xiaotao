@@ -71,6 +71,9 @@ func registerRuntimeRoutes(mux *http.ServeMux, rt runtimeRoutes) {
 		rt.send(w, snapshot)
 	})
 	mux.HandleFunc("GET /api/dashboard/events", rt.usage.HandleSSE)
+	mux.HandleFunc("GET /api/gateway/models", func(w http.ResponseWriter, r *http.Request) {
+		rt.send(w, map[string]any{"models": rt.gateway.Models()})
+	})
 	mux.HandleFunc("GET /api/proxy/key", func(w http.ResponseWriter, r *http.Request) {
 		rt.send(w, map[string]string{"key": rt.gateway.APIKey()})
 	})
