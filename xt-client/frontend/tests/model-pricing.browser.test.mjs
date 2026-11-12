@@ -17,14 +17,14 @@ test('manual model capabilities and limits remain usable in narrow views and key
   await saveSource(page);
   await navigate('agent');
   await page.getByRole('button', {name:'打开 Agent 设置'}).click();
-  await page.getByRole('button', {name:'添加第一个模型',exact:true}).click();
-  await page.locator('.agent-settings-group-toggle').filter({hasText:'Custom endpoint'}).click();
-  await page.locator('.agent-model-choice').click();
+  await page.getByRole('checkbox',{name:'Shared model · Custom endpoint',exact:true}).click();
+  await page.getByRole('button',{name:'调整 Shared model 参数'}).click();
   assert.equal(await page.getByLabel('Shared model 上下文窗口').inputValue(),'65536');
   assert.equal(await page.getByLabel('Shared model 最大输出').inputValue(),'4096');
   await page.getByLabel('Shared model 思考等级').selectOption('high');
   await page.getByRole('button', {name:/默认模型/}).click();
-  await page.getByLabel('AI 重命名模型').selectOption('source-1-route-0');
+  await page.getByRole('combobox',{name:'AI 重命名模型'}).click();
+  await page.getByRole('option',{name:/Shared model/}).click();
   assert.equal(await page.getByLabel('AI 重命名最大输出').inputValue(),'4096');
   await page.getByRole('button', {name:'保存设置',exact:true}).click();
   const configs=await page.evaluate(() => JSON.parse(localStorage.getItem('xiaotao.agent.modelConfigs')));

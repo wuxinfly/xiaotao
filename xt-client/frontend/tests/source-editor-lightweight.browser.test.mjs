@@ -23,8 +23,7 @@ test('source editor previews the final URL, reveals the key, and aligns token li
   await page.getByRole('button', {name:'隐藏 API Key'}).click();
   await assert.equal(await key.getAttribute('type'), 'password');
 
-  await assert.equal(await page.locator('.source-static-field input').count(), 0);
-  await assert.match(await page.locator('.source-static-field strong').innerText(), /OpenAI Chat Completions/);
+  await assert.equal(await page.getByRole('combobox', {name:'上游格式'}).inputValue(), 'openai-chat');
   await assert.ok(await page.getByText('必填', {exact:true}).count() >= 3);
   await assert.ok(await page.getByText('选填', {exact:true}).count() >= 4);
   await assert.equal(await page.getByLabel('模型 1 上下文窗口').getAttribute('min'), '1024');

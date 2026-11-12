@@ -69,7 +69,7 @@ Agent 模型选项新增来源身份、上游 ID、默认最大输出；窗口�
 | `GET /api/accounts` | 仅保留手动来源标签兼容视图，供仪表盘/HUD 使用 |
 | `GET/POST /api/proxy/key` | 读取/轮换本地网关访问密钥，沿用兼容路径 |
 | `GET /v1/models` | 独立密钥鉴权后的启用模型列表；扩展字段沿用 `supports_images`、`supports_reasoning`、`max_input_tokens`，新增 `max_output_tokens` 与来源身份 |
-| `POST /v1/chat/completions` | 标准 Chat 调用，model 为目录中的稳定内部 ID |
+| `POST /v1/chat/completions` | 标准 Chat 调用，model 为目录中的可读调用别名（兼容旧稳定内部 ID） |
 
 旧 `/api/auth/*`、`/api/providers`、平台账号排序/备注/配额/签到管理和 `/api/proxy/models` 不再注册，返回 404，不回落静态 HTML。管理写入继续遵循同源校验，本地模型 API 使用独立访问密钥。
 
@@ -107,11 +107,26 @@ Agent 模型选项新增来源身份、上游 ID、默认最大输出；窗口�
 
 用户反馈弹窗字段多、容易填错，本轮只做前端轻量修复，不改协议、存储和网关行为：
 
-- API URL 下方实时显示归一化后的实际请求地址（`…/chat/completions`），规则与 `modelsource.NormalizeURL` 一致：去尾部斜杠、去重复 `/chat/completions`，不自动补 `/v1`；带查询参数、片段、账号信息或空白的地址不显示预览并在保存时拒绝。
+- API URL 下方实时显示归一化后的实际请求地址，规则与 `modelsource.NormalizeURL` 一致：去尾部斜杠、去重复的所选协议端点路径，不自动补 `/v1`；带查询参数、片段、账号信息或空白的地址不显示预览并在保存时拒绝。合并三协议后预览按所选上游格式拼 `/chat/completions`、`/responses` 或 `/messages`。
 - API Key 增加显示/隐藏按钮，只切换当前输入框的 `type`；编辑时仍不回显已保存密钥，留空继续表示保留。
-- 只读的“上游格式”由禁用感很强的 input 改为静态展示块，避免被误认为可编辑。
+- “上游格式”从只读 input 改为静态展示块，随后在合并三协议时改为可选三种格式的下拉框。
 - 必填/选填改为标签内的徽标；上游模型 ID、来源名称、新建时的 API Key 标必填，其余标选填。徽标 `aria-hidden`，不污染输入框的可访问名称。
 - Token 输入框标注 `tokens` 单位，`min` 与后端门槛对齐（窗口 1024、输出 16）；保存校验按模型序号给出具体错误，例如“模型 1：上下文窗口至少为 1024 tokens”，不再笼统提示“参数须为正整数”。
 - 表单加 `noValidate`，统一走自有校验和中文错误提示，避免浏览器原生气泡与页面提示重复。
 
-回归入口：`node --test tests/source-editor-lightweight.browser.test.mjs`，覆盖 URL 预览（前缀、尾斜杠、完整路径、查询参数）、Key 显隐、必填/选填徽标、Token 单位与三条按模型定位的错误。已跑 `npm run lint`、`npm run check:size`、`npm run build` 及既有 `qoder-checkin`、`model-pricing`、`model-catalog` 浏览器回归。截图只在隔离浏览器中生成，未做 WebView2 实机验收。本次无新增规则候选。
+回归入口：`node --test tests/source-editor-lightweight.browser.test.mjs tests/source-protocols.browser.test.mjs`，覆盖 URL 预览（前缀、尾斜杠、完整路径、查询参数、三种协议路径）、Key 显隐、必填/选填徽标、Token 单位与三条按模型定位的错误。已跑 `npm run lint`、`npm run check:size`、`npm run build` 及既有 `qoder-checkin`、`model-pricing`、`model-catalog` 浏览器回归。截图只在隔离浏览器中生成，未做 WebView2 实机验收。本次无新增规则候选。
+
+
+### 2026-11-12 可读网关调用 ID
+
+`/v1/models` 公开 `<来源标识>/<模型标识>` 别名；内部 ID 保留供 Agent、会话与旧调用使用。手动别名独立持久化并保留删除记录；插件别名由插件调用标识与稳定 key 生成；内置插件默认去掉 `xiaotao.`，短名称持久保留，若已被手动来源占用则保留完整插件 ID。中文直接保留，兼容上一版百分号编码形式，编码差异不能复用已删除别名。详细格式、兼容边界与验收入口见 [客户端 README](../../xt-client/README.md) 和 [插件验收说明](../plugins/README.md)。
+
+
+### 2026-11-12 三种入口与上游协议
+
+当前实现已扩展，以上首期仅 Chat Completions 的范围和只读格式说明属于历史记录。手动来源现在可选 `openai-chat`、`openai-responses`、`anthropic-messages`，本地对外独立支持对应三种对话入口；Agent 和插件保持原调用协议。架构、支持范围与完整验证说明见 [三协议接入](2026-11-12-gateway-protocols.md)。
+
+
+### 2026-11-12 模型库与对外清单
+
+Agent 设置的旧逐个添加/来源折叠方案已替换为搜索筛选和连续勾选；接口页通过弹窗提供实际网关 ID 与上下文等配置的复制清单，不新增常驻列表。新增只读 `GET /api/gateway/models` 共用公开目录，保留内部 ID 与调用别名的分离。详见 [模型库与复制清单](2026-11-12-model-library-and-export.md)。

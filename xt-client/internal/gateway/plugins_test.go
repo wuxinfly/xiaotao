@@ -32,9 +32,9 @@ func gatewayHelper() {
 		var result any = sourceplugin.Result{}
 		switch req.Method {
 		case "initialize":
-			result = map[string]any{"id": "test.gateway", "contractVersion": 1}
+			result = map[string]any{"id": "xiaotao.trae", "contractVersion": 1}
 		case "models/refresh":
-			result = sourceplugin.Result{Models: []sourceplugin.Model{{Key: "shared", Label: "Shared", UpstreamID: "org/model"}}}
+			result = sourceplugin.Result{Models: []sourceplugin.Model{{Key: "中文模型", Label: "Shared", UpstreamID: "org/model"}}}
 		case "chat/start":
 			var op sourceplugin.Operation
 			_ = json.Unmarshal(req.Params, &op)
@@ -50,7 +50,8 @@ func gatewayHelper() {
 		_ = encoder.Encode(sourceplugin.Message{JSONRPC: "2.0", ID: req.ID, Result: raw})
 	}
 }
-func TestPluginGatewayRoundTrip(t *testing.T) {
+func setupPluginGateway(t *testing.T) (*Service, *sourceplugin.Manager) {
+	t.Helper()
 	t.Setenv("XT_GATEWAY_PLUGIN_CHILD", "1")
 	pkg := t.TempDir()
 	exe, err := os.Executable()
@@ -71,7 +72,7 @@ func TestPluginGatewayRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"id":"test.gateway","version":"1","contractVersion":1,"name":"Fake","entrypoint":"provider.exe","capabilities":["chat"]}`)
+	raw := []byte(`{"id":"xiaotao.trae","version":"1","contractVersion":1,"name":"Fake","entrypoint":"provider.exe","capabilities":["chat"]}`)
 	if err = os.WriteFile(filepath.Join(pkg, "manifest.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +84,10 @@ func TestPluginGatewayRoundTrip(t *testing.T) {
 	if _, err = m.Install(pkg); err != nil {
 		t.Fatal(err)
 	}
-	if err = m.Enable("test.gateway", true); err != nil {
+	if err = m.Enable("xiaotao.trae", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = m.Run(context.Background(), "test.gateway", "models/refresh", nil, nil, "", nil); err != nil {
+	if _, err = m.Run(context.Background(), "xiaotao.trae", "models/refresh", nil, nil, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	store, err := modelsource.Open(t.TempDir(), crypt, crypt)
@@ -95,27 +96,98 @@ func TestPluginGatewayRoundTrip(t *testing.T) {
 	}
 	gw := New(store, "local-key", nil)
 	gw.SetPlugins(m)
-	id := m.Sources()[0].Models[0].ID
-	if len(gw.Models()) != 1 {
+	return gw, m
+}
+
+func TestPluginGatewayRoundTrip(t *testing.T) {
+	gw, m := setupPluginGateway(t)
+	id := gw.Models()[0]["id"].(string)
+	if len(gw.Models()) != 1 || id != "trae/中文模型" {
 		t.Fatal("plugin catalog missing")
 	}
-	for _, stream := range []bool{false, true} {
-		r := chatRequest(id, stream)
-		w := httptest.NewRecorder()
-		gw.HandleChat(w, r)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Body.String(), id) {
-			t.Fatalf("response: %d %s", w.Code, w.Body.String())
-		}
-		if stream && (!strings.Contains(w.Body.String(), "[DONE]") || !strings.Contains(w.Body.String(), "reasoning_content")) {
-			t.Fatal("lost stream semantics")
+	for _, callID := range []string{id, m.Sources()[0].Models[0].ID, m.Sources()[0].Models[0].CallID, "xiaotao.trae/%E4%B8%AD%E6%96%87%E6%A8%A1%E5%9E%8B"} {
+		for _, stream := range []bool{false, true} {
+			r := chatRequest(callID, stream)
+			w := httptest.NewRecorder()
+			gw.HandleChat(w, r)
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Body.String(), callID) {
+				t.Fatalf("response: %d %s", w.Code, w.Body.String())
+			}
+			if stream && (!strings.Contains(w.Body.String(), "[DONE]") || !strings.Contains(w.Body.String(), "reasoning_content")) {
+				t.Fatal("lost stream semantics")
+			}
 		}
 	}
-	if err = m.Enable("test.gateway", false); err != nil {
+	if err := m.Enable("xiaotao.trae", false); err != nil {
 		t.Fatal(err)
 	}
-	w := httptest.NewRecorder()
-	gw.HandleChat(w, chatRequest(id, false))
-	if w.Code != 400 {
-		t.Fatal("disabled plugin called")
+	for _, callID := range []string{id, m.Sources()[0].Models[0].ID, m.Sources()[0].Models[0].CallID, "xiaotao.trae/%E4%B8%AD%E6%96%87%E6%A8%A1%E5%9E%8B"} {
+		w := httptest.NewRecorder()
+		gw.HandleChat(w, chatRequest(callID, false))
+		if w.Code != 400 {
+			t.Fatal("disabled plugin called")
+		}
+	}
+}
+
+func TestShortPluginPrefixCannotTakeOverManualRoutes(t *testing.T) {
+	for _, manualFirst := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plugin-first", true: "manual-first"}[manualFirst], func(t *testing.T) {
+			gw, _ := setupPluginGateway(t)
+			if !manualFirst {
+				_ = gw.Models()
+			}
+			key := "manual-key"
+			manual, err := gw.store.Save("", modelsource.Input{Label: "Trae", Protocol: "openai-chat", BaseURL: "https://example.com/v1", APIKey: &key, Models: []modelsource.Model{{UpstreamModelID: "中文模型"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedManual, expectedPlugin := "trae~2/中文模型", "trae/中文模型"
+			if manualFirst {
+				expectedManual, expectedPlugin = "trae/中文模型", "xiaotao.trae/中文模型"
+			}
+			catalog := gw.Models()
+			if len(catalog) != 2 || catalog[0]["id"] != expectedManual || catalog[1]["id"] != expectedPlugin {
+				t.Fatal(catalog)
+			}
+			for route, sourceID := range map[string]string{expectedManual: manual.ID, expectedPlugin: "xiaotao.trae"} {
+				src, _, _, err := gw.resolveCall(route)
+				if err != nil || src.ID != sourceID {
+					t.Fatalf("%s resolved to %s: %v", route, src.ID, err)
+				}
+			}
+			if err := gw.store.Delete(manual.ID); err != nil {
+				t.Fatal(err)
+			}
+			src, _, _, err := gw.resolveCall(expectedManual)
+			if err == nil {
+				t.Fatalf("deleted manual alias rebound to %s", src.ID)
+			}
+			if gw.Models()[0]["id"] != expectedPlugin {
+				t.Fatal("deletion changed plugin alias")
+			}
+		})
+	}
+}
+
+func TestNativeProtocolsReusePluginRoutes(t *testing.T) {
+	svc, _ := setupPluginGateway(t)
+	id := svc.Models()[0]["id"].(string)
+	for _, protocol := range []string{"openai-responses", "anthropic-messages"} {
+		for _, stream := range []bool{false, true} {
+			w := callProtocol(svc, protocol, inboundProtocolBody(protocol, id, stream))
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") {
+				t.Fatal(protocol, stream, w.Code, w.Body.String())
+			}
+			if stream {
+				terminal := "event: response.completed"
+				if protocol == "anthropic-messages" {
+					terminal = "event: message_stop"
+				}
+				if !strings.Contains(w.Body.String(), terminal) {
+					t.Fatal("plugin completion not converted", w.Body.String())
+				}
+			}
+		}
 	}
 }

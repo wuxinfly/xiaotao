@@ -12,7 +12,7 @@ test('Agent settings add execution models and configure utility models', {timeou
       new Promise(resolve => server.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})),
       once(server, 'exit').then(() => {throw Error('Vite exited before ready');}),
     ]);
-    browser = await chromium.launch({channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless:true});
+    browser = await chromium.launch({...(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge'}), headless:true});
     const page = await browser.newPage({viewport:{width:1280,height:900}, reducedMotion:'reduce'});
     const errors = [], created = [], sent = [], titles = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -50,12 +50,10 @@ test('Agent settings add execution models and configure utility models', {timeou
 
     await page.goto('http://127.0.0.1:5221');
     await page.getByRole('button', {name:'打开 Agent 设置'}).click();
-    await page.getByRole('button', {name:/添加第一个模型/}).click();
-    await page.locator('.agent-settings-group-toggle').filter({hasText:'My source'}).click();
-    await page.locator('.agent-model-choice').filter({hasText:'Qwen'}).click();
-    await page.getByRole('button', {name:'添加模型', exact:true}).click();
-    await page.locator('.agent-settings-group-toggle').filter({hasText:'My source'}).click();
-    await page.locator('.agent-model-choice').filter({hasText:'Helper'}).click();
+    await page.getByRole('checkbox',{name:'Qwen · My source',exact:true}).click();
+    await page.getByRole('checkbox',{name:'Helper · My source',exact:true}).click();
+    await page.getByRole('button',{name:'调整 Qwen 参数'}).click();
+    await page.getByRole('button',{name:'调整 Helper 参数'}).click();
     const contextInput = page.getByLabel('Qwen 上下文窗口');
     const outputInput = page.getByLabel('Qwen 最大输出');
     assert.equal(await contextInput.inputValue(), '262144');
@@ -63,18 +61,19 @@ test('Agent settings add execution models and configure utility models', {timeou
     await outputInput.fill('4096');
     for (const viewport of [{width:1280,height:900},{width:700,height:760},{width:540,height:760}]) {
       await page.setViewportSize(viewport);
-      const inputs = await page.locator('.agent-configured-model .agent-model-execution label').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
+      const inputs = await page.locator('.model-library-parameters.is-open .agent-model-execution label').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
       assert.equal(inputs.length, 4);
       assert.ok(inputs[0].right <= viewport.width - 9, `context input overflows at ${viewport.width}px`);
       assert.ok(inputs[1].right <= viewport.width - 9, `output input overflows at ${viewport.width}px`);
     }
     await page.setViewportSize({width:1280,height:900});
-    await page.screenshot({path:'test-results/agent-model-settings.png', fullPage:true});
+    await page.screenshot({path:'../../work/ui/agent-model-settings-regression.png', fullPage:true});
     await page.getByRole('button', {name:/默认模型/}).click();
-    await page.getByLabel('AI 重命名模型').selectOption('qoder/helper');
-    await page.getByLabel('行为复盘模型').selectOption('qoder/helper');
-    await page.getByLabel('上下文压缩模型').selectOption('qoder/qwen');
-    await page.screenshot({path:'test-results/agent-default-models.png', fullPage:true});
+    for (const [label, name] of [['AI 重命名模型','Helper'],['行为复盘模型','Helper'],['上下文压缩模型','Qwen']]) {
+      await page.getByRole('combobox',{name:label,exact:true}).click();
+      await page.getByRole('listbox',{name:label,exact:true}).getByRole('option',{name:new RegExp(name)}).click();
+    }
+    await page.screenshot({path:'../../work/ui/agent-default-models-regression.png', fullPage:true});
     await page.getByRole('button', {name:'保存设置', exact:true}).click();
     const defaults = await page.evaluate(() => ({
       models: JSON.parse(localStorage.getItem('xiaotao.agent.defaultModels')),

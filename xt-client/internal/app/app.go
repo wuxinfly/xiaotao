@@ -181,7 +181,7 @@ func guardLocalRequests(s State, mux *http.ServeMux) http.Handler {
 			return
 		}
 		// Model endpoints authenticate with a separate local gateway key.
-		if r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" {
+		if r.URL.Path == "/v1/chat/completions" || r.URL.Path == "/v1/models" || r.URL.Path == "/v1/responses" || r.URL.Path == "/v1/messages" {
 			mux.ServeHTTP(w, r)
 			return
 		}

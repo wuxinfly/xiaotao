@@ -10,11 +10,14 @@ export interface SourceModel {
   supportsReasoning: boolean;
   reasoningEfforts?: string[];
 }
+export type SourceProtocol = 'openai-chat' | 'openai-responses' | 'anthropic-messages';
+export const sourceProtocols: Record<SourceProtocol, string> = {'openai-chat': 'OpenAI Chat Completions', 'openai-responses': 'OpenAI Responses', 'anthropic-messages': 'Anthropic Messages'};
+
 export interface Source {
   id: string;
   label: string;
   kind: 'manual';
-  protocol: 'openai-chat';
+  protocol: SourceProtocol;
   baseURL: string;
   enabled: boolean;
   hasAPIKey: boolean;
@@ -22,7 +25,7 @@ export interface Source {
 }
 export interface SourceInput {
   label: string;
-  protocol: 'openai-chat';
+  protocol: SourceProtocol;
   baseURL: string;
   enabled: boolean;
   apiKey?: string;

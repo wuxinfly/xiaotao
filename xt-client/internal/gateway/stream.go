@@ -110,8 +110,8 @@ func readEvents(reader io.Reader, handle func(string) error) error {
 
 func (s *streamState) event(data string) error {
 	if data == "[DONE]" {
-		if len(s.choices) == 0 {
-			return errors.New("stream completed without any choices")
+		if !s.finished() {
+			return errors.New("stream completed before all choices finished")
 		}
 		if err := s.writeDone(); err != nil {
 			return err

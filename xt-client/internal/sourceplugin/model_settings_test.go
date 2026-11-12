@@ -49,3 +49,30 @@ func TestModelSettingsControlRoutesAfterRestart(t *testing.T) {
 		t.Fatalf("explicit empty selection must survive restart: %v", err)
 	}
 }
+
+func TestReadablePluginRoutesPreserveIdentityAndSelection(t *testing.T) {
+	m, err := Open(t.TempDir(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.entries = []Saved{{ID: "test.models", Manifest: Manifest{ID: "test.models"}, Enabled: true,
+		Models: []Model{{Key: "org/key /+%", UpstreamID: "actual-upstream"}}}}
+	model := m.Sources()[0].Models[0]
+	if model.CallID != "test.models/org%2Fkey%20%2F%2B%25" {
+		t.Fatal(model.CallID)
+	}
+	for _, id := range []string{model.ID, model.CallID} {
+		_, resolved, err := m.Resolve(id)
+		if err != nil || resolved.ID != model.ID || resolved.UpstreamModelID != "actual-upstream" {
+			t.Fatal(resolved, err)
+		}
+	}
+	if err := m.SaveModelSettings("test.models", ModelSettings{SelectedKeys: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{model.ID, model.CallID} {
+		if _, _, err := m.Resolve(id); !errors.Is(err, modelsource.ErrNotFound) {
+			t.Fatal("deselected alias resolves", err)
+		}
+	}
+}

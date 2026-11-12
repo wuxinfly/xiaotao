@@ -72,7 +72,7 @@ go vet ./...
 | `quota/get`、`checkin/status`、`checkin/claim` | 返回 value，含平台真实数据 |
 | `chat/start` | 非流式返回 value=完整 Chat Completion；流式先通知，再返回空 result |
 
-所有方法返回 Result 对象：可选 credential、models、value、display。`display` 是给宿主直接渲染的展示数据：`{summary, tone, items:[{label, value, percent, tone}]}`，只允许纯文本，宿主不做平台语义解释，也不执行其中任何标记。credential 有更新时核心加密并持久化；models 各项包含 key、upstreamId、label、contextWindow、supportsImages、supportsReasoning、reasoningEfforts，可选 priceFactor、isFree 表示上游消耗倍率和免费标记，仅用于展示，不参与计费。key 必须在插件内唯一且重启稳定；核心以插件 ID+key 生成内部模型 ID。协议 DTO 位于 `internal/sourceplugin/contract.go`，不依赖平台 Credential 或 storage DTO。
+所有方法返回 Result 对象：可选 credential、models、value、display。`display` 是给宿主直接渲染的展示数据：`{summary, tone, items:[{label, value, percent, tone}]}`，只允许纯文本，宿主不做平台语义解释，也不执行其中任何标记。credential 有更新时核心加密并持久化；models 各项包含 key、upstreamId、label、contextWindow、supportsImages、supportsReasoning、reasoningEfforts，可选 priceFactor、isFree 表示上游消耗倍率和免费标记，仅用于展示，不参与计费。key 必须在插件内唯一且重启稳定；核心以插件 ID+key 生成内部模型 ID；网关 `/v1/models` 的公开调用别名为 `<插件调用标识>/<key>`，不带 `plugin/` 前缀。内置 `xiaotao.trae` 默认缩短为 `trae`，其他插件保留完整 ID；短名称与手动来源共用持久化保留记录，若已被手动来源占用（含删除记录）则保留完整插件 ID。中文等可见 Unicode 直接保留，仅分隔符、百分号、空白等字符独立转义。插件内手动模型的 key 仍是 `manual:<上游 ID>`。网关同时接受可读别名、旧完整插件名、中文百分号编码与旧哈希内部 ID，按完整 ID 精确匹配，仅已启用、已勾选的模型可调用。协议 DTO 位于 `internal/sourceplugin/contract.go`，不依赖平台 Credential 或 storage DTO。
 
 失败用 JSON-RPC `error` 返回。核心保留稳定错误码：`-32001` 登录失效、`-32002` 上游限流、`-32003` 不支持该操作、`-32004` 输入无效、`-32005` 上游异常、`-32006` 超时、`-32000` 其他错误。也可在 `error.data.code` 中返回 `auth_expired`、`rate_limited`、`unsupported`、`invalid`、`upstream`、`timeout` 或 `plugin_error`，核心只接受这组固定值并映射为 HTTP 状态码和可操作提示。错误正文不得包含凭据或对话正文。
 
@@ -122,3 +122,19 @@ go run ./sdk/conformance/cmd/conformance dist/plugins/example/provider.exe examp
 `plugins/index.json` 是本地插件索引：列出 ID、版本、相对路径、可选 SHA-256 和描述。客户端读取可执行文件旁 `plugins/index.json` 与 `dist/plugins/index.json`，只展示、不自动下载；路径必须在索引目录内，清单 ID 必须与条目一致，索引声明的 hash 与包内容不一致时会标记并禁用安装按钮。`build.ps1` 会把索引复制到 `dist/plugins/`，插件包本身仍由各自的 `build.ps1` 单独构建。
 
 本机协议示例：`cmd/trae-source-plugin`。离线假插件回归：`internal/sourceplugin/manager_test.go`，覆盖安装、稳定模型 ID、凭据不回显、取消、崩溃与重启。开发第三方插件时应先用假上游验证这些异常路径，再验证真实账号。
+
+## 可读调用 ID 回归验收（2026-11-12）
+
+- `/v1/models` 对手动来源和插件均返回可读 `id`；同名来源、同上游模型不串路由，中文来源名及模型名直接展示，含斜杠、空格、加号与百分号的 key 独立转义。
+- 内置插件默认去掉 `xiaotao.`，覆盖先创建插件/先创建手动来源的同名冲突、删除及重启；短名称不接管旧调用。
+- 使用目录 ID 执行流式与非流式 Chat，上游收到原始模型 ID，响应保留调用方使用的 ID；旧内部 ID 继续接受。
+- 修改手动来源名称或上游 ID、重启、旧文件升级后别名稳定；删除后重建不会接管旧别名，停用或取消勾选后新旧 ID 均不可用。
+- UAT 只读导入正式版旧文件与别名，重新加密后独立保存；损坏或重复别名应拒绝加载且不改写原文件。
+
+自动回归入口：`go test ./internal/modelsource ./internal/sourceplugin ./internal/gateway`。真实账号与 Windows 桌面壳仍需本地验收。
+
+本次自动验证：相关三个包的测试与 `go vet`、Windows 目标全量 `GOOS=windows GOARCH=amd64 go vet ./...`、前端 lint/大小检查/构建、Go 文件大小及规则一致性检查通过。Linux 全量 `go test ./...` 受现有 Windows 专用 desktop/secrets 实现及 runtimeenv 的 Windows 绝对路径断言限制，不能视为全量通过；未执行真实账号或 Windows 桌面验收。现有模型身份规则候选已覆盖不猜来源、不重绑旧引用，无新增候选。
+
+2026-11-12 中文与短插件名修正：中文旧别名映射继续保存，仅规范化公开展示与匹配；新旧形式共用保留记录，不能通过编码差异复用已删除模型的别名。网关先把目录别名转换为内部身份，再精确路由；内置插件短名称保存在 `routes` 的 `plugin:<完整插件 ID>` 项中。UAT 只读导入并合并别名保留记录，冲突时拒绝导入，不覆盖已有路由。
+
+本地网关现已支持外部 Chat Completions、Responses、Anthropic Messages 三种对话入口，均复用现有插件的 Chat 表达；插件进程协议及 `chat/start` 方法不变。手动上游的独立协议选择、转换范围与验证边界见 [三协议接入](../plans/2026-11-12-gateway-protocols.md)。

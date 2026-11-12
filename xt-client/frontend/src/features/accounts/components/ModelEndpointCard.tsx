@@ -83,7 +83,9 @@ export const ModelEndpointCard: React.FC<ModelEndpointCardProps> = ({
           <p className="endpoint-subtitle">供外部工具连接小涛；此处密钥与上游 API Key 分开保存。</p>
         </div>
         <div className="endpoint-protocol-capsules">
-          <span className="protocol-capsule">OpenAI Chat Completions</span>
+          <span className="protocol-capsule">Chat Completions</span>
+          <span className="protocol-capsule">Responses</span>
+          <span className="protocol-capsule">Anthropic Messages</span>
           <span className="protocol-capsule code-font">/v1/models</span>
         </div>
       </div>
