@@ -97,6 +97,11 @@ func (s *Service) SearchConversationReferences(input ReferenceSearch) ([]Convers
 			return nil, err
 		}
 		s.markDefault(&item)
+		// Office executor sessions belong to their task and are not offered as
+		// user conversations to quote.
+		if item.Role != "" {
+			continue
+		}
 		if !input.AllProjects && normalizeReferencePath(item.Project.Path) != normalizeReferencePath(input.ProjectPath) {
 			continue
 		}

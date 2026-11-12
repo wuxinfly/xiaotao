@@ -165,7 +165,15 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			apiError(w, 500, "读取任务失败: "+err.Error())
 			return
 		}
-		send(w, map[string]any{"sessions": sessions})
+		// Office executors are dispatched sessions: they belong to a task and
+		// are read through the office API, not as user chat sessions.
+		visible := make([]*agent.Session, 0, len(sessions))
+		for _, session := range sessions {
+			if session.Role == "" {
+				visible = append(visible, session)
+			}
+		}
+		send(w, map[string]any{"sessions": visible})
 	})
 	mux.HandleFunc("POST /api/agent/sessions", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {

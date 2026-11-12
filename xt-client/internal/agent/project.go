@@ -221,7 +221,9 @@ func (s *Service) ListProjects() ([]Project, error) {
 	}
 	for _, item := range summaries {
 		s.markDefault(item)
-		if item.Project.IsDefault || item.Project.Path == "" || item.Project.Removed || seen[normalizeProjectPath(item.Project.Path)] {
+		// Office executors are dispatched sessions; their project only becomes
+		// visible once the user saves it, not as a side effect of a task.
+		if item.Role != "" || item.Project.IsDefault || item.Project.Path == "" || item.Project.Removed || seen[normalizeProjectPath(item.Project.Path)] {
 			continue
 		}
 		out = append(out, Project{Path: item.Project.Path, Name: item.Project.Name, IsDefault: false})

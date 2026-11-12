@@ -44,8 +44,13 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.workspace-dock').evaluate(element => getComputedStyle(element).position), 'fixed');
     assert.ok(parseFloat(await page.locator('.agent-session-list').evaluate(element => getComputedStyle(element).paddingBottom)) >= footer.height, 'session history must reserve space above the dock');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
-    assert.deepEqual(await footerButtons.allTextContents(), ['仪表盘', '模型接口']);
+    assert.deepEqual(await footerButtons.allTextContents(), ['办公室', '仪表盘', '模型接口']);
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
+    await page.locator('.agent-workspace').waitFor();
+    await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    await page.locator('.office-page').waitFor();
+    assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
+    await page.getByRole('button', {name: '返回小涛', exact: true}).click();
     await page.locator('.agent-workspace').waitFor();
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();
     await page.locator('.dashboard-page').waitFor();

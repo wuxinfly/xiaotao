@@ -168,6 +168,7 @@ func (s *Service) Create(options Options) (*Session, error) {
 		RunStats:      []RunStats{},
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
+		Role:          options.Role,
 	}
 	s.mu.Lock()
 	s.runs[session.ID] = &run{}

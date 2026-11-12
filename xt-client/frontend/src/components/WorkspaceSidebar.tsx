@@ -1,10 +1,11 @@
-import {ArrowLeft, ChartNoAxesColumn, UserRoundCog} from 'lucide-react';
+import {ArrowLeft, ChartNoAxesColumn, DoorOpen, UserRoundCog} from 'lucide-react';
 import './workspace-sidebar.css';
 
-export type Page = 'agent' | 'dashboard' | 'accounts';
+export type Page = 'agent' | 'office' | 'dashboard' | 'accounts';
 type Props = {page: Page; onSelect: (page: Page) => void};
 
 const items: {page: Page; label: string; Icon: typeof ChartNoAxesColumn}[] = [
+  {page: 'office', label: '办公室', Icon: DoorOpen},
   {page: 'dashboard', label: '仪表盘', Icon: ChartNoAxesColumn},
   {page: 'accounts', label: '模型接口', Icon: UserRoundCog},
 ];

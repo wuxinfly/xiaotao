@@ -130,11 +130,15 @@ type Session struct {
 	HasImages bool      `json:"hasImages,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Role marks sessions dispatched by the project office. An empty role is
+	// the regular user-facing XiaoTao session.
+	Role string `json:"role,omitempty"`
 }
 
 type Options struct {
 	ProjectPath   string         `json:"projectPath"`
 	ProjectName   string         `json:"projectName"`
+	Role          string         `json:"role,omitempty"`
 	Model         string         `json:"model"`
 	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
 }

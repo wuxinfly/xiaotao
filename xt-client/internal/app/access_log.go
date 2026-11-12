@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 	"xiaotao/xt-client/internal/logging"
+	"xiaotao/xt-client/internal/office"
 	"xiaotao/xt-client/internal/sourceplugin"
 	"xiaotao/xt-client/internal/usage"
 )
@@ -107,9 +108,13 @@ type closeableHandler struct {
 	http.Handler
 	usage   *usage.Service
 	plugins *sourceplugin.Manager
+	office  *office.Service
 }
 
 func (c *closeableHandler) Close() error {
+	if c.office != nil {
+		c.office.Close()
+	}
 	if c.plugins != nil {
 		c.plugins.Close()
 	}

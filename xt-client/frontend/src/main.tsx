@@ -4,6 +4,7 @@ import './style.css';
 import {AccountsPage} from './features/accounts/AccountsPage';
 import {DashboardPage} from './features/dashboard/DashboardPage';
 import {DashboardDataProvider} from './features/dashboard/DashboardData';
+import {OfficePage} from './features/office/OfficePage';
 import {ToastContainer} from './components/toast';
 import {WindowMenu} from './components/WindowMenu';
 import {AgentPage} from './features/agent/AgentPage';
@@ -44,7 +45,7 @@ function App(){
   return()=>{cancelled=true;clearTimeout(timer)};
  },[]);
  useEffect(()=>{
-  const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='agent'||next==='dashboard'||next==='accounts')setPage(next)};
+  const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='agent'||next==='office'||next==='dashboard'||next==='accounts')setPage(next)};
   window.addEventListener('xiaotao:navigate',navigate);
   return()=>window.removeEventListener('xiaotao:navigate',navigate);
  },[]);
@@ -67,6 +68,7 @@ function App(){
   {page !== 'agent' && <div className="workspace-page-layout">
     <div key={page} className="page-view workspace-page-view">
      <div className="workspace-page-content">
+      {page === 'office' && <OfficePage visible={page === 'office'}/>}
       {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
       {page === 'accounts' && <AccountsPage />}
      </div>
