@@ -102,3 +102,16 @@ Agent 模型选项新增来源身份、上游 ID、默认最大输出；窗口�
 回归入口：在 `xt-client/frontend` 运行 `node --test tests/model-sources-layout.browser.test.mjs tests/model-pricing.browser.test.mjs`。使用隔离 API，在 1280、1920、540、375 像素宽度检查实际留白、最大宽度、空态高度、区块距离、无横向溢出和表单控件尺寸。截图与测试结果不替代 WebView2 新包人工验收；本次不停止运行中的客户端。已有共享内容列规则覆盖此次修正，无新增规则候选。
 
 添加/编辑接口弹窗进一步收紧为 660px 宽，减少字段间距与模型区内边距；来源名称和只读的上游格式并排，窄屏保持单列。明确当前仅支持 OpenAI Chat Completions，不支持 Responses / Messages；API URL 提示实际前缀不会自动补 `/v1`。本次为局部密度调整，README 和架构中的协议范围不变，无新增规则候选。
+
+## 添加接口表单轻量化（2026-11-12）
+
+用户反馈弹窗字段多、容易填错，本轮只做前端轻量修复，不改协议、存储和网关行为：
+
+- API URL 下方实时显示归一化后的实际请求地址（`…/chat/completions`），规则与 `modelsource.NormalizeURL` 一致：去尾部斜杠、去重复 `/chat/completions`，不自动补 `/v1`；带查询参数、片段、账号信息或空白的地址不显示预览并在保存时拒绝。
+- API Key 增加显示/隐藏按钮，只切换当前输入框的 `type`；编辑时仍不回显已保存密钥，留空继续表示保留。
+- 只读的“上游格式”由禁用感很强的 input 改为静态展示块，避免被误认为可编辑。
+- 必填/选填改为标签内的徽标；上游模型 ID、来源名称、新建时的 API Key 标必填，其余标选填。徽标 `aria-hidden`，不污染输入框的可访问名称。
+- Token 输入框标注 `tokens` 单位，`min` 与后端门槛对齐（窗口 1024、输出 16）；保存校验按模型序号给出具体错误，例如“模型 1：上下文窗口至少为 1024 tokens”，不再笼统提示“参数须为正整数”。
+- 表单加 `noValidate`，统一走自有校验和中文错误提示，避免浏览器原生气泡与页面提示重复。
+
+回归入口：`node --test tests/source-editor-lightweight.browser.test.mjs`，覆盖 URL 预览（前缀、尾斜杠、完整路径、查询参数）、Key 显隐、必填/选填徽标、Token 单位与三条按模型定位的错误。已跑 `npm run lint`、`npm run check:size`、`npm run build` 及既有 `qoder-checkin`、`model-pricing`、`model-catalog` 浏览器回归。截图只在隔离浏览器中生成，未做 WebView2 实机验收。本次无新增规则候选。
