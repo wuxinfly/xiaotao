@@ -116,6 +116,28 @@
 [data-theme='light'] .office-feed-activity code, [data-theme='light'] .office-artifact-content { color: var(--ocean-text); background: #eef6f8; }
 
 .office-page { padding-bottom: 86px; }
+.office-live-page {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0c3442;
+}
+.office-live-page > .office-room { height: 100%; }
+.office-live-page .office-page-error {
+  position: absolute;
+  z-index: 80;
+  top: 72px;
+  left: 50%;
+  width: min(520px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+.office-live-page .office-room-skeleton { height: 100%; border: 0; border-radius: 0; }
 .office-page-error { padding: 10px 14px; border-radius: 8px; background: var(--ocean-panel); }
 .office-fab {
   position: fixed; z-index: 60; right: var(--content-gutter); bottom: 22px;

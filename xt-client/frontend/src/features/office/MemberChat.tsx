@@ -1,26 +1,29 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import Markdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import {officeApi, type OfficeMember, type OfficeMemberChat, type OfficeHistory} from '../../lib/office';
-import {modelSettingsFor, type AgentModelConfig} from '../../lib/agent-model-settings';
+import {modelConfigFor, modelSettingsFor, type AgentModelConfig} from '../../lib/agent-model-settings';
 import type {AgentModelOption} from '../../lib/api';
 import './member-chat.css';
 
 type Props = {
-  projectPath: string; projectName: string; member: OfficeMember; model: string;
+  projectPath: string; projectName: string; member: OfficeMember; preferredModel: string;
   models: AgentModelOption[]; modelConfigs: AgentModelConfig[];
   onHandoff: (goal: string) => void;
 };
 
-export function MemberChat({projectPath, projectName, member, model, models, modelConfigs, onHandoff}: Props) {
+export function MemberChat({projectPath, projectName, member, preferredModel, models, modelConfigs, onHandoff}: Props) {
   const [chat, setChat] = useState<OfficeMemberChat | null>(null);
   const [history, setHistory] = useState<OfficeHistory | null>(null);
   const [older, setOlder] = useState<OfficeHistory | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [model, setModel] = useState(preferredModel);
   const sequence = useRef(0);
+  const usableModels = useMemo(() => models.filter(item => !item.unavailable), [models]);
+  const selectedConfig = modelConfigFor(modelConfigs, model, models);
   const load = useCallback(async () => {
     const id = ++sequence.current;
     try {
@@ -69,6 +72,12 @@ export function MemberChat({projectPath, projectName, member, model, models, mod
     catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
   }
   return <div className="member-chat">
+    <div className="member-chat-toolbar">
+      <label><span>模型</span><select value={model} onChange={event => setModel(event.target.value)} disabled={busy || sending}>
+        {usableModels.map(item => <option key={item.model} value={item.model}>{item.label}{item.sourceLabel ? ` · ${item.sourceLabel}` : ''}</option>)}
+      </select></label>
+      <span className="member-chat-context"><small>上下文</small><strong>{selectedConfig?.contextWindow ? `${selectedConfig.contextWindow.toLocaleString()} tokens` : '跟随模型设置'}</strong></span>
+    </div>
     <div className="member-chat-history" aria-live="polite">
       {before && <button type="button" className="office-ghost office-load-earlier" onClick={() => void loadEarlier()}>加载更早记录</button>}
       {messages.length ? messages.map(message => <article className={`member-chat-bubble role-${message.role}`} key={message.id}>

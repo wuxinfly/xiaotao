@@ -6,6 +6,7 @@ import {toast} from '../../components/toast';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 import {ModalFrame, ModalPresence} from '../../components/modal/ModalFrame';
 import {ArtifactModal} from './ArtifactModal';
+import {ArtifactLibraryModal} from './ArtifactLibraryModal';
 import {MemberChat} from './MemberChat';
 import {CreateTaskModal} from './CreateTaskModal';
 import {OfficeRoom} from './OfficeRoom';
@@ -15,7 +16,7 @@ import {useOfficePolling} from './useOfficePolling';
 import './office.css';
 
 type Props = {visible: boolean};
-type Panel = 'menu' | 'task' | 'member' | 'artifact' | 'create' | null;
+type Panel = 'menu' | 'task' | 'member' | 'library' | 'artifact' | 'create' | null;
 
 const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
 
@@ -196,7 +197,7 @@ export function OfficePage({visible}: Props) {
   }
 
   if (!projectsLoading && !projects.length) {
-    return <div className="office-page content-column">
+    return <div className="office-page office-empty-page content-column">
       <div className="office-empty-project">
         <h1>Agent 办公室</h1>
         <p>一个项目对应一间办公室。先返回小涛选择项目目录，或保存一个项目。</p>
@@ -209,10 +210,10 @@ export function OfficePage({visible}: Props) {
   const activeCount = snapshot?.tasks.filter(item => !isTerminalTask(item.status)).length ?? 0;
   const visibleArtifacts = snapshot ? new Set(snapshot.artifacts.map(item => item.id)) : null;
   const currentDetail = detail && visibleArtifacts ? {...detail, artifacts: detail.artifacts.filter(item => visibleArtifacts.has(item.id))} : detail;
-  return <div className="office-page content-column">
+  return <div className="office-page office-live-page content-column">
     {error && <p className="office-error office-page-error" role="alert">刷新办公室失败：{error}</p>}
     {snapshot ? <OfficeRoom projectName={snapshot.project.name} members={snapshot.members} artifacts={snapshot.artifacts}
-      onSelectTask={selectTask} onSelectMember={selectMember} onOpenArtifact={item => void openArtifact(item)}/>
+      onSelectTask={selectTask} onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')}/>
       : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请在菜单中刷新。'}</div>}
     {!projectsLoading && <OfficeMenuButton count={activeCount} onOpen={() => showPanel('menu')}/>}
     <ModalPresence>
@@ -220,7 +221,7 @@ export function OfficePage({visible}: Props) {
         loading={loading} onChange={selectProject} onRefresh={() => void refresh()} onTask={selectTask} onClose={close}/>
       : panel === 'member' && member ? <ModalFrame title={`与${member.name}对话`} description={`${projectName} · 办公室对话`}
         className="office-chat-modal" onClose={close} footer={null}>
-        <MemberChat key={member.id} projectPath={selectedPath} projectName={projectName} member={member} model={preferredModel}
+        <MemberChat key={member.id} projectPath={selectedPath} projectName={projectName} member={member} preferredModel={preferredModel}
           models={models} modelConfigs={modelConfigs} onHandoff={goal => {setHandoffGoal(goal); showPanel('create');}}/>
       </ModalFrame>
       : panel === 'task' ? <ModalFrame title="任务详情" className="office-task-modal" onClose={close}
@@ -234,6 +235,7 @@ export function OfficePage({visible}: Props) {
         modelConfigs={modelConfigs} preferredModel={preferredModel} initialGoal={handoffGoal}
         onCreated={(created: OfficeTask) => {toast.success('任务已安排，执行者开始工作'); void refresh(); selectTask(created.id);}}
         onClose={() => showPanel('member')}/>
+      : panel === 'library' ? <ArtifactLibraryModal artifacts={snapshot?.artifacts || []} onOpenArtifact={item => void openArtifact(item)} onClose={close}/>
       : panel === 'artifact' && artifact ? <ArtifactModal detail={artifact} onClose={() => showPanel(artifactReturn.current)}/>
       : null}
     </ModalPresence>
