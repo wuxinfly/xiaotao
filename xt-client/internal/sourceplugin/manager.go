@@ -117,7 +117,7 @@ func (m *Manager) Sources() []modelsource.Source {
 	for _, e := range m.List() {
 		src := modelsource.Source{ID: e.ID, Label: e.Manifest.Name, Kind: "plugin", Enabled: e.Enabled, HasAPIKey: true}
 		for _, v := range e.selectedModels() {
-			src.Models = append(src.Models, modelsource.Model{ID: route(e.ID, v.Key), Label: v.Label, UpstreamModelID: v.UpstreamID, ContextWindow: v.ContextWindow, SupportsImages: v.SupportsImages, SupportsReasoning: v.SupportsReasoning, ReasoningEfforts: v.ReasoningEfforts, PriceFactor: v.PriceFactor, IsFree: v.IsFree})
+			src.Models = append(src.Models, modelsource.Model{ID: route(e.ID, v.Key), CallID: modelsource.CallID(e.ID, v.Key), Label: v.Label, UpstreamModelID: v.UpstreamID, ContextWindow: v.ContextWindow, SupportsImages: v.SupportsImages, SupportsReasoning: v.SupportsReasoning, ReasoningEfforts: v.ReasoningEfforts, PriceFactor: v.PriceFactor, IsFree: v.IsFree})
 		}
 		out = append(out, src)
 	}
@@ -129,7 +129,7 @@ func (m *Manager) Resolve(id string) (modelsource.Source, modelsource.Model, err
 			continue
 		}
 		for _, v := range src.Models {
-			if v.ID == id {
+			if v.ID == id || v.CallID == id {
 				return src, v, nil
 			}
 		}

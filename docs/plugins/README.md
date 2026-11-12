@@ -66,7 +66,7 @@ go vet ./...
 | `quota/get`、`checkin/status`、`checkin/claim` | 返回 value，含平台真实数据 |
 | `chat/start` | 非流式返回 value=完整 Chat Completion；流式先通知，再返回空 result |
 
-所有方法返回 Result 对象：可选 credential、models、value。credential 有更新时核心加密并持久化；models 各项包含 key、upstreamId、label、contextWindow、supportsImages、supportsReasoning、reasoningEfforts，可选 priceFactor、isFree 表示上游消耗倍率和免费标记，仅用于展示，不参与计费。key 必须在插件内唯一且重启稳定；核心以插件 ID+key 生成内部模型 ID。协议 DTO 位于 `internal/sourceplugin/contract.go`，不依赖平台 Credential 或 storage DTO。
+所有方法返回 Result 对象：可选 credential、models、value。credential 有更新时核心加密并持久化；models 各项包含 key、upstreamId、label、contextWindow、supportsImages、supportsReasoning、reasoningEfforts，可选 priceFactor、isFree 表示上游消耗倍率和免费标记，仅用于展示，不参与计费。key 必须在插件内唯一且重启稳定；核心以插件 ID+key 生成内部模型 ID；网关 `/v1/models` 的公开调用别名为 `<完整插件 ID>/<key>`，两部分分别进行 URL 百分号转义，不带 `plugin/` 前缀。插件内手动模型的 key 仍是 `manual:<上游 ID>`。网关同时接受可读别名与旧哈希内部 ID，按完整 ID 精确匹配，仅已启用、已勾选的模型可调用。协议 DTO 位于 `internal/sourceplugin/contract.go`，不依赖平台 Credential 或 storage DTO。
 
 流式通知方法为 `chat/delta`，params 是标准 Chat chunk 内容（choices、delta、finish_reason、usage）。文本、reasoning_content、tool_calls 增量保留原结构；usage 通知的 choices 可为空。插件只报告真实用量，未知保持未知。核心改写公开 model/id 并转换为 SSE；不重放聊天请求。
 
@@ -88,3 +88,14 @@ go vet ./...
 - `POST /api/source-plugins/legacy-trae`：`{"id":"预览中的旧账号 ID"}`，显式将当前环境的旧账号加入 Trae 插件。
 
 本机协议示例：`cmd/trae-source-plugin`。离线假插件回归：`internal/sourceplugin/manager_test.go`，覆盖安装、稳定模型 ID、凭据不回显、取消、崩溃与重启。开发第三方插件时应先用假上游验证这些异常路径，再验证真实账号。
+
+## 可读调用 ID 回归验收（2026-11-12）
+
+- `/v1/models` 对手动来源和插件均返回可读 `id`；同名来源、同上游模型不串路由，含斜杠、空格、加号与百分号的 key 独立转义。
+- 使用目录 ID 执行流式与非流式 Chat，上游收到原始模型 ID，响应保留调用方使用的 ID；旧内部 ID 继续接受。
+- 修改手动来源名称或上游 ID、重启、旧文件升级后别名稳定；删除后重建不会接管旧别名，停用或取消勾选后新旧 ID 均不可用。
+- UAT 只读导入正式版旧文件与别名，重新加密后独立保存；损坏或重复别名应拒绝加载且不改写原文件。
+
+自动回归入口：`go test ./internal/modelsource ./internal/sourceplugin ./internal/gateway`。真实账号与 Windows 桌面壳仍需本地验收。
+
+本次自动验证：相关三个包的测试与 `go vet`、Windows 目标全量 `GOOS=windows GOARCH=amd64 go vet ./...`、前端 lint/大小检查/构建、Go 文件大小及规则一致性检查通过。Linux 全量 `go test ./...` 受现有 Windows 专用 desktop/secrets 实现及 runtimeenv 的 Windows 绝对路径断言限制，不能视为全量通过；未执行真实账号或 Windows 桌面验收。现有模型身份规则候选已覆盖不猜来源、不重绑旧引用，无新增候选。

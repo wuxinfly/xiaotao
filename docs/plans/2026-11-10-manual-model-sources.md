@@ -69,7 +69,7 @@ Agent 模型选项新增来源身份、上游 ID、默认最大输出；窗口�
 | `GET /api/accounts` | 仅保留手动来源标签兼容视图，供仪表盘/HUD 使用 |
 | `GET/POST /api/proxy/key` | 读取/轮换本地网关访问密钥，沿用兼容路径 |
 | `GET /v1/models` | 独立密钥鉴权后的启用模型列表；扩展字段沿用 `supports_images`、`supports_reasoning`、`max_input_tokens`，新增 `max_output_tokens` 与来源身份 |
-| `POST /v1/chat/completions` | 标准 Chat 调用，model 为目录中的稳定内部 ID |
+| `POST /v1/chat/completions` | 标准 Chat 调用，model 为目录中的可读调用别名（兼容旧稳定内部 ID） |
 
 旧 `/api/auth/*`、`/api/providers`、平台账号排序/备注/配额/签到管理和 `/api/proxy/models` 不再注册，返回 404，不回落静态 HTML。管理写入继续遵循同源校验，本地模型 API 使用独立访问密钥。
 
@@ -102,3 +102,8 @@ Agent 模型选项新增来源身份、上游 ID、默认最大输出；窗口�
 回归入口：在 `xt-client/frontend` 运行 `node --test tests/model-sources-layout.browser.test.mjs tests/model-pricing.browser.test.mjs`。使用隔离 API，在 1280、1920、540、375 像素宽度检查实际留白、最大宽度、空态高度、区块距离、无横向溢出和表单控件尺寸。截图与测试结果不替代 WebView2 新包人工验收；本次不停止运行中的客户端。已有共享内容列规则覆盖此次修正，无新增规则候选。
 
 添加/编辑接口弹窗进一步收紧为 660px 宽，减少字段间距与模型区内边距；来源名称和只读的上游格式并排，窄屏保持单列。明确当前仅支持 OpenAI Chat Completions，不支持 Responses / Messages；API URL 提示实际前缀不会自动补 `/v1`。本次为局部密度调整，README 和架构中的协议范围不变，无新增规则候选。
+
+
+### 2026-11-12 可读网关调用 ID
+
+`/v1/models` 公开 `<来源标识>/<模型标识>` 别名；内部 ID 保留供 Agent、会话与旧调用使用。手动别名独立持久化并保留删除记录；插件别名由完整插件 ID 与稳定 key 生成。详细格式、兼容边界与验收入口见 [客户端 README](../../xt-client/README.md) 和 [插件验收说明](../plugins/README.md)。

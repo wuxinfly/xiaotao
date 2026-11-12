@@ -22,7 +22,7 @@ func (s *Store) ImportFrom(sourceDataDir string, sourceDecrypt func([]byte) ([]b
 	if sourceDecrypt == nil {
 		return 0, errors.New("source key decryption is unavailable")
 	}
-	source, err := Open(sourceDataDir, s.encrypt, sourceDecrypt)
+	source, err := open(sourceDataDir, s.encrypt, sourceDecrypt, false)
 	if err != nil {
 		return 0, err
 	}
@@ -42,7 +42,10 @@ func (s *Store) ImportFrom(sourceDataDir string, sourceDecrypt func([]byte) ([]b
 		e.Secret = encrypted
 		next = append(next, e)
 	}
+	previous := s.routes
+	s.routes = source.routes
 	if err := s.commit(next); err != nil {
+		s.routes = previous
 		return 0, err
 	}
 	s.entries = next

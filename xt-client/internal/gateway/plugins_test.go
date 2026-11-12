@@ -95,27 +95,31 @@ func TestPluginGatewayRoundTrip(t *testing.T) {
 	}
 	gw := New(store, "local-key", nil)
 	gw.SetPlugins(m)
-	id := m.Sources()[0].Models[0].ID
-	if len(gw.Models()) != 1 {
+	id := m.Sources()[0].Models[0].CallID
+	if len(gw.Models()) != 1 || gw.Models()[0]["id"] != "test.gateway/shared" {
 		t.Fatal("plugin catalog missing")
 	}
-	for _, stream := range []bool{false, true} {
-		r := chatRequest(id, stream)
-		w := httptest.NewRecorder()
-		gw.HandleChat(w, r)
-		if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Body.String(), id) {
-			t.Fatalf("response: %d %s", w.Code, w.Body.String())
-		}
-		if stream && (!strings.Contains(w.Body.String(), "[DONE]") || !strings.Contains(w.Body.String(), "reasoning_content")) {
-			t.Fatal("lost stream semantics")
+	for _, callID := range []string{id, m.Sources()[0].Models[0].ID} {
+		for _, stream := range []bool{false, true} {
+			r := chatRequest(callID, stream)
+			w := httptest.NewRecorder()
+			gw.HandleChat(w, r)
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") || !strings.Contains(w.Body.String(), callID) {
+				t.Fatalf("response: %d %s", w.Code, w.Body.String())
+			}
+			if stream && (!strings.Contains(w.Body.String(), "[DONE]") || !strings.Contains(w.Body.String(), "reasoning_content")) {
+				t.Fatal("lost stream semantics")
+			}
 		}
 	}
 	if err = m.Enable("test.gateway", false); err != nil {
 		t.Fatal(err)
 	}
-	w := httptest.NewRecorder()
-	gw.HandleChat(w, chatRequest(id, false))
-	if w.Code != 400 {
-		t.Fatal("disabled plugin called")
+	for _, callID := range []string{id, m.Sources()[0].Models[0].ID} {
+		w := httptest.NewRecorder()
+		gw.HandleChat(w, chatRequest(callID, false))
+		if w.Code != 400 {
+			t.Fatal("disabled plugin called")
+		}
 	}
 }

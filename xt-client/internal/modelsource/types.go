@@ -14,6 +14,7 @@ var (
 
 type Model struct {
 	ID                string   `json:"id"`
+	CallID            string   `json:"callId,omitempty"`
 	UpstreamModelID   string   `json:"upstreamModelId"`
 	Label             string   `json:"label"`
 	ContextWindow     int      `json:"contextWindow,omitempty"`
@@ -66,6 +67,7 @@ func validateModels(models []Model, owned map[string]bool) ([]Model, error) {
 	ids := map[string]bool{}
 	upstream := map[string]bool{}
 	for _, m := range models {
+		m.CallID = "" // Call aliases are allocated by the store, never accepted from input.
 		m.UpstreamModelID = strings.TrimSpace(m.UpstreamModelID)
 		m.Label = strings.TrimSpace(m.Label)
 		if m.UpstreamModelID == "" || upstream[m.UpstreamModelID] || (m.ContextWindow != 0 && m.ContextWindow < 1024) || (m.MaxOutputTokens != 0 && m.MaxOutputTokens < 16) || (m.ContextWindow > 0 && m.MaxOutputTokens >= m.ContextWindow) {

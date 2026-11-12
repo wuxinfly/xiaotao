@@ -80,7 +80,7 @@ func (s *Service) Models() []map[string]any {
 		}
 		for _, m := range src.Models {
 			entry := map[string]any{
-				"id": m.ID, "object": "model", "created": 0, "owned_by": src.ID,
+				"id": m.CallID, "object": "model", "created": 0, "owned_by": src.ID,
 				"label": m.Label, "source_id": src.ID, "source_label": src.Label,
 				"upstream_model_id": m.UpstreamModelID,
 				"supports_images":   m.SupportsImages, "supports_reasoning": m.SupportsReasoning,

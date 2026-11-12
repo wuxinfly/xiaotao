@@ -318,7 +318,7 @@ func TestAuthenticationRoutesAndKeyRotation(t *testing.T) {
 		}
 	}
 	models := svc.Models()
-	if len(models) != 1 || models[0]["id"] != src.Models[0].ID {
+	if len(models) != 1 || models[0]["id"] != src.Models[0].CallID {
 		t.Fatal("wrong models")
 	}
 	if models[0]["price_factor"] != 0.5 {

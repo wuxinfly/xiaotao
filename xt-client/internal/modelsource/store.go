@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,14 +19,16 @@ type entry struct {
 	Secret []byte `json:"encryptedAPIKey"`
 }
 type diskFile struct {
-	Version int     `json:"version"`
-	Sources []entry `json:"sources"`
+	Version int               `json:"version"`
+	Sources []entry           `json:"sources"`
+	Routes  map[string]string `json:"routes,omitempty"`
 }
 type Store struct {
 	mu               sync.RWMutex
 	path             string
 	encrypt, decrypt cryptFunc
 	entries          []entry
+	routes           map[string]string
 }
 
 // Open loads data/model-sources/sources.json. Corrupt files fail closed and are never replaced.
@@ -33,6 +36,10 @@ func Open(dir string, encrypt, decrypt func([]byte) ([]byte, error)) (*Store, er
 	if encrypt == nil || decrypt == nil {
 		return nil, errors.New("model source encryption is unavailable")
 	}
+	return open(dir, encrypt, decrypt, true)
+}
+
+func open(dir string, encrypt, decrypt cryptFunc, persistRoutes bool) (*Store, error) {
 	s := &Store{path: filepath.Join(dir, "model-sources", "sources.json"), encrypt: encrypt, decrypt: decrypt, entries: []entry{}}
 	b, err := os.ReadFile(s.path)
 	if os.IsNotExist(err) {
@@ -74,6 +81,15 @@ func Open(dir string, encrypt, decrypt func([]byte) ([]byte, error)) (*Store, er
 		seen[src.ID] = true
 	}
 	s.entries = disk.Sources
+	if err := validateRoutes(disk.Routes, disk.Sources); err != nil {
+		return nil, err
+	}
+	s.routes = allocateRoutes(disk.Routes, disk.Sources)
+	if persistRoutes && !maps.Equal(s.routes, disk.Routes) {
+		if err := s.commit(s.entries); err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
 }
 
@@ -84,11 +100,12 @@ func newID(prefix string) (string, error) {
 	}
 	return prefix + hex.EncodeToString(b), nil
 }
-func public(e entry) Source {
+func (s *Store) public(e entry) Source {
 	src := e.Source
 	src.HasAPIKey = len(e.Secret) > 0
 	src.Models = append([]Model{}, src.Models...)
 	for i := range src.Models {
+		src.Models[i].CallID = s.routes[src.Models[i].ID]
 		src.Models[i].ReasoningEfforts = append([]string(nil), src.Models[i].ReasoningEfforts...)
 	}
 	return src
@@ -98,7 +115,7 @@ func (s *Store) List() []Source {
 	defer s.mu.RUnlock()
 	result := make([]Source, 0, len(s.entries))
 	for _, e := range s.entries {
-		result = append(result, public(e))
+		result = append(result, s.public(e))
 	}
 	return result
 }
@@ -182,7 +199,7 @@ func (s *Store) Save(id string, in Input) (Source, error) {
 		return Source{}, err
 	}
 	s.entries = next
-	return public(e), nil
+	return s.public(e), nil
 }
 
 func (s *Store) Delete(id string) error {
@@ -215,13 +232,14 @@ func (s *Store) Resolve(modelID string) (Source, Model, string, error) {
 			continue
 		}
 		for _, m := range e.Source.Models {
-			if m.ID == modelID {
+			if m.ID == modelID || s.routes[m.ID] == modelID {
 				key, err := s.decrypt(e.Secret)
 				if err != nil || len(key) == 0 {
 					return Source{}, Model{}, "", errors.New("cannot decrypt model source key")
 				}
+				m.CallID = s.routes[m.ID]
 				m.ReasoningEfforts = append([]string(nil), m.ReasoningEfforts...)
-				return public(e), m, string(key), nil
+				return s.public(e), m, string(key), nil
 			}
 		}
 	}
@@ -229,7 +247,8 @@ func (s *Store) Resolve(modelID string) (Source, Model, string, error) {
 }
 
 func (s *Store) commit(entries []entry) error {
-	b, err := json.MarshalIndent(diskFile{Version: 1, Sources: entries}, "", "  ")
+	routes := allocateRoutes(s.routes, entries)
+	b, err := json.MarshalIndent(diskFile{Version: 1, Sources: entries, Routes: routes}, "", "  ")
 	if err != nil {
 		return errors.New("cannot encode model sources")
 	}
@@ -259,5 +278,6 @@ func (s *Store) commit(entries []entry) error {
 	if os.Rename(name, s.path) != nil {
 		return errors.New("cannot replace model source file")
 	}
+	s.routes = routes
 	return nil
 }
