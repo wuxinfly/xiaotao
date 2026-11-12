@@ -27,7 +27,7 @@ func (s *Service) Snapshot(projectPath, projectName string) (*Snapshot, error) {
 		}
 		tasks[i].QueuedMessages = queued[tasks[i].ID]
 	}
-	artifacts, err := s.loadProjectArtifacts(path)
+	artifacts, err := s.projectArtifacts(path)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (s *Service) TaskDetail(projectPath, taskID string) (*TaskDetail, error) {
 	}
 	detail := &TaskDetail{Task: task, Artifacts: []*Artifact{}, Messages: []*TaskMessage{}}
 	if artifacts, err := s.loadTaskArtifacts(taskID); err == nil {
-		detail.Artifacts = artifacts
+		detail.Artifacts = visibleArtifacts(artifacts)
 	}
 	if messages, err := s.loadMessages(taskID); err == nil {
 		detail.Messages = messages
@@ -162,10 +162,15 @@ func (s *Service) ProjectArtifacts(projectPath, projectName string) ([]*Artifact
 	if err != nil {
 		return nil, err
 	}
+	return s.projectArtifacts(path)
+}
+
+func (s *Service) projectArtifacts(path string) ([]*Artifact, error) {
 	items, err := s.loadProjectArtifacts(path)
 	if err != nil {
 		return nil, err
 	}
+	items = visibleArtifacts(items)
 	sort.SliceStable(items, func(i, j int) bool { return items[i].UpdatedAt.After(items[j].UpdatedAt) })
 	return items, nil
 }

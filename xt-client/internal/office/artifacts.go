@@ -116,20 +116,39 @@ func resolveArtifactPath(root, rawPath string) (string, string, error) {
 	return filepath.ToSlash(rel), abs, nil
 }
 
+// visibleArtifacts keeps write history intact while exposing only files that
+// still exist at their recorded, project-relative location.
+func visibleArtifacts(items []*Artifact) []*Artifact {
+	visible := make([]*Artifact, 0, len(items))
+	for _, item := range items {
+		if _, _, err := currentArtifactFile(item); err == nil {
+			visible = append(visible, item)
+		}
+	}
+	return visible
+}
+
+func currentArtifactFile(artifact *Artifact) (string, os.FileInfo, error) {
+	relative, absolute, err := resolveArtifactPath(artifact.ProjectPath, artifact.Path)
+	if err != nil || relative != artifact.Path {
+		return "", nil, fmt.Errorf("路径不在项目目录内，已拒绝读取")
+	}
+	info, err := os.Stat(absolute)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("文件已被移动或删除")
+	}
+	return absolute, info, nil
+}
+
 func (s *Service) ArtifactDetail(projectPath, id string) (*ArtifactDetail, error) {
 	artifact, err := s.artifactByID(projectPath, id)
 	if err != nil {
 		return nil, err
 	}
 	detail := &ArtifactDetail{Artifact: artifact}
-	relative, absolute, err := resolveArtifactPath(artifact.ProjectPath, artifact.Path)
-	if err != nil || relative != artifact.Path {
-		detail.Error = "路径不在项目目录内，已拒绝读取"
-		return detail, nil
-	}
-	info, err := os.Stat(absolute)
-	if err != nil || !info.Mode().IsRegular() {
-		detail.Error = "文件已被移动或删除"
+	absolute, info, err := currentArtifactFile(artifact)
+	if err != nil {
+		detail.Error = err.Error()
 		return detail, nil
 	}
 	detail.Available = true

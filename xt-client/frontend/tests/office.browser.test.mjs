@@ -7,6 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const projectPath = 'E:\\work\\demo-project';
+const secondProjectPath = 'E:\\work\\second-project';
 
 function task(overrides = {}) {
   return {
@@ -84,9 +85,16 @@ test('office page shows real task state, transcript, artifacts and queued messag
       const path = url.pathname;
       const method = req.method();
       requests.push({path, method});
-      if (path === '/api/agent/projects') return route.fulfill({json: {projects: [{path: projectPath, name: '演示项目', saved: true}]}});
+      if (path === '/api/agent/projects') return route.fulfill({json: {projects: [
+        {path: projectPath, name: '演示项目', saved: true}, {path: secondProjectPath, name: '另一个项目', saved: true},
+      ]}});
       if (path === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test/model', label: '测试模型', sourceLabel: '本地'}]}});
-      if (path === '/api/office/snapshot') return route.fulfill({json: snapshot(tasks, artifacts)});
+      if (path === '/api/office/snapshot') {
+        const board = url.searchParams.get('projectPath') === secondProjectPath
+          ? {...snapshot([]), project: {path: secondProjectPath, name: '另一个项目'}}
+          : snapshot(tasks, artifacts);
+        return route.fulfill({json: board});
+      }
       const chatRoute = path.match(/^\/api\/office\/members\/([^/]+)\/chat(?:\/(messages|history))?$/);
       if (chatRoute) {
         const [, member, action] = chatRoute;
@@ -131,11 +139,21 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('heading', {name: 'Agent 办公室'}).waitFor();
     await page.locator('.office-desk').filter({hasText: '给搜索页加空状态'}).waitFor();
     await page.getByText('真实运行状态').waitFor();
-    await page.getByText('上次更新').waitFor();
+    assert.equal(await page.getByText('上次更新').count(), 0);
+    assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    const shelf = page.getByRole('complementary', {name: '项目资料架'});
+    const deskRect = await page.locator('.sea-office-workspace').boundingBox();
+    const shelfRect = await shelf.boundingBox();
+    assert.ok(shelfRect.x >= deskRect.x + deskRect.width - 1, 'the project shelf must sit to the right of the desks');
+    await page.screenshot({path: join(tmpdir(), 'xiaotao-office-dark.png')});
     assert.equal(await page.getByText('参与 23 次').count(), 0, 'prototype demo numbers must not appear');
 
-    await page.getByRole('button', {name: /设计师，空闲/}).click();
-    await page.getByRole('complementary', {name: '与设计师的对话'}).waitFor();
+    const designer = page.getByRole('button', {name: /设计师，空闲/});
+    await designer.click();
+    const designerChat = page.getByRole('dialog', {name: '与设计师对话'});
+    await designerChat.waitFor();
+    assert.equal(await designerChat.evaluate(node => node.parentElement.parentElement === document.body), true);
     await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
     await page.locator('.member-chat').getByRole('button', {name: '发送', exact: true}).click();
     await page.getByText('我们先把想法整理成一份交接。').waitFor();
@@ -144,11 +162,24 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
     await page.keyboard.press('Escape');
     await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor({state: 'detached'});
+    await designerChat.waitFor();
+    await page.keyboard.press('Escape');
+    await designerChat.waitFor({state: 'detached'});
+    assert.equal(await designer.evaluate(node => node === document.activeElement), true);
     await page.getByRole('button', {name: /小涛，空闲/}).click();
-    await page.getByRole('complementary', {name: '与小涛的对话'}).waitFor();
+    const coordinatorChat = page.getByRole('dialog', {name: '与小涛对话'});
+    await coordinatorChat.waitFor();
     assert.equal(await page.getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
 
-    await page.locator('.office-task-card').first().click();
+    await page.keyboard.press('Escape');
+    await coordinatorChat.waitFor({state: 'detached'});
+    await page.locator('.office-desk').filter({hasText: '给搜索页加空状态'}).click();
+    await page.getByRole('dialog', {name: '任务详情'}).waitFor();
+    await page.getByRole('button', {name: '查看全部任务'}).click();
+    const menu = page.getByRole('dialog', {name: '办公室菜单'});
+    await menu.getByLabel('项目').waitFor();
+    await menu.getByText('上次更新').waitFor();
+    await menu.locator('.office-task-card').first().click();
     await page.getByRole('heading', {name: '给搜索页加空状态'}).waitFor();
     await page.getByText('我先看一下搜索页的实现。').waitFor();
     await page.getByText('阅读文件').first().waitFor();
@@ -165,8 +196,30 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(posts.length, 1);
     assert.equal(posts[0].content, '补充一个空状态组件');
 
-    await page.getByRole('button', {name: '找小涛聊聊', exact: true}).click();
-    await page.getByRole('complementary', {name: '与小涛的对话'}).waitFor();
+    await page.getByRole('button', {name: '停止任务', exact: true}).click();
+    await page.getByRole('alertdialog').waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('alertdialog').waitFor({state: 'detached'});
+    const taskDialog = page.getByRole('dialog', {name: '任务详情'});
+    await taskDialog.waitFor();
+    await page.keyboard.press('Escape');
+    await taskDialog.waitFor({state: 'detached'});
+    await shelf.getByRole('button', {name: /search.tsx/}).click();
+    await page.getByText('export function Search() {}').waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog').waitFor({state: 'detached'});
+    artifacts.length = 0;
+    await page.getByRole('button', {name: /办公室菜单/}).click();
+    await menu.getByRole('button', {name: '刷新', exact: true}).click();
+    await page.keyboard.press('Escape');
+    await shelf.getByText('还没有项目资料', {exact: false}).waitFor();
+    await menu.waitFor({state: 'detached'});
+    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
+    await menu.getByLabel('项目').selectOption(secondProjectPath);
+    await page.getByText('工作空间 / 另一个项目').waitFor();
+    await menu.getByText('这个项目还没有任务。').waitFor();
+    await page.keyboard.press('Escape');
+    await menu.waitFor({state: 'detached'});
 
     // Polling must stop once the office page is left.
     const before = requests.filter(item => item.path === '/api/office/snapshot').length;
@@ -182,6 +235,11 @@ test('office page shows real task state, transcript, artifacts and queued messag
     const heading = await page.getByRole('heading', {name: 'Agent 办公室'}).evaluate(element => getComputedStyle(element).color);
     assert.notEqual(heading, 'rgb(232, 247, 250)', 'office heading must follow the light theme');
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office.png')});
+    await page.setViewportSize({width: 380, height: 600});
+    assert.equal(await page.locator('.office-page').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+    await page.getByRole('button', {name: /设计师，空闲/}).click();
+    await designerChat.getByLabel('给设计师发消息').waitFor();
+    await page.screenshot({path: join(tmpdir(), 'xiaotao-office-chat-narrow.png')});
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

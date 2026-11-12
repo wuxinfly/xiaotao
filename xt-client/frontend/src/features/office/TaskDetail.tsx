@@ -93,7 +93,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
   useEffect(() => { setDraft(''); setSendError(''); setNotice(''); }, [task?.id]);
   if (!task) {
     return <aside className="office-detail office-detail-empty">
-      {loading ? <p role="status">读取任务中…</p> : error ? <p className="office-error" role="alert">{error}<button type="button" className="office-link" onClick={onRefresh}>重试</button></p> : <p>点一位伙伴开始聊天，或从左边查看任务。</p>}
+      {error ? <p className="office-error" role="alert">{error}<button type="button" className="office-link" onClick={onRefresh}>重试</button></p> : <p role="status">{loading ? '读取任务中…' : '暂无任务详情。'}</p>}
     </aside>;
   }
   const feed = buildFeed(detail);
@@ -160,7 +160,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
               <small>{artifact.tool} · {formatBytes(artifact.size)} · {formatClock(artifact.updatedAt)}</small>
             </button>
           </li>)}</ul>
-        : <p className="office-muted">这个任务还没有识别到文件写入。命令或外部工具创建的文件不会自动记录。</p>}
+        : <p className="office-muted">这个任务没有可用的项目文件。</p>}
     </section>
     <section className="office-messages" aria-label="给执行者发消息">
       <h3>给执行者发消息</h3>

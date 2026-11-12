@@ -45,7 +45,7 @@ export function ConfirmProvider({children}: {children: ReactNode}) {
     return () => window.removeEventListener('keydown', keydown, true);
   }, [request, finish]);
   return <Context.Provider value={confirm}>{children}{request && createPortal(
-    <div className="confirm-overlay" onPointerDown={event => {if (event.target === event.currentTarget) finish(false);}}>
+    <div className="confirm-overlay" data-escape-layer onPointerDown={event => {if (event.target === event.currentTarget) finish(false);}}>
       <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
         <div className="confirm-heading"><span className="confirm-icon"><TriangleAlert size={21}/></span><div><span className="confirm-eyebrow">请确认操作</span><h2 id="confirm-title">{request.title}</h2></div></div>
         <p id="confirm-description" className="confirm-description">{request.description}</p>

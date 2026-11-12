@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {officeApi, type OfficeSnapshot} from '../../lib/office';
 
 type PollState = {
+  projectPath: string;
   snapshot: OfficeSnapshot | null;
   loading: boolean;
   error: string;
@@ -15,7 +16,7 @@ const IDLE_INTERVAL = 12000;
 // overlap. It polls fast only while a task is running, pauses when the page is
 // hidden, and stops entirely when the office page is not visible.
 export function useOfficePolling(projectPath: string, projectName: string, visible: boolean) {
-  const [state, setState] = useState<PollState>({snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0});
+  const [state, setState] = useState<PollState>({projectPath, snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0});
   const sequence = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const controller = useRef<AbortController | null>(null);
@@ -30,7 +31,7 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
     try {
       const snapshot = await officeApi.snapshot(projectPath, projectName, next.signal);
       if (id !== sequence.current) return;
-      setState({snapshot, loading: false, error: '', lastUpdated: Date.now()});
+      setState({projectPath, snapshot, loading: false, error: '', lastUpdated: Date.now()});
     } catch (reason) {
       if (id !== sequence.current) return;
       if (next.signal.aborted) return;
@@ -41,7 +42,7 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
   useEffect(() => {
     sequence.current++;
     controller.current?.abort();
-    setState({snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0});
+    setState({projectPath, snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0});
     if (!projectPath) return;
     void load(true);
     return () => {controller.current?.abort();};
@@ -66,7 +67,8 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
     return () => {disposed = true; window.clearTimeout(timer.current); document.removeEventListener('visibilitychange', onVisible);};
   }, [visible, projectPath, load, state.snapshot]);
 
-  const refresh = useCallback(() => load(false), [load]);
+  const refresh = useCallback(() => load(true), [load]);
 
-  return {...state, refresh};
+  return state.projectPath === projectPath ? {...state, refresh}
+    : {snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0, refresh};
 }

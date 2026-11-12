@@ -1,3 +1,4 @@
+import {Archive, ArrowUpRight, FileText} from 'lucide-react';
 import type {OfficeArtifact, OfficeMember, OfficeTask} from '../../lib/office';
 import {formatBytes, taskStatusLabel, taskStatusTone} from '../../lib/office';
 import './office-scene.css';
@@ -5,9 +6,8 @@ import './office-scene.css';
 type Props = {
   members: OfficeMember[];
   artifacts: OfficeArtifact[];
-  activeTaskId?: string;
-  activeMemberId?: string;
-  onSelectMember?: (memberId: string) => void;
+  projectName: string;
+  onSelectMember: (memberId: string) => void;
   onSelectTask: (taskId: string) => void;
   onOpenArtifact: (artifact: OfficeArtifact) => void;
 };
@@ -43,55 +43,58 @@ function memberStatus(member: OfficeMember) {
   return taskStatusLabel[status as keyof typeof taskStatusLabel] || (status === 'idle' ? '空闲' : status || '状态未知');
 }
 
-export function OfficeRoom({members, artifacts, activeTaskId, activeMemberId, onSelectMember, onSelectTask, onOpenArtifact}: Props) {
+export function OfficeRoom({projectName, members, artifacts, onSelectMember, onSelectTask, onOpenArtifact}: Props) {
   const working = members.filter(member => member.status === 'running').length;
   return <section className="office-room sea-office" aria-label="办公室">
     <header className="sea-office-head">
-      <div><strong>今天的办公室</strong><small>{working ? `${working} 位成员正在工作` : '办公室里静悄悄的'}</small></div>
-      <span className="sea-office-live"><i/>真实运行状态</span>
+      <div><span className="sea-office-label">工作空间 / {projectName}</span><h1>Agent 办公室</h1><p>点一位伙伴，聊聊手头的事。</p></div>
+      <span className="sea-office-live"><i/>{working ? <span>{working} 位成员在忙</span> : <span>办公室在线</span>}<small>真实运行状态</small></span>
     </header>
     <div className="sea-office-stage">
-      <div className="sea-office-window" aria-hidden="true"><span/><span/><span/></div>
-      <div className="sea-office-horizon" aria-hidden="true"/>
-      <div className="sea-office-members">
-        {members.map(member => {
-          const status = memberStatus(member);
-          const tone = taskStatusTone[(member.taskStatus || member.status) as keyof typeof taskStatusTone] || 'idle';
-          const active = (member.taskId && member.taskId === activeTaskId) || member.id === activeMemberId;
-          const selectable = !!member.taskId || !!onSelectMember;
-          return <button type="button" key={member.id} className={`office-desk sea-station tone-${tone}${active ? ' is-active' : ''}`}
-            disabled={!selectable} aria-pressed={selectable ? !!active : undefined}
-            onClick={() => member.taskId && (member.role === 'executor' || !onSelectMember) ? onSelectTask(member.taskId) : onSelectMember?.(member.id)}
-            aria-label={`${member.name}，${status}${member.taskTitle ? `，${member.taskTitle}` : ''}`}>
-            <span className="sea-station-scene" aria-hidden="true">
-              <span className="sea-station-halo"/><span className="sea-person"><span className="sea-person-head"/><span className="sea-person-body"/></span>
-              <span className="sea-monitor"><span/></span><span className="sea-table"/>
-            </span>
-            <span className="sea-station-info"><span className="sea-station-name">{member.name}<span className="sea-station-status"><i/>{status}</span></span>
-              {member.taskTitle && <span className="sea-station-task">{member.taskTitle}</span>}
-              <span className="sea-station-note">{memberNote(member)}</span>
-            </span>
-          </button>;
-        })}
-        {!members.length && <p className="sea-office-empty">项目里还没有成员。给小涛一个任务，他就会安排执行者进场。</p>}
-      </div>
-      <div className="office-shelf sea-shelf" aria-label="项目资料架">
-        <div className="sea-shelf-heading"><span className="sea-shelf-icon" aria-hidden="true">▤</span><span><strong>项目资料架</strong><small>工作留下的文件</small></span></div>
-        <div className="sea-shelf-files">{artifacts.length
-          ? artifacts.slice(0, 6).map(artifact => <button type="button" key={artifact.id} className="sea-shelf-file" title={`${artifact.path} · ${formatBytes(artifact.size)}`} onClick={() => onOpenArtifact(artifact)}>
-              <span className="sea-file-icon" aria-hidden="true"/><span>{artifact.path.split(/[\\/]/).pop()}</span>
-            </button>)
-          : <span className="sea-shelf-empty">还没有可识别的产物。执行者写入文件后会出现在这里。</span>}
-          {artifacts.length > 6 && <span className="sea-shelf-more">+{artifacts.length - 6}</span>}
+      <div className="sea-office-workspace">
+        <div className="sea-office-window" aria-hidden="true"><span/><span/><span/></div>
+        <span className="sea-office-zone" aria-hidden="true">01 / 员工工位</span>
+        <div className="sea-office-members">
+          {members.map((member, index) => <Station key={member.id} member={member} number={index + 1}
+            onSelect={() => member.taskId ? onSelectTask(member.taskId) : onSelectMember(member.id)}/>)}
+          {!members.length && <p className="sea-office-empty">这个项目还没有成员。</p>}
         </div>
       </div>
+      <aside className="sea-shelf" aria-labelledby="office-shelf-title">
+        <div className="sea-shelf-heading"><Archive size={19} aria-hidden="true"/><h2 id="office-shelf-title">项目资料架</h2><span>{artifacts.length}</span></div>
+        {artifacts.length ? <ul className="sea-shelf-files">
+          {artifacts.map(item => <li key={item.id}>
+            <button type="button" className="sea-shelf-file" aria-haspopup="dialog" title={item.path} onClick={() => onOpenArtifact(item)}>
+              <FileText size={17} aria-hidden="true"/><span><strong>{item.path.split(/[\\/]/).pop()}</strong><small>{formatBytes(item.size)} · {item.taskTitle}</small></span><ArrowUpRight size={13} aria-hidden="true"/>
+            </button>
+          </li>)}
+        </ul> : <p className="sea-shelf-empty">还没有项目资料。员工写入的文件会出现在这里。</p>}
+      </aside>
     </div>
   </section>;
 }
 
-export function TaskCard({task, active, onSelect}: {task: OfficeTask; active: boolean; onSelect: () => void}) {
-  return <button type="button" className={`office-task-card tone-${taskStatusTone[task.status]}${active ? ' is-active' : ''}`}
-    aria-current={active ? 'true' : undefined} onClick={onSelect}>
+function Station({member, number, onSelect}: {member: OfficeMember; number: number; onSelect: () => void}) {
+  const status = memberStatus(member);
+  const tone = taskStatusTone[(member.taskStatus || member.status) as keyof typeof taskStatusTone] || 'idle';
+  return <button type="button" className={`office-desk sea-station role-${member.role} tone-${tone}`} onClick={onSelect}
+    aria-haspopup="dialog" aria-label={`${member.name}，${status}${member.taskTitle ? `，${member.taskTitle}` : ''}`}>
+    <span className="sea-station-scene" aria-hidden="true">
+      <span className="sea-station-halo"/><span className="sea-person"><span className="sea-person-head"/><span className="sea-person-body"/></span>
+      <span className="sea-monitor"><span/></span><span className="sea-table"/><span className="sea-station-number">{String(number).padStart(2, '0')}</span>
+    </span>
+    <span className="sea-station-info">
+      <span className="sea-station-name">{member.name}<span className="sea-station-status"><i/>{status}</span></span>
+      {member.taskTitle && <span className="sea-station-task">{member.taskTitle}</span>}
+      <span className="sea-station-note">{memberNote(member)}</span>
+      <span className="sea-station-link">{member.taskId ? '查看任务' : '开始对话'}<ArrowUpRight size={12} aria-hidden="true"/></span>
+    </span>
+  </button>;
+}
+
+export function TaskCard({task, onSelect}: {task: OfficeTask; onSelect: () => void}) {
+  return <button type="button" className={`office-task-card tone-${taskStatusTone[task.status]}`}
+    onClick={onSelect}>
     <span className="office-task-status"><i aria-hidden="true"/>{taskStatusLabel[task.status]}</span>
     <strong>{task.title}</strong>
     <span className="office-task-meta">{task.executor.name} · {task.executor.modelLabel || task.executor.model}</span>
