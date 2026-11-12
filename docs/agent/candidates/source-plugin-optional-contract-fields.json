@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "candidate_id": "source-plugin-optional-contract-fields",
+  "created_at": "2026-11-11T16:40:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.source-plugin-optional-contract-fields",
+  "text": "模型来源插件协议演进必须保持向后兼容：宿主在 `internal/sourceplugin/manifest.go` 声明支持的 contractVersion 区间并在 initialize 中同时给出最高和最低版本，新增的请求/返回字段一律可选，宿主和插件都忽略未知字段；不得用协议小改动直接拒绝旧包。新增能力要同时更新允许列表、门控映射和 `docs/plugins/README.md`。",
+  "rationale": "第二批兼容性完善中，原先 contractVersion 严格等于 1 会让任何协议新增都要求宿主发版并拒绝旧插件。改为 1–2 区间协商后，0.2.0 旧包仍可安装，Trae 0.4.0 用 v2 声明 host-login、settings 和 display；所有新增字段都是可选的，旧插件不返回 display 时界面自动回退。",
+  "observations": 2,
+  "source_refs": [
+    "xt-client/internal/sourceplugin/manifest.go",
+    "xt-client/internal/sourceplugin/process.go",
+    "xt-client/internal/sourceplugin/contract.go",
+    "xt-client/internal/sourceplugin/manifest_test.go",
+    "xt-client/internal/sourceplugin/display_test.go",
+    "xt-client/plugins/trae/manifest.json",
+    "docs/plugins/README.md"
+  ]
+}

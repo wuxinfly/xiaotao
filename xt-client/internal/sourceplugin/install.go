@@ -23,6 +23,10 @@ func (m *Manager) install(dir string, update bool) (Saved, error) {
 	if err != nil {
 		return Saved{}, err
 	}
+	sourceHash, err := PackageDigest(dir)
+	if err != nil {
+		return Saved{}, errors.New("插件包内容无效")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	index := -1
@@ -99,11 +103,23 @@ func (m *Manager) install(dir string, update bool) (Saved, error) {
 	if err != nil || checked.ID != manifest.ID || checked.Version != manifest.Version {
 		return Saved{}, errors.New("copied package validation failed")
 	}
+	copiedHash, err := PackageDigest(tmp)
+	if err != nil || copiedHash != sourceHash {
+		return Saved{}, errors.New("插件包复制校验失败")
+	}
 	entry := Saved{ID: manifest.ID, Models: []Model{}}
+	var superseded *PackageRef
 	if index >= 0 {
 		entry = m.entries[index]
+		superseded = entry.Previous
 	}
 	entry.Manifest = checked
+	entry.PackageHash = copiedHash
+	entry.Previous = nil
+	if index >= 0 {
+		previous := m.entries[index]
+		entry.Previous = &PackageRef{Manifest: previous.Manifest, PackageDir: previous.PackageDir, PackageHash: previous.PackageHash, Models: append([]Model(nil), previous.Models...)}
+	}
 	// Publish the completed directory through the state file; Windows may lock copied executables during directory renames.
 	entry.PackageDir = filepath.Base(tmp)
 	if index >= 0 {
@@ -121,9 +137,10 @@ func (m *Manager) install(dir string, update bool) (Saved, error) {
 		}
 	}
 	committed = true
-	entry.Accounts = publicAccounts(entry.Accounts)
-	entry.Secret = nil
-	return entry, nil
+	if superseded != nil {
+		m.removePackageDir(superseded.PackageDir)
+	}
+	return m.publicEntry(entry), nil
 }
 
 func (m *Manager) Enable(id string, enabled bool) error {

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "xiaotao.trae",
+      "name": "Trae 国内版",
+      "version": "0.4.0",
+      "path": "trae",
+      "description": "Trae 国内版模型来源：浏览器登录、模型目录、配额与签到。",
+      "capabilities": ["chat", "host-login", "refresh", "models", "quota", "checkin"]
+    }
+  ]
+}

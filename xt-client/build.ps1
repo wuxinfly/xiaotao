@@ -79,6 +79,10 @@ try {
     return
   }
   Copy-Item -LiteralPath "dist/$($environment.Exe)" -Destination "dist/$versionedExe" -Force
+  # The plugin index ships beside the executable; packages themselves are built
+  # separately by plugins/<id>/build.ps1.
+  New-Item -ItemType Directory -Force "dist/plugins" | Out-Null
+  Copy-Item -LiteralPath "plugins/index.json" -Destination "dist/plugins/index.json" -Force
   $desktopPath = [Environment]::GetFolderPath('Desktop')
   $shell = New-Object -ComObject WScript.Shell
   $shortcut = $shell.CreateShortcut((Join-Path $desktopPath $environment.Shortcut))

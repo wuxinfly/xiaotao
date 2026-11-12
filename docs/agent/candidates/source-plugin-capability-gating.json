@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "candidate_id": "source-plugin-capability-gating",
+  "created_at": "2026-11-11T15:20:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.source-plugin-capability-gating",
+  "text": "模型来源插件的管理接口和前端控件必须按 manifest capabilities 门控：只有声明对应能力的插件才显示按钮并接受 login、browser-login、models、quota、checkin 动作；只有声明 refresh 时才隐式执行 credentials/refresh。新增插件能力需同时更新宿主允许列表和门控映射，否则插件会被拒绝安装或出现点不通的操作。",
+  "rationale": "第一批兼容性完善中，管理接口原本只校验 browser-login，配额、签到和目录刷新对未声明能力的插件也显示并可调用；隐式续期对没有 refresh 能力的插件同样执行。按能力门控后，Trae 包行为不变，测试用无 quota/checkin 能力的夹具确认按钮隐藏，接口返回 unsupported。",
+  "observations": 2,
+  "source_refs": [
+    "xt-client/internal/sourceplugin/manifest.go",
+    "xt-client/internal/app/plugin_handlers.go",
+    "xt-client/internal/gateway/plugins.go",
+    "xt-client/frontend/src/features/accounts/PluginsPanel.tsx",
+    "xt-client/frontend/src/features/accounts/PluginAccounts.tsx",
+    "xt-client/frontend/src/features/accounts/PluginCatalog.tsx",
+    "docs/plugins/README.md",
+    "xt-client/frontend/tests/source-plugins.browser.test.mjs"
+  ]
+}

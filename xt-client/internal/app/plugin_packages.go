@@ -13,6 +13,7 @@ import (
 type localPluginPackage struct {
 	Path             string                `json:"path"`
 	Manifest         sourceplugin.Manifest `json:"manifest"`
+	Hash             string                `json:"hash,omitempty"`
 	InstalledVersion string                `json:"installedVersion,omitempty"`
 	UpdateAvailable  bool                  `json:"updateAvailable"`
 	Enabled          bool                  `json:"enabled"`
@@ -52,6 +53,9 @@ func scanPluginPackages(roots []string, installed map[string]sourceplugin.Saved)
 				continue
 			}
 			item := localPluginPackage{Path: path, Manifest: manifest}
+			if digest, err := sourceplugin.PackageDigest(path); err == nil {
+				item.Hash = digest
+			}
 			if entry, ok := installed[manifest.ID]; ok {
 				item.InstalledVersion = entry.Manifest.Version
 				item.Enabled = entry.Enabled

@@ -1,14 +1,15 @@
 import {useState, type ReactNode} from 'react';
 import {CalendarCheck, CalendarClock, GripVertical, Plus, RefreshCw, UserRound} from 'lucide-react';
-import {QuotaLine, readQuotaItems} from './PluginQuota';
+import {DisplayLine, QuotaLine, readQuotaItems, type PluginDisplay} from './PluginQuota';
 import './plugin-accounts.css';
 
 export type LegacyAccount = {id: string; name: string; uid: string};
 export type PluginAccount = {id: string; identity?: string; name: string};
 
 type Props = {
-  accounts: PluginAccount[]; busy: boolean; authorizing: boolean; canAuthorize: boolean; legacy: LegacyAccount[];
+  accounts: PluginAccount[]; busy: boolean; authorizing: boolean; canAuthorize: boolean; canQuota: boolean; canCheckin: boolean; legacy: LegacyAccount[];
   quota: (id: string) => unknown; checkin: (id: string) => ReactNode;
+  display: (id: string) => PluginDisplay | undefined; checkinDisplay: (id: string) => PluginDisplay | undefined;
   onImport: (id: string) => void; onAdd: () => void; onCancel: () => void; onOrder: (ids: string[]) => void;
   onAction: (id: string, method: string, feedback: string) => void;
 };
@@ -22,7 +23,7 @@ function moveAccount(accounts: PluginAccount[], id: string, index: number): stri
   return ids;
 }
 
-export function PluginAccounts({accounts, busy, authorizing, canAuthorize, legacy, quota, checkin, onImport, onAdd, onCancel, onOrder, onAction}: Props) {
+export function PluginAccounts({accounts, busy, authorizing, canAuthorize, canQuota, canCheckin, legacy, quota, checkin, display, checkinDisplay, onImport, onAdd, onCancel, onOrder, onAction}: Props) {
   const [dragging, setDragging] = useState('');
   const [target, setTarget] = useState('');
   const [expanded, setExpanded] = useState('');
@@ -66,18 +67,22 @@ export function PluginAccounts({accounts, busy, authorizing, canAuthorize, legac
               {index === 0 && <span className="plugin-pill">首选</span>}
             </div>
             {items.length ? <QuotaLine items={items} expanded={open} onToggle={() => setExpanded(open ? '' : account.id)}/> :
+              display(account.id) ? <DisplayLine display={display(account.id)!}/> :
               <span className="plugin-quota-empty">{value === undefined ? '尚未查询配额' : '暂无配额数据'}</span>}
             {checkin(account.id)}
+            {checkinDisplay(account.id) && <DisplayLine display={checkinDisplay(account.id)!}/>}
           </div>
-          <div className="plugin-account-actions">
+          {(index > 0 || canQuota || canCheckin) && <div className="plugin-account-actions">
             {index > 0 && <button type="button" className="plugin-link-button" disabled={busy} onClick={() => move(account.id, 0)}>设为首选</button>}
-            <button type="button" className="plugin-icon-button" aria-label="查询配额" title="查询配额" disabled={busy}
-              onClick={() => onAction(account.id, 'quota/get', '配额查询完成')}><RefreshCw size={14} aria-hidden="true"/></button>
-            <button type="button" className="plugin-icon-button" aria-label="签到状态" title="刷新签到状态" disabled={busy}
-              onClick={() => onAction(account.id, 'checkin/status', '签到状态已更新')}><CalendarClock size={14} aria-hidden="true"/></button>
-            <button type="button" className="plugin-icon-button is-accent" aria-label="签到" title="签到" disabled={busy}
-              onClick={() => onAction(account.id, 'checkin/claim', '签到请求完成')}><CalendarCheck size={14} aria-hidden="true"/></button>
-          </div>
+            {canQuota && <button type="button" className="plugin-icon-button" aria-label="查询配额" title="查询配额" disabled={busy}
+              onClick={() => onAction(account.id, 'quota/get', '配额查询完成')}><RefreshCw size={14} aria-hidden="true"/></button>}
+            {canCheckin && <>
+              <button type="button" className="plugin-icon-button" aria-label="签到状态" title="刷新签到状态" disabled={busy}
+                onClick={() => onAction(account.id, 'checkin/status', '签到状态已更新')}><CalendarClock size={14} aria-hidden="true"/></button>
+              <button type="button" className="plugin-icon-button is-accent" aria-label="签到" title="签到" disabled={busy}
+                onClick={() => onAction(account.id, 'checkin/claim', '签到请求完成')}><CalendarCheck size={14} aria-hidden="true"/></button>
+            </>}
+          </div>}
         </div>;
       })}
       {pending.length > 0 && canAuthorize && <><div className="plugin-account-group">当前环境的旧账号</div>

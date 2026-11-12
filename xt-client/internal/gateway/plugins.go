@@ -15,10 +15,11 @@ func (s *Service) SetPlugins(plugins *sourceplugin.Manager) { s.plugins = plugin
 func (s *Service) pluginSend(ctx context.Context, src modelsource.Source, body map[string]any) (*http.Response, context.CancelFunc, error) {
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
 	accountID := s.plugins.PrimaryAccount(src.ID)
-	_, err := s.plugins.RunForAccount(ctx, src.ID, accountID, "credentials/refresh", nil, nil, "", nil)
-	if err != nil {
-		cancel()
-		return nil, func() {}, err
+	if s.plugins.Supports(src.ID, "refresh") {
+		if _, err := s.plugins.RunForAccount(ctx, src.ID, accountID, "credentials/refresh", nil, nil, "", nil); err != nil {
+			cancel()
+			return nil, func() {}, err
+		}
 	}
 	reader, writer := io.Pipe()
 	timer := time.AfterFunc(idleTimeout, func() { cancel(); _ = writer.CloseWithError(context.DeadlineExceeded) })

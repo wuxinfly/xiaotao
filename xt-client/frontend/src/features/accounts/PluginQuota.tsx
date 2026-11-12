@@ -63,6 +63,28 @@ export function aggregateQuotaItems(items: QuotaItem[]): Aggregate[] {
   return [...groups.values()];
 }
 
+export type PluginDisplay = {summary?: string; tone?: string; items?: {label: string; value: string; percent?: number; tone?: string}[]};
+
+function toneClass(tone?: string): string {
+  return tone === 'warning' || tone === 'danger' || tone === 'success' ? ` is-${tone}` : '';
+}
+
+export function DisplayLine({display}: {display: PluginDisplay}) {
+  const items = display.items ?? [];
+  return <div className="plugin-display">
+    {display.summary && <span className={`plugin-display-summary${toneClass(display.tone)}`}>{display.summary}</span>}
+    {items.length > 0 && <ul className="plugin-display-items">
+      {items.map((item, index) => <li key={`${item.label}-${index}`}>
+        <span className="plugin-quota-name">{item.label}</span>
+        {item.percent != null && <span className="plugin-quota-track" aria-hidden="true">
+          <span className="plugin-quota-fill" style={{width: `${Math.max(0, Math.min(100, item.percent))}%`}}/>
+        </span>}
+        <span className="plugin-quota-value">{item.value}</span>
+      </li>)}
+    </ul>}
+  </div>;
+}
+
 export function QuotaLine({items, expanded, onToggle}: {items: QuotaItem[]; expanded: boolean; onToggle: () => void}) {
   const summary = getSummaryItem(items);
   const details = summary ? items.filter(item => item !== summary) : items;

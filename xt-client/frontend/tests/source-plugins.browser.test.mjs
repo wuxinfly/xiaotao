@@ -11,14 +11,14 @@ test('local plugin installation, model refresh and disable', {timeout: 60000}, (
       if (path.endsWith('/legacy-trae')) return route.fulfill({json: {accounts: []}});
       if (path.endsWith('/packages')) return route.fulfill({json: {packages: plugin ? [] : [{
         path: 'C:\\plugins\\trae',
-        manifest: {id: 'xiaotao.trae', name: 'Trae 国内版', version: '0.2.0', entrypoint: 'provider.exe', capabilities: ['browser-login']},
+        manifest: {id: 'xiaotao.trae', name: 'Trae 国内版', version: '0.2.0', entrypoint: 'provider.exe', capabilities: ['browser-login', 'models']},
         updateAvailable: false, enabled: false,
       }]}});
       return route.fulfill({json: {plugins: plugin ? [plugin] : []}});
     }
     const input = req.postDataJSON();
     if (path.endsWith('/install')) {
-      plugin = {id: 'xiaotao.trae', enabled: false, manifest: {name: 'Trae 国内版', version: '0.2.0', entrypoint: 'provider.exe', capabilities: ['browser-login']}, models: []};
+      plugin = {id: 'xiaotao.trae', enabled: false, manifest: {name: 'Trae 国内版', version: '0.2.0', entrypoint: 'provider.exe', capabilities: ['browser-login', 'models']}, models: []};
     } else if (path.endsWith('/enabled')) {
       plugin.enabled = input.enabled;
     } else if (path.endsWith('/action') && input.method === 'models/refresh') {
@@ -35,6 +35,7 @@ test('local plugin installation, model refresh and disable', {timeout: 60000}, (
   await panel.getByText('已安装 Trae 国内版 v0.2.0，请核对后启用').waitFor();
   await panel.getByRole('switch', {name: '启用 Trae 国内版'}).click();
   await panel.getByText('已启用', {exact: true}).waitFor();
+  assert.equal(await panel.getByRole('button', {name: '查询配额'}).count(), 0);
   await panel.getByRole('button', {name: '刷新目录'}).click();
   await panel.getByText('已选 1 / 1').waitFor();
   assert.equal(refreshed, true);

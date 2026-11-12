@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,15 +18,28 @@ import (
 	"xiaotao/xt-client/internal/modelsource"
 )
 
+// PackageRef keeps the previously installed package for a single-step rollback.
+type PackageRef struct {
+	Manifest    Manifest `json:"manifest"`
+	PackageDir  string   `json:"packageDir"`
+	PackageHash string   `json:"packageHash,omitempty"`
+	Models      []Model  `json:"models,omitempty"`
+}
+
 type Saved struct {
-	ID            string          `json:"id"`
-	Manifest      Manifest        `json:"manifest"`
-	Enabled       bool            `json:"enabled"`
-	Models        []Model         `json:"models"`
-	ModelSettings *ModelSettings  `json:"modelSettings,omitempty"`
-	PackageDir    string          `json:"packageDir,omitempty"`
-	Accounts      []PluginAccount `json:"accounts,omitempty"`
-	Secret        []byte          `json:"secret,omitempty"`
+	ID              string            `json:"id"`
+	Manifest        Manifest          `json:"manifest"`
+	Enabled         bool              `json:"enabled"`
+	Models          []Model           `json:"models"`
+	ModelSettings   *ModelSettings    `json:"modelSettings,omitempty"`
+	SettingValues   map[string]string `json:"settingValues,omitempty"`
+	PackageDir      string            `json:"packageDir,omitempty"`
+	PackageHash     string            `json:"packageHash,omitempty"`
+	Previous        *PackageRef       `json:"previous,omitempty"`
+	Diagnostics     bool              `json:"diagnostics,omitempty"`
+	DiagnosticsPath string            `json:"diagnosticsPath,omitempty"`
+	Accounts        []PluginAccount   `json:"accounts,omitempty"`
+	Secret          []byte            `json:"secret,omitempty"`
 }
 type Manager struct {
 	mu               sync.Mutex
@@ -54,7 +69,7 @@ func Open(dir string, encrypt, decrypt func([]byte) ([]byte, error)) (*Manager, 
 			return nil, errors.New("invalid plugin state identity")
 		}
 		seen[e.ID] = true
-		if e.PackageDir != "" && (!strings.HasPrefix(e.PackageDir, ".install-") || filepath.Base(e.PackageDir) != e.PackageDir || filepath.VolumeName(e.PackageDir) != "") {
+		if (e.PackageDir != "" && !validPackageDir(e.PackageDir)) || (e.Previous != nil && !validPackageDir(e.Previous.PackageDir)) {
 			return nil, errors.New("invalid plugin package directory")
 		}
 		if len(e.Secret) > 0 && len(e.Accounts) == 0 {
@@ -63,6 +78,9 @@ func Open(dir string, encrypt, decrypt func([]byte) ([]byte, error)) (*Manager, 
 		}
 	}
 	return m, nil
+}
+func validPackageDir(name string) bool {
+	return name != "" && strings.HasPrefix(name, ".install-") && filepath.Base(name) == name && filepath.VolumeName(name) == ""
 }
 func (m *Manager) persist() error {
 	if err := os.MkdirAll(m.dir, 0700); err != nil {
@@ -90,21 +108,50 @@ func (m *Manager) persist() error {
 	}
 	return os.Rename(f.Name(), filepath.Join(m.dir, "state.json"))
 }
+func (m *Manager) diagnosticsWriter(e Saved) io.Writer {
+	if !e.Diagnostics {
+		return nil
+	}
+	dir := filepath.Join(m.dir, "diagnostics")
+	if os.MkdirAll(dir, 0700) != nil {
+		return nil
+	}
+	path := filepath.Join(dir, e.ID+".log")
+	if info, err := os.Stat(path); err == nil && info.Size() > 1<<20 {
+		_ = os.Truncate(path, 0)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return nil
+	}
+	return file
+}
+
+func (m *Manager) publicEntry(e Saved) Saved {
+	e.Accounts = publicAccounts(e.Accounts)
+	e.Secret = nil
+	e.Models = append([]Model(nil), e.Models...)
+	e.SettingValues = e.Settings()
+	if e.ModelSettings != nil {
+		settings := *e.ModelSettings
+		settings.SelectedKeys = slices.Clone(settings.SelectedKeys)
+		settings.CustomIDs = slices.Clone(settings.CustomIDs)
+		e.ModelSettings = &settings
+	}
+	if e.Previous != nil {
+		previous := *e.Previous
+		previous.Models = append([]Model(nil), previous.Models...)
+		e.Previous = &previous
+	}
+	e.DiagnosticsPath = filepath.Join(m.dir, "diagnostics", e.ID+".log")
+	return e
+}
 func (m *Manager) List() []Saved {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]Saved, 0, len(m.entries))
 	for _, e := range m.entries {
-		e.Accounts = publicAccounts(e.Accounts)
-		e.Secret = nil
-		e.Models = append([]Model(nil), e.Models...)
-		if e.ModelSettings != nil {
-			settings := *e.ModelSettings
-			settings.SelectedKeys = slices.Clone(settings.SelectedKeys)
-			settings.CustomIDs = slices.Clone(settings.CustomIDs)
-			e.ModelSettings = &settings
-		}
-		out = append(out, e)
+		out = append(out, m.publicEntry(e))
 	}
 	return out
 }
@@ -179,7 +226,7 @@ func (m *Manager) RunForAccount(ctx context.Context, id, accountID, method strin
 	if !found || !saved.Enabled {
 		return Result{}, errors.New("plugin unavailable")
 	}
-	adding := method == "login/browser" || method == "login/import" || method == "credentials/import"
+	adding := method == "login/browser" || method == "login/import" || method == "login/complete" || method == "credentials/import"
 	account, err := saved.accountFor(accountID, adding)
 	if err != nil {
 		return Result{}, err
@@ -195,14 +242,24 @@ func (m *Manager) RunForAccount(ctx context.Context, id, accountID, method strin
 	if packageDir == "" {
 		packageDir = id
 	}
-	p, err := Start(ctx, filepath.Join(m.dir, packageDir), notify)
+	stderr := m.diagnosticsWriter(saved)
+	if stderr != nil {
+		fmt.Fprintf(stderr, "\n[%s] %s v%s %s\n", time.Now().Format(time.RFC3339), saved.ID, saved.Manifest.Version, method)
+		if closer, ok := stderr.(io.Closer); ok {
+			defer closer.Close()
+		}
+	}
+	p, err := Start(ctx, filepath.Join(m.dir, packageDir), notify, stderr)
 	if err != nil {
 		return Result{}, err
 	}
 	defer p.Close()
 	var result Result
-	err = p.Call(ctx, method, Operation{Credential: credential, Input: input, Body: body, Model: model}, &result)
+	err = p.Call(ctx, method, Operation{Credential: credential, Input: input, Body: body, Model: model, Settings: saved.Settings()}, &result)
 	if err != nil {
+		if stderr != nil {
+			fmt.Fprintf(stderr, "[host] %s failed: %s (%s)\n", method, err.Error(), ErrorCode(err))
+		}
 		return Result{}, err
 	}
 	if ctx.Err() != nil {

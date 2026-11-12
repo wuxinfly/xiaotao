@@ -27,7 +27,9 @@ func main() {
 			return
 		}
 		if msg.Method == "initialize" {
-			raw, _ := json.Marshal(map[string]any{"id": "xiaotao.trae", "contractVersion": 1})
+			// Answer with the newest contract this build implements; the host
+			// accepts anything between its minimum and maximum.
+			raw, _ := json.Marshal(map[string]any{"id": "xiaotao.trae", "contractVersion": 2})
 			emit(sourceplugin.Message{JSONRPC: "2.0", ID: msg.ID, Result: raw})
 			continue
 		}
@@ -41,7 +43,7 @@ func main() {
 		})
 		response := sourceplugin.Message{JSONRPC: "2.0", ID: msg.ID}
 		if err != nil {
-			response.Error = &sourceplugin.RPCError{Code: -32000, Message: "Trae operation failed"}
+			response.Error = rpcErrorFor(err)
 		} else {
 			response.Result, _ = json.Marshal(result)
 		}

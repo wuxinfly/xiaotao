@@ -6,20 +6,91 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 	"xiaotao/xt-client/internal/providers"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/sourceplugin"
+	"xiaotao/xt-client/internal/storage"
 )
 
+func rpcErrorFor(err error) *sourceplugin.RPCError {
+	var rpc *sourceplugin.RPCError
+	if errors.As(err, &rpc) {
+		return rpc
+	}
+	var httpErr *trae.HTTPError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return &sourceplugin.RPCError{Code: sourceplugin.RPCTimeout, Message: "upstream timeout"}
+	case errors.As(err, &httpErr) && (httpErr.Code == http.StatusUnauthorized || httpErr.Code == http.StatusForbidden):
+		return &sourceplugin.RPCError{Code: sourceplugin.RPCAuthExpired, Message: "login expired"}
+	case errors.As(err, &httpErr) && httpErr.Code == http.StatusTooManyRequests:
+		return &sourceplugin.RPCError{Code: sourceplugin.RPCRateLimited, Message: "upstream rate limited"}
+	case errors.As(err, &httpErr):
+		return &sourceplugin.RPCError{Code: sourceplugin.RPCUpstream, Message: "upstream request failed"}
+	default:
+		return &sourceplugin.RPCError{Code: sourceplugin.RPCPluginError, Message: "operation failed"}
+	}
+}
+
+func checkinAccount(op sourceplugin.Operation) string {
+	if account := strings.TrimSpace(op.Settings["checkinAccount"]); account != "" {
+		return account
+	}
+	return "xiaotao.trae"
+}
+
 func randomID() string { b := make([]byte, 16); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+
+var supportedMethods = map[string]bool{
+	"login/prepare": true, "login/complete": true, "login/browser": true, "login/import": true,
+	"credentials/import": true, "credentials/refresh": true, "models/refresh": true,
+	"quota/get": true, "checkin/status": true, "checkin/claim": true, "chat/start": true,
+}
+
 func operate(ctx context.Context, method string, op sourceplugin.Operation, emit func(map[string]any)) (sourceplugin.Result, error) {
+	if !supportedMethods[method] {
+		return sourceplugin.Result{}, &sourceplugin.RPCError{Code: sourceplugin.RPCUnsupported, Message: "unsupported method"}
+	}
 	var c providers.Credential
 	if len(op.Credential) > 0 && json.Unmarshal(op.Credential, &c) != nil {
 		return sourceplugin.Result{}, errors.New("invalid credential")
 	}
 	result := sourceplugin.Result{}
+	if method == "login/prepare" {
+		value, _ := json.Marshal(sourceplugin.LoginDescriptor{
+			URL:         "https://" + trae.RegionOf("cn").AuthHost + "/authorization?login_version=1&auth_from=solo&login_channel=native_ide&plugin_version=trae-handoff-1.0&auth_type=local&client_id=" + trae.ClientID() + "&redirect=0&login_trace_id={state}&auth_callback_url={callback}",
+			StateParam:  "login_trace_id",
+			ResultParam: "refreshToken",
+			Callback:    "/authorize",
+		})
+		result.Value = value
+		return result, nil
+	}
+	if method == "login/complete" {
+		var input struct {
+			Callback map[string]string `json:"callback"`
+		}
+		if json.Unmarshal(op.Input, &input) != nil {
+			return result, errors.New("invalid login callback")
+		}
+		query := url.Values{}
+		for key, value := range input.Callback {
+			query.Set(key, value)
+		}
+		token := trae.ExtractRefreshToken("?" + query.Encode())
+		if token == "" {
+			return result, errors.New("login result missing")
+		}
+		method = "login/import"
+		op.Input, _ = json.Marshal(map[string]string{"refreshToken": token})
+	}
 	if method == "login/browser" {
 		token, err := browserLogin(ctx)
 		if err != nil {
@@ -113,18 +184,21 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 			return result, err
 		}
 		result.Value, _ = json.Marshal(value)
+		result.Display = quotaDisplay(value)
 	case "checkin/status":
-		value, err := trae.FetchCheckinStatus(&c, "xiaotao.trae")
+		value, err := trae.FetchCheckinStatus(&c, checkinAccount(op))
 		if err != nil {
 			return result, err
 		}
 		result.Value, _ = json.Marshal(value)
+		result.Display = checkinDisplay(value)
 	case "checkin/claim":
-		value, err := trae.ClaimCheckin(&c, "xiaotao.trae")
+		value, err := trae.ClaimCheckin(&c, checkinAccount(op))
 		if err != nil {
 			return result, err
 		}
 		result.Value, _ = json.Marshal(value)
+		result.Display = claimDisplay(value)
 	case "chat/start":
 		if c.UID == "" {
 			return result, errors.New("cannot determine Trae account identity")
@@ -182,7 +256,7 @@ func operate(ctx context.Context, method string, op sourceplugin.Operation, emit
 		}
 		emit(map[string]any{"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": finish}}})
 	default:
-		return result, errors.New("unsupported method")
+		return result, &sourceplugin.RPCError{Code: sourceplugin.RPCUnsupported, Message: "unsupported method"}
 	}
 	// Chat never returns a redundant credential update; refresh ran before chat.
 	if method == "chat/start" {
@@ -246,4 +320,85 @@ func accountInfo(c providers.Credential) *sourceplugin.AccountInfo {
 		name = "用户 " + c.UID
 	}
 	return &sourceplugin.AccountInfo{ID: c.UID, Name: name}
+}
+
+// quotaDisplay turns platform quota data into host-renderable text. The host
+// never interprets platform-specific meanings.
+func quotaDisplay(snapshot *storage.QuotaSnapshot) *sourceplugin.Display {
+	if snapshot == nil || len(snapshot.Items) == 0 {
+		return nil
+	}
+	display := &sourceplugin.Display{}
+	for _, item := range snapshot.Items {
+		entry := sourceplugin.DisplayItem{Label: item.Label, Value: quotaValue(item)}
+		if item.Used != nil && item.Total != nil && *item.Total > 0 {
+			percent := *item.Used / *item.Total * 100
+			if percent < 0 {
+				percent = 0
+			}
+			if percent > 100 {
+				percent = 100
+			}
+			display.Items = append(display.Items, sourceplugin.DisplayItem{Label: entry.Label, Value: entry.Value, Percent: &percent})
+			continue
+		}
+		display.Items = append(display.Items, entry)
+	}
+	if len(snapshot.Items) > 0 {
+		display.Summary = quotaValue(snapshot.Items[0])
+	}
+	return display
+}
+
+func quotaValue(item storage.QuotaItem) string {
+	unit := "积分"
+	if item.Unit == "dollar" {
+		unit = "美元"
+	}
+	if item.Used != nil && item.Total != nil {
+		return fmt.Sprintf("%s / %s %s", trimFloat(*item.Used), trimFloat(*item.Total), unit)
+	}
+	if item.Total != nil {
+		return fmt.Sprintf("%s %s", trimFloat(*item.Total), unit)
+	}
+	return "额度未知"
+}
+
+func trimFloat(value float64) string {
+	if value == math.Trunc(value) {
+		return strconv.FormatInt(int64(value), 10)
+	}
+	return strconv.FormatFloat(value, 'f', 2, 64)
+}
+
+func checkinDisplay(status *trae.CheckinStatus) *sourceplugin.Display {
+	if status == nil {
+		return nil
+	}
+	text := "今日尚未签到"
+	switch {
+	case !status.Supported:
+		text = "当前账号不支持签到"
+	case !status.Active:
+		text = "签到活动未开启"
+	case status.CheckedIn:
+		text = "今日已签到"
+	}
+	display := &sourceplugin.Display{Summary: text}
+	if status.DailyCredit > 0 {
+		display.Items = append(display.Items, sourceplugin.DisplayItem{Label: "每日积分", Value: trimFloat(status.DailyCredit)})
+	}
+	return display
+}
+
+func claimDisplay(claim *trae.CheckinClaimResult) *sourceplugin.Display {
+	if claim == nil {
+		return nil
+	}
+	display := &sourceplugin.Display{Summary: "签到请求完成"}
+	if claim.ExtraCredits > 0 {
+		display.Summary = "签到成功"
+		display.Items = append(display.Items, sourceplugin.DisplayItem{Label: "获得积分", Value: trimFloat(claim.ExtraCredits)})
+	}
+	return display
 }

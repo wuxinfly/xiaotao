@@ -22,26 +22,30 @@ type Message struct {
 	Error   *RPCError       `json:"error,omitempty"`
 }
 type RPCError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
+
+func (e *RPCError) Error() string { return e.Message }
 
 // Process owns its reader and waiter; Close reaps the direct child. Notifications
 // are consumed synchronously and must not call Call on the same reader goroutine.
 type Process struct {
-	cmd     *exec.Cmd
-	in      io.WriteCloser
-	write   sync.Mutex
-	mu      sync.Mutex
-	pending map[uint64]chan Message
-	done    chan struct{}
-	exited  chan struct{}
-	stop    sync.Once
-	seq     atomic.Uint64
-	notify  func(Message)
+	cmd      *exec.Cmd
+	in       io.WriteCloser
+	write    sync.Mutex
+	mu       sync.Mutex
+	pending  map[uint64]chan Message
+	done     chan struct{}
+	exited   chan struct{}
+	stop     sync.Once
+	seq      atomic.Uint64
+	notify   func(Message)
+	contract int
 }
 
-func Start(ctx context.Context, dir string, notify func(Message)) (*Process, error) {
+func Start(ctx context.Context, dir string, notify func(Message), stderr io.Writer) (*Process, error) {
 	m, entry, err := ReadManifest(dir)
 	if err != nil {
 		return nil, err
@@ -49,8 +53,11 @@ func Start(ctx context.Context, dir string, notify func(Message)) (*Process, err
 	cmd := exec.CommandContext(ctx, entry)
 	hideCommandWindow(cmd)
 	cmd.Dir = dir
-	// Do not forward stderr to application logs: third-party output may contain secrets.
-	cmd.Stderr = io.Discard
+	// stderr may contain secrets, so callers pass a writer only for opt-in diagnostics.
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	cmd.Stderr = stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -74,11 +81,13 @@ func Start(ctx context.Context, dir string, notify func(Message)) (*Process, err
 	}
 	initCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	err = p.Call(initCtx, "initialize", map[string]any{"contractVersion": ContractVersion}, &initialized)
-	if err != nil || initialized.ContractVersion != ContractVersion || initialized.ID != m.ID {
+	// Offer the newest contract; plugins older than it answer with their own.
+	err = p.Call(initCtx, "initialize", map[string]any{"contractVersion": ContractVersion, "minContractVersion": MinContractVersion}, &initialized)
+	if err != nil || initialized.ID != m.ID || initialized.ContractVersion < m.ContractVersion || initialized.ContractVersion > ContractVersion {
 		p.Close()
-		return nil, errors.New("plugin initialization failed")
+		return nil, NewError(CodeUnavailable, "插件初始化失败")
 	}
+	p.contract = initialized.ContractVersion
 	return p, nil
 }
 func (p *Process) fail() {
@@ -110,16 +119,16 @@ func (p *Process) Call(ctx context.Context, method string, params any, result an
 	p.mu.Unlock()
 	defer func() { p.mu.Lock(); delete(p.pending, id); p.mu.Unlock() }()
 	if err = p.send(Message{JSONRPC: "2.0", ID: id, Method: method, Params: raw}); err != nil {
-		return errors.New("plugin write failed")
+		return NewError(CodeUnavailable, "插件写入失败")
 	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-p.done:
-		return errors.New("plugin process terminated")
+		return NewError(CodeUnavailable, "插件进程已结束")
 	case m := <-reply:
 		if m.Error != nil {
-			return errors.New("plugin operation failed")
+			return rpcFailure(m.Error)
 		}
 		if result == nil {
 			return nil

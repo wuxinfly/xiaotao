@@ -11,8 +11,8 @@ function entries(models: PluginModel[], customIds: string[]): CatalogEntry[] {
   return [...models, ...customIds.map(id => ({key: `manual:${id}`, label: id, upstreamId: id, custom: true}))];
 }
 
-export function PluginCatalog({models, settings, busy, onRefresh, onSave}: {
-  models: PluginModel[]; settings?: ModelSettings; busy: boolean; onRefresh: () => void; onSave: (settings: ModelSettings) => Promise<boolean>;
+export function PluginCatalog({models, settings, busy, canRefresh, onRefresh, onSave}: {
+  models: PluginModel[]; settings?: ModelSettings; busy: boolean; canRefresh: boolean; onRefresh: () => void; onSave: (settings: ModelSettings) => Promise<boolean>;
 }) {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -52,7 +52,7 @@ export function PluginCatalog({models, settings, busy, onRefresh, onSave}: {
   return <div className="plugin-catalog">
     <div className="plugin-catalog-heading">
       <div className="plugin-service-title"><Layers size={17}/><h4>模型</h4><span className="plugin-count">已选 {count} / {all.length}</span></div>
-      <button type="button" className="app-modal-button secondary" disabled={busy} onClick={onRefresh}><RefreshCw size={14}/>刷新目录</button>
+      {canRefresh && <button type="button" className="app-modal-button secondary" disabled={busy} onClick={onRefresh}><RefreshCw size={14}/>刷新目录</button>}
     </div>
     <div className="plugin-model-toolbar">
       <div className="plugin-model-views" role="group" aria-label="模型视图">

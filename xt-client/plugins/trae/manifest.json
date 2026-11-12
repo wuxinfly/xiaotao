@@ -1,1 +1,1 @@
-{"id":"xiaotao.trae","version":"0.3.0","contractVersion":1,"name":"Trae 国内版","entrypoint":"provider.exe","capabilities":["chat","login","browser-login","refresh","models","quota","checkin"]}
+{"id":"xiaotao.trae","version":"0.4.0","contractVersion":2,"name":"Trae 国内版","entrypoint":"provider.exe","capabilities":["chat","login","browser-login","host-login","refresh","models","quota","checkin"],"settings":[{"key":"checkinAccount","label":"签到使用的账号标识","description":"留空时使用插件默认值；账号被风控时可改为稳定的自定义标识。","placeholder":"留空使用默认值"}]}

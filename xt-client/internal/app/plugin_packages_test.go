@@ -26,6 +26,9 @@ func TestScanPluginPackages(t *testing.T) {
 	if packages[1].Manifest.ID != "xiaotao.trae" || !packages[1].UpdateAvailable || packages[1].InstalledVersion != "0.1.0" {
 		t.Fatalf("unexpected Trae package: %+v", packages[1])
 	}
+	if len(packages[0].Hash) != 64 || len(packages[1].Hash) != 64 {
+		t.Fatalf("package hash missing: %+v", packages)
+	}
 }
 
 func TestCompareVersion(t *testing.T) {

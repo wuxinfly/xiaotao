@@ -55,6 +55,10 @@ func RegionOf(key string) Region {
 	return regions[defaultRegion]
 }
 
+// ClientID exposes the public Trae client identifier used by the plugin's
+// host-driven login descriptor.
+func ClientID() string { return clientID }
+
 func LoginURL(region string, port int, nonce string) string {
 	r := RegionOf(region)
 	q := url.Values{

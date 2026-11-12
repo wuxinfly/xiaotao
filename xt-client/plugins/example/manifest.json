@@ -1,0 +1,8 @@
+{
+  "id": "example.echo",
+  "version": "0.1.0",
+  "contractVersion": 2,
+  "name": "示例回显插件",
+  "entrypoint": "provider.exe",
+  "capabilities": ["chat", "models", "quota"]
+}

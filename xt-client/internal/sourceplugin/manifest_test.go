@@ -19,7 +19,16 @@ func TestManifestBoundary(t *testing.T) {
 		valid  bool
 	}{
 		{"valid", func(*Manifest) {}, true},
-		{"version", func(m *Manifest) { m.ContractVersion = 2 }, false},
+		{"older contract", func(m *Manifest) { m.ContractVersion = MinContractVersion }, true},
+		{"newer contract", func(m *Manifest) { m.ContractVersion = ContractVersion + 1 }, false},
+		{"zero contract", func(m *Manifest) { m.ContractVersion = 0 }, false},
+		{"settings", func(m *Manifest) {
+			m.Settings = []SettingField{{Key: "region", Label: "区域", Options: []string{"cn", "global"}}}
+		}, true},
+		{"bad settings key", func(m *Manifest) { m.Settings = []SettingField{{Key: "Region-1", Label: "区域"}} }, false},
+		{"duplicate settings", func(m *Manifest) {
+			m.Settings = []SettingField{{Key: "region", Label: "区域"}, {Key: "region", Label: "区域"}}
+		}, false},
 		{"identity", func(m *Manifest) { m.ID = "../../escape" }, false},
 		{"escape", func(m *Manifest) { m.Entrypoint = "../provider" }, false},
 		{"missing", func(m *Manifest) { m.Entrypoint = "absent" }, false},

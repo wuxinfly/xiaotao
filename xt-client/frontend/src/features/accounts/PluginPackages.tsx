@@ -6,6 +6,7 @@ export type LocalPackage = {
   installedVersion?: string;
   updateAvailable: boolean;
   enabled: boolean;
+  hash?: string;
 };
 
 export function PluginPackages({packages, busy, onInstall, onUpdate, onRefresh}: {
@@ -28,6 +29,7 @@ export function PluginPackages({packages, busy, onInstall, onUpdate, onRefresh}:
         <div className="plugin-package-main">
           <strong>{item.manifest.name}<span className="plugin-version">v{item.manifest.version}</span></strong>
           <small title={item.path}>{current} · {item.path}</small>
+          {item.hash && <small className="plugin-package-hash" title={item.hash}>包指纹 {item.hash.slice(0, 12)}</small>}
         </div>
         {!installed && <button className="app-modal-button primary" disabled={busy} onClick={() => onInstall(item)}>安装</button>}
         {installed && item.updateAvailable && <button className="app-modal-button secondary" disabled={busy} onClick={() => onUpdate(item)}>
