@@ -56,10 +56,10 @@ func open(dir string, encrypt, decrypt cryptFunc, persistRoutes bool) (*Store, e
 	routes := map[string]bool{}
 	for _, e := range disk.Sources {
 		src := e.Source
-		if !strings.HasPrefix(src.ID, "source_") || seen[src.ID] || src.Kind != "manual" || src.Protocol != "openai-chat" || strings.TrimSpace(src.Label) == "" || len(e.Secret) == 0 {
+		if !strings.HasPrefix(src.ID, "source_") || seen[src.ID] || src.Kind != "manual" || !ValidProtocol(src.Protocol) || strings.TrimSpace(src.Label) == "" || len(e.Secret) == 0 {
 			return nil, errors.New("model source file is damaged")
 		}
-		normalized, err := NormalizeURL(src.BaseURL)
+		normalized, err := normalizeURL(src.BaseURL, src.Protocol)
 		if err != nil || normalized != src.BaseURL {
 			return nil, errors.New("model source file is damaged")
 		}
@@ -144,8 +144,8 @@ func (s *Store) Save(id string, in Input) (Source, error) {
 		return Source{}, ErrNotFound
 	}
 	label := strings.TrimSpace(in.Label)
-	base, err := NormalizeURL(in.BaseURL)
-	if label == "" || in.Protocol != "openai-chat" || err != nil {
+	base, err := normalizeURL(in.BaseURL, in.Protocol)
+	if label == "" || !ValidProtocol(in.Protocol) || err != nil {
 		return Source{}, ErrInvalid
 	}
 	owned := map[string]bool{}

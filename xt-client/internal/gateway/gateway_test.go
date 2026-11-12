@@ -216,6 +216,7 @@ func TestStreamFailuresNeverEmitSuccessDelimiter(t *testing.T) {
 		{"inband-error", "data: {\"error\":{\"message\":\"isolated-upstream-secret\"}}\n\n", usage.StatusFailed},
 		{"malformed", "data: not-json\n\n", usage.StatusFailed},
 		{"done-without-completion", "data: [DONE]\n\n", usage.StatusFailed},
+		{"done-before-finish", "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n\n", usage.StatusInterrupted},
 		{"finish-error", "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"error\"}]}\n\n", usage.StatusFailed},
 		{"truncated-final-frame", "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[]}", usage.StatusInterrupted},
 		{"one-of-two-unfinished", "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"},{\"index\":1,\"delta\":{},\"finish_reason\":null}]}\n\n", usage.StatusInterrupted},

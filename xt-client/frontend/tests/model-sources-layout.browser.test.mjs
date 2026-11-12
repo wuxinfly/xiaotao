@@ -11,14 +11,15 @@ test('model interfaces share page gutters and keep the empty state compact', {ti
   const measure = () => page.locator('.model-sources-page').evaluate(element => {
     const rect = node => {const r=node.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
     const style=getComputedStyle(element);
-    return {page:rect(element),header:rect(element.querySelector('.source-page-header')),empty:rect(element.querySelector('.source-empty')),gateway:rect(element.querySelector('.source-local-gateway')),gutter:parseFloat(style.getPropertyValue('--content-gutter')),max:parseFloat(style.getPropertyValue('--content-max')),padding:parseFloat(style.paddingLeft),overflow:document.querySelector('main').scrollWidth>document.querySelector('main').clientWidth};
+    return {page:rect(element),header:rect(element.querySelector('.source-page-header')),empty:rect(element.querySelector('.source-empty')),gateway:rect(element.querySelector('.source-local-gateway')),plugins:rect(element.querySelector('.plugin-section')),gutter:parseFloat(style.getPropertyValue('--content-gutter')),max:parseFloat(style.getPropertyValue('--content-max')),padding:parseFloat(style.paddingLeft),overflow:document.querySelector('main').scrollWidth>document.querySelector('main').clientWidth};
   });
   let layout=await measure();
   assert.equal(layout.padding,layout.gutter);
   assert.ok(layout.header.x>=layout.gutter, 'title must not touch the window edge');
   assert.ok(Math.abs(layout.header.x-layout.page.x-layout.gutter)<1, 'header uses shared content gutter');
   assert.ok(layout.empty.height<300, 'empty state must not stretch with the viewport');
-  assert.ok(Math.abs(layout.gateway.y-layout.empty.bottom-24)<1, 'empty source list must not create an extra grid gap');
+  assert.ok(Math.abs(layout.plugins.y-layout.empty.bottom-24)<1, 'empty source list must not create an extra grid gap');
+  assert.ok(Math.abs(layout.gateway.y-layout.plugins.bottom-24)<1, 'gateway follows the plugin section with one shared gap');
   assert.ok(layout.gateway.bottom<800, 'local gateway should fit on the initial desktop screen');
   assert.equal(layout.overflow,false);
   const gatewayHeader=await page.locator('.source-local-gateway .endpoint-banner-header').boundingBox();

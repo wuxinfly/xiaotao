@@ -169,3 +169,25 @@ func TestShortPluginPrefixCannotTakeOverManualRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeProtocolsReusePluginRoutes(t *testing.T) {
+	svc, _ := setupPluginGateway(t)
+	id := svc.Models()[0]["id"].(string)
+	for _, protocol := range []string{"openai-responses", "anthropic-messages"} {
+		for _, stream := range []bool{false, true} {
+			w := callProtocol(svc, protocol, inboundProtocolBody(protocol, id, stream))
+			if w.Code != 200 || !strings.Contains(w.Body.String(), "hello") {
+				t.Fatal(protocol, stream, w.Code, w.Body.String())
+			}
+			if stream {
+				terminal := "event: response.completed"
+				if protocol == "anthropic-messages" {
+					terminal = "event: message_stop"
+				}
+				if !strings.Contains(w.Body.String(), terminal) {
+					t.Fatal("plugin completion not converted", w.Body.String())
+				}
+			}
+		}
+	}
+}

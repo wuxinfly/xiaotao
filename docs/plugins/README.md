@@ -102,3 +102,6 @@ go vet ./...
 本次自动验证：相关三个包的测试与 `go vet`、Windows 目标全量 `GOOS=windows GOARCH=amd64 go vet ./...`、前端 lint/大小检查/构建、Go 文件大小及规则一致性检查通过。Linux 全量 `go test ./...` 受现有 Windows 专用 desktop/secrets 实现及 runtimeenv 的 Windows 绝对路径断言限制，不能视为全量通过；未执行真实账号或 Windows 桌面验收。现有模型身份规则候选已覆盖不猜来源、不重绑旧引用，无新增候选。
 
 2026-11-12 中文与短插件名修正：中文旧别名映射继续保存，仅规范化公开展示与匹配；新旧形式共用保留记录，不能通过编码差异复用已删除模型的别名。网关先把目录别名转换为内部身份，再精确路由；内置插件短名称保存在 `routes` 的 `plugin:<完整插件 ID>` 项中。UAT 只读导入并合并别名保留记录，冲突时拒绝导入，不覆盖已有路由。
+
+
+本地网关现已支持外部 Chat Completions、Responses、Anthropic Messages 三种对话入口，均复用现有插件的 Chat 表达；插件进程协议及 `chat/start` 方法不变。手动上游的独立协议选择、转换范围与验证边界见 [三协议接入](../plans/2026-11-12-gateway-protocols.md)。

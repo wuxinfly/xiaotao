@@ -90,6 +90,8 @@ func registerRuntimeRoutes(mux *http.ServeMux, rt runtimeRoutes) {
 		rt.send(w, map[string]any{"object": "list", "data": rt.gateway.Models()})
 	})
 	mux.HandleFunc("POST /v1/chat/completions", rt.gateway.HandleChat)
+	mux.HandleFunc("POST /v1/responses", rt.gateway.HandleResponses)
+	mux.HandleFunc("POST /v1/messages", rt.gateway.HandleMessages)
 	registerHUDRoutes(mux, rt)
 }
 

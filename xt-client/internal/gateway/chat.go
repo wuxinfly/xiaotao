@@ -59,6 +59,13 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, err.Error())
 		return
 	}
+	if src.Protocol == "anthropic-messages" && body["max_tokens"] == nil && body["max_completion_tokens"] == nil {
+		limit := 1024
+		if m.ContextWindow > 0 && limit >= m.ContextWindow {
+			limit = m.ContextWindow - 1
+		}
+		body["max_tokens"] = limit
+	}
 	if src.Kind == "plugin" {
 		body["_plugin_context_window"] = m.ContextWindow
 	}
@@ -76,7 +83,12 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	resp, cancel, err := s.send(r.Context(), src, key, body)
 	if err != nil {
 		finishFailure(tracker, r, false)
-		writeError(w, 502, "Upstream connection failed")
+		var invalid protocolRequestError
+		if errors.As(err, &invalid) {
+			writeError(w, 400, invalid.Error())
+		} else {
+			writeError(w, 502, "Upstream connection failed")
+		}
 		return
 	}
 	defer cancel()
@@ -100,6 +112,13 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	result["model"] = modelID
 	result["id"] = id
+	if validator, ok := w.(interface{ validateCompletion(map[string]any) error }); ok {
+		if err = validator.validateCompletion(result); err != nil {
+			finishFailure(tracker, r, false)
+			writeError(w, 502, "Completion cannot be represented in requested protocol")
+			return
+		}
+	}
 	if tracker != nil {
 		tracker.OnFirstToken()
 		recordUsage(tracker, result)

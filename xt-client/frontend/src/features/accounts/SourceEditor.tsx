@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
-import {modelCatalogChanged, modelSources, sourceInput, type Source, type SourceInput} from '../../lib/model-sources';
+import {modelCatalogChanged, modelSources, sourceInput, sourceProtocols, type SourceProtocol, type Source, type SourceInput} from '../../lib/model-sources';
 import {emptyModel, SourceModelFields} from './SourceModelFields';
 
 export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSaved: (source: Source) => void; onClose: () => void}) {
@@ -33,14 +33,14 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
     } catch (reason) {if (live.current && !controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));}
     finally {if (live.current) setBusy(false);}
   }
-  return <ModalFrame title={source ? '编辑模型接口' : '添加模型接口'} description="目前仅支持 Chat Completions，不支持 Responses / Messages。" className="source-editor" onClose={close} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" onClick={close}>取消</button><button type="submit" form="source-form" className="app-modal-button primary" disabled={busy}>{busy ? '保存中…' : '保存接口'}</button></div>}>
+  return <ModalFrame title={source ? '编辑模型接口' : '添加模型接口'} description="选择 API 服务要求的上游格式；本地调用入口支持三种协议。" className="source-editor" onClose={close} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" onClick={close}>取消</button><button type="submit" form="source-form" className="app-modal-button primary" disabled={busy}>{busy ? '保存中…' : '保存接口'}</button></div>}>
     <form id="source-form" onSubmit={event => {event.preventDefault(); void save();}}>
       <fieldset disabled={busy} className="source-form-fields">
         <div className="source-form-grid">
           <label><span>来源名称</span><input required value={form.label} onChange={event => setForm({...form, label: event.target.value})} autoComplete="off"/></label>
-          <label><span>上游格式</span><input readOnly value="OpenAI Chat Completions"/></label>
+          <label><span>上游格式</span><select aria-label="上游格式" value={form.protocol} onChange={event => setForm({...form, protocol: event.target.value as SourceProtocol})}>{Object.entries(sourceProtocols).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         </div>
-        <label><span>API URL</span><input aria-label="API URL" required type="url" value={form.baseURL} onChange={event => setForm({...form, baseURL: event.target.value})} placeholder="https://api.example.com/v1"/><small>填写实际 API 前缀（如 /v1）或完整 /chat/completions 地址，不会自动补 /v1。</small></label>
+        <label><span>API URL</span><input aria-label="API URL" required type="url" value={form.baseURL} onChange={event => setForm({...form, baseURL: event.target.value})} placeholder="https://api.example.com/v1"/><small>填写实际 API 前缀（如 /v1）或所选协议的完整端点地址，不会自动补 /v1。</small></label>
         <label><span>API Key</span><input aria-label="API Key" type="password" required={!source} value={form.apiKey ?? ''} onChange={event => setForm({...form, apiKey: event.target.value})} autoComplete="new-password" placeholder={source ? '留空保留已保存的密钥' : '输入 API Key'}/>{source && <small>{source.hasAPIKey ? '已保存密钥；不会显示原密钥。' : '尚未保存密钥。'}</small>}</label>
         {form.models.map((model, index) => <SourceModelFields key={modelKeys[index]} model={model} index={index} removable={form.models.length > 1} onChange={next => setForm(current => ({...current, models: current.models.map((item, i) => i === index ? next : item)}))} onRemove={() => {setModelKeys(current => current.filter((_, i) => i !== index)); setForm(current => ({...current, models: current.models.filter((_, i) => i !== index)}));}}/>)}
         <button type="button" className="app-modal-button secondary" onClick={() => {setModelKeys(current => [...current, crypto.randomUUID()]); setForm(current => ({...current, models: [...current.models, emptyModel()]}));}}>添加模型</button>

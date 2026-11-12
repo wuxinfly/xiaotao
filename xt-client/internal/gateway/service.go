@@ -18,6 +18,7 @@ import (
 	"xiaotao/xt-client/internal/modelsource"
 	"xiaotao/xt-client/internal/sourceplugin"
 	"xiaotao/xt-client/internal/usage"
+	"xiaotao/xt-client/internal/wireprotocol"
 )
 
 const maxBody = 32 << 20
@@ -58,10 +59,12 @@ func (s *Service) RotateKey() (string, error) {
 func (s *Service) Authorize(r *http.Request) bool {
 	key := s.APIKey()
 	header := r.Header.Get("Authorization")
-	if !strings.HasPrefix(header, "Bearer ") {
+	token := r.Header.Get("x-api-key")
+	if strings.HasPrefix(header, "Bearer ") {
+		token = strings.TrimPrefix(header, "Bearer ")
+	} else if header != "" {
 		return false
 	}
-	token := strings.TrimPrefix(header, "Bearer ")
 	return key != "" && subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1
 }
 func (s *Service) SetUsage(u *usage.Service) { s.mu.Lock(); defer s.mu.Unlock(); s.usage = u }
@@ -152,17 +155,27 @@ func (s *Service) send(ctx context.Context, src modelsource.Source, key string, 
 		return s.pluginSend(ctx, src, body)
 	}
 	ctx, cancel := context.WithTimeout(ctx, totalTimeout)
-	raw, err := json.Marshal(body)
+	native, err := wireprotocol.FromChatRequest(src.Protocol, body)
+	if err != nil {
+		cancel()
+		return nil, func() {}, protocolRequestError{err}
+	}
+	raw, err := json.Marshal(native)
 	if err != nil {
 		cancel()
 		return nil, func() {}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, modelsource.ChatURL(src.BaseURL), strings.NewReader(string(raw)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, modelsource.ProtocolURL(src.BaseURL, src.Protocol), strings.NewReader(string(raw)))
 	if err != nil {
 		cancel()
 		return nil, func() {}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	if src.Protocol == wireprotocol.Messages {
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	// One timer owns idle cancellation throughout headers and response reads. Closing the
@@ -175,6 +188,13 @@ func (s *Service) send(ctx context.Context, src modelsource.Source, key string, 
 		return nil, func() {}, errors.New("upstream request failed")
 	}
 	resp.Body = &idleBody{ReadCloser: resp.Body, timer: timer}
+	stream, _ := body["stream"].(bool)
+	if err := adaptUpstream(resp, src.Protocol, stream); err != nil {
+		_ = resp.Body.Close()
+		timer.Stop()
+		cancel()
+		return nil, func() {}, err
+	}
 	return resp, func() { timer.Stop(); cancel() }, nil
 }
 
