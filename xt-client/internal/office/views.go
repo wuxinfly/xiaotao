@@ -31,11 +31,25 @@ func (s *Service) Snapshot(projectPath, projectName string) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	members := buildMembers(tasks)
+	for i := range members {
+		if !validMember(members[i].ID) {
+			continue
+		}
+		chat, err := s.Chat(path, members[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		switch chat.Status {
+		case StatusRunning, StatusWaiting, StatusFailed:
+			members[i].Status = chat.Status
+		}
+	}
 	return &Snapshot{
 		Project:      ProjectInfo{Path: path, Name: name},
 		AccessMode:   s.exec.AccessMode(),
 		Tasks:        tasks,
-		Members:      buildMembers(tasks),
+		Members:      members,
 		Artifacts:    artifacts,
 		Capabilities: defaultCapabilities(),
 	}, nil
@@ -66,6 +80,10 @@ func buildMembers(tasks []*Task) []Member {
 		Name:   executorName,
 		Role:   "coordinator",
 		Status: "idle",
+	}, {
+		ID: "designer", Name: "设计师", Role: "designer", Status: "idle",
+	}, {
+		ID: "developer", Name: "开发者", Role: "developer", Status: "idle",
 	}}
 	for _, task := range tasks {
 		// An executor leaves the room when its task ends; the task record and

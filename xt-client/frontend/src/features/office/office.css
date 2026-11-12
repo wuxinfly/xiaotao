@@ -55,7 +55,7 @@
 .office-board h2, .office-shelf-list h2, .office-caveats h2 { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--ocean-text, #e8f7fa); }
 .office-board header span, .office-shelf-list header span { font-size: 11px; color: var(--ocean-muted, #8db3c2); }
 .office-task-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.office-task-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 11px 13px; border: 1px solid var(--ocean-line, #213e50); border-radius: 9px; background: rgba(12, 44, 60, .7); color: var(--ocean-text-soft, #c4dde6); }
+.office-page .office-task-card { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 11px 13px; border: 1px solid var(--ocean-line, #213e50); border-radius: 9px; background: rgba(12, 44, 60, .7); color: var(--ocean-text-soft, #c4dde6); }
 .office-task-card:hover { border-color: var(--ocean-line-strong, rgba(89, 223, 218, .42)); background: rgba(16, 58, 76, .8); }
 .office-task-card.is-active { border-color: var(--ocean-accent, #58e3d5); box-shadow: inset 2px 0 0 var(--ocean-accent, #58e3d5); }
 .office-task-card strong { font-size: 13px; color: var(--ocean-text, #e8f7fa); }

@@ -1,10 +1,13 @@
 import type {OfficeArtifact, OfficeMember, OfficeTask} from '../../lib/office';
 import {formatBytes, taskStatusLabel, taskStatusTone} from '../../lib/office';
+import './office-scene.css';
 
 type Props = {
   members: OfficeMember[];
   artifacts: OfficeArtifact[];
   activeTaskId?: string;
+  activeMemberId?: string;
+  onSelectMember?: (memberId: string) => void;
   onSelectTask: (taskId: string) => void;
   onOpenArtifact: (artifact: OfficeArtifact) => void;
 };
@@ -35,48 +38,52 @@ function memberNote(member: OfficeMember) {
   }
 }
 
-// OfficeRoom renders only real desks derived from real tasks. A finished task
-// leaves the room; its artifacts stay on the shelf.
-export function OfficeRoom({members, artifacts, activeTaskId, onSelectTask, onOpenArtifact}: Props) {
-  const working = members.filter(member => member.role === 'executor' && member.status === 'running').length;
-  return <section className="office-room" aria-label="办公室">
-    <header className="office-room-head">
-      <div>
-        <strong>今天的办公室</strong>
-        <small>{working ? `${working} 位执行者正在工作` : members.length > 1 ? '执行者已就位，等待任务' : '还没有执行者进场'}</small>
-      </div>
-      <span className="office-room-tag">真实运行状态</span>
+function memberStatus(member: OfficeMember) {
+  const status = member.taskStatus || member.status;
+  return taskStatusLabel[status as keyof typeof taskStatusLabel] || (status === 'idle' ? '空闲' : status || '状态未知');
+}
+
+export function OfficeRoom({members, artifacts, activeTaskId, activeMemberId, onSelectMember, onSelectTask, onOpenArtifact}: Props) {
+  const working = members.filter(member => member.status === 'running').length;
+  return <section className="office-room sea-office" aria-label="办公室">
+    <header className="sea-office-head">
+      <div><strong>今天的办公室</strong><small>{working ? `${working} 位成员正在工作` : '办公室里静悄悄的'}</small></div>
+      <span className="sea-office-live"><i/>真实运行状态</span>
     </header>
-    <div className="office-room-floor">
-      <div className="office-window" aria-hidden="true"/>
-      <div className="office-desks">
+    <div className="sea-office-stage">
+      <div className="sea-office-window" aria-hidden="true"><span/><span/><span/></div>
+      <div className="sea-office-horizon" aria-hidden="true"/>
+      <div className="sea-office-members">
         {members.map(member => {
-          const status = member.role === 'coordinator' ? 'idle' : member.status;
-          const tone = member.role === 'coordinator' ? 'coordinator' : taskStatusTone[(member.taskStatus || 'queued') as keyof typeof taskStatusTone] || 'idle';
-          const clickable = !!member.taskId;
-          return <button type="button" key={member.id} className={`office-desk tone-${tone}${member.taskId === activeTaskId ? ' is-active' : ''}`}
-            disabled={!clickable}
-            onClick={() => member.taskId && onSelectTask(member.taskId)}
-            aria-label={`${member.name}，${member.role === 'coordinator' ? '负责人' : taskStatusLabel[(member.taskStatus || 'queued') as keyof typeof taskStatusLabel] || '空闲'}`}>
-            <span className="office-avatar" aria-hidden="true">{member.role === 'coordinator' ? '🧑🏻' : '👩🏻‍💻'}</span>
-            <span className="office-desk-status">
-              <i aria-hidden="true"/>{member.role === 'coordinator' ? '负责人' : taskStatusLabel[(member.taskStatus || 'queued') as keyof typeof taskStatusLabel] || status}
+          const status = memberStatus(member);
+          const tone = taskStatusTone[(member.taskStatus || member.status) as keyof typeof taskStatusTone] || 'idle';
+          const active = (member.taskId && member.taskId === activeTaskId) || member.id === activeMemberId;
+          const selectable = !!member.taskId || !!onSelectMember;
+          return <button type="button" key={member.id} className={`office-desk sea-station tone-${tone}${active ? ' is-active' : ''}`}
+            disabled={!selectable} aria-pressed={selectable ? !!active : undefined}
+            onClick={() => member.taskId && (member.role === 'executor' || !onSelectMember) ? onSelectTask(member.taskId) : onSelectMember?.(member.id)}
+            aria-label={`${member.name}，${status}${member.taskTitle ? `，${member.taskTitle}` : ''}`}>
+            <span className="sea-station-scene" aria-hidden="true">
+              <span className="sea-station-halo"/><span className="sea-person"><span className="sea-person-head"/><span className="sea-person-body"/></span>
+              <span className="sea-monitor"><span/></span><span className="sea-table"/>
             </span>
-            <strong>{member.name}</strong>
-            {member.taskTitle && <span className="office-desk-task">{member.taskTitle}</span>}
-            <span className="office-desk-note">{memberNote(member)}</span>
+            <span className="sea-station-info"><span className="sea-station-name">{member.name}<span className="sea-station-status"><i/>{status}</span></span>
+              {member.taskTitle && <span className="sea-station-task">{member.taskTitle}</span>}
+              <span className="sea-station-note">{memberNote(member)}</span>
+            </span>
           </button>;
         })}
-        {!members.length && <p className="office-room-empty">项目里还没有成员。给小涛一个任务，他就会安排执行者进场。</p>}
+        {!members.length && <p className="sea-office-empty">项目里还没有成员。给小涛一个任务，他就会安排执行者进场。</p>}
       </div>
-      <div className="office-shelf" aria-label="项目资料架">
-        <b>▥ 项目资料架</b>
-        {artifacts.length
-          ? artifacts.slice(0, 6).map(artifact => <button type="button" key={artifact.id} className="office-shelf-item" title={`${artifact.path} · ${formatBytes(artifact.size)}`} onClick={() => onOpenArtifact(artifact)}>
-              <span aria-hidden="true">📄</span><span className="office-shelf-name">{artifact.path.split('/').pop()}</span>
+      <div className="office-shelf sea-shelf" aria-label="项目资料架">
+        <div className="sea-shelf-heading"><span className="sea-shelf-icon" aria-hidden="true">▤</span><span><strong>项目资料架</strong><small>工作留下的文件</small></span></div>
+        <div className="sea-shelf-files">{artifacts.length
+          ? artifacts.slice(0, 6).map(artifact => <button type="button" key={artifact.id} className="sea-shelf-file" title={`${artifact.path} · ${formatBytes(artifact.size)}`} onClick={() => onOpenArtifact(artifact)}>
+              <span className="sea-file-icon" aria-hidden="true"/><span>{artifact.path.split(/[\\/]/).pop()}</span>
             </button>)
-          : <span className="office-shelf-empty">还没有可识别的产物。执行者写入文件后会出现在这里。</span>}
-        {artifacts.length > 6 && <span className="office-shelf-more">+{artifacts.length - 6}</span>}
+          : <span className="sea-shelf-empty">还没有可识别的产物。执行者写入文件后会出现在这里。</span>}
+          {artifacts.length > 6 && <span className="sea-shelf-more">+{artifacts.length - 6}</span>}
+        </div>
       </div>
     </div>
   </section>;

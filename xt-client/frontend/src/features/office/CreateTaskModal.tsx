@@ -12,15 +12,16 @@ type Props = {
   models: AgentModelOption[];
   modelConfigs: AgentModelConfig[];
   preferredModel: string;
+  initialGoal?: string;
   onCreated: (task: OfficeTask) => void;
   onClose: () => void;
 };
 
 // CreateTaskModal is the one place a user starts work in the office. It only
 // submits a goal and an executor model; the server creates the real session.
-export function CreateTaskModal({projectPath, projectName, models, modelConfigs, preferredModel, onCreated, onClose}: Props) {
+export function CreateTaskModal({projectPath, projectName, models, modelConfigs, preferredModel, initialGoal = '', onCreated, onClose}: Props) {
   const usable = useMemo(() => models.filter(model => !model.unavailable), [models]);
-  const [goal, setGoal] = useState('');
+  const [goal, setGoal] = useState(initialGoal);
   const [title, setTitle] = useState('');
   const [model, setModel] = useState(() => usable.find(item => item.model === preferredModel)?.model || usable[0]?.model || '');
   const [busy, setBusy] = useState(false);

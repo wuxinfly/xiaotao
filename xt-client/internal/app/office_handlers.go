@@ -18,6 +18,7 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 		}
 		return true
 	}
+	registerOfficeChatRoutes(mux, svc, guard, send, apiError)
 	mux.HandleFunc("GET /api/office/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
 			return
@@ -126,11 +127,81 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 	})
 }
 
+func registerOfficeChatRoutes(mux *http.ServeMux, svc *office.Service, guard func(http.ResponseWriter, *http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+	base := "/api/office/members/{id}/chat"
+	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		chat, err := svc.Chat(r.URL.Query().Get("projectPath"), r.PathValue("id"))
+		if err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		send(w, chat)
+	})
+	mux.HandleFunc("GET "+base+"/history", func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		history, err := svc.ChatHistory(r.URL.Query().Get("projectPath"), r.PathValue("id"), r.URL.Query().Get("before"))
+		if err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		send(w, history)
+	})
+	mux.HandleFunc("POST "+base+"/messages", func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		var input office.ChatInput
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024)).Decode(&input) != nil {
+			apiError(w, 400, "消息格式无效")
+			return
+		}
+		chat, err := svc.SendChat(r.URL.Query().Get("projectPath"), r.PathValue("id"), input)
+		if err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		send(w, chat)
+	})
+	mux.HandleFunc("POST "+base+"/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		if err := svc.CancelChat(r.URL.Query().Get("projectPath"), r.PathValue("id")); err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("POST "+base+"/approval", func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		var input struct {
+			ID       string `json:"id"`
+			Approved bool   `json:"approved"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input) != nil {
+			apiError(w, 400, "确认格式无效")
+			return
+		}
+		if err := svc.ApproveChat(r.URL.Query().Get("projectPath"), r.PathValue("id"), input.ID, input.Approved); err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		send(w, map[string]bool{"ok": true})
+	})
+}
+
 func officeError(w http.ResponseWriter, err error, apiError func(http.ResponseWriter, int, string)) {
 	switch {
 	case errors.Is(err, office.ErrTaskNotFound), errors.Is(err, office.ErrArtifactNotFound):
 		apiError(w, 404, err.Error())
-	case errors.Is(err, office.ErrNotRunning):
+	case errors.Is(err, office.ErrNotRunning), errors.Is(err, office.ErrChatBusy):
 		apiError(w, 409, err.Error())
 	case errors.Is(err, office.ErrClosed):
 		apiError(w, 503, err.Error())

@@ -161,7 +161,23 @@ function projectQuery(projectPath: string) {
   return `projectPath=${encodeURIComponent(projectPath)}`;
 }
 
+export interface OfficeMemberChat {
+  memberId: string;
+  sessionId?: string;
+  status: string;
+  error?: string;
+  approval?: OfficeApproval;
+}
+
 export const officeApi = {
+  memberChat: (projectPath: string, id: string) =>
+    request<OfficeMemberChat>(`/api/office/members/${encodeURIComponent(id)}/chat?${projectQuery(projectPath)}`),
+  memberHistory: (projectPath: string, id: string, before = '') =>
+    request<OfficeHistory>(`/api/office/members/${encodeURIComponent(id)}/chat/history?${projectQuery(projectPath)}&before=${encodeURIComponent(before)}`),
+  sendMemberMessage: (projectPath: string, id: string, input: {content: string; model: string; projectName: string; modelSettings?: {contextWindow?: number; maxOutputTokens?: number; reasoningEffort?: string}}) =>
+    request<OfficeMemberChat>(`/api/office/members/${encodeURIComponent(id)}/chat/messages?${projectQuery(projectPath)}`, {method: 'POST', body: JSON.stringify(input)}),
+  cancelMemberChat: (projectPath: string, id: string) =>
+    request<{ok: boolean}>(`/api/office/members/${encodeURIComponent(id)}/chat/cancel?${projectQuery(projectPath)}`, {method: 'POST'}),
   snapshot: (projectPath: string, projectName = '', signal?: AbortSignal) =>
     request<OfficeSnapshot>(`/api/office/snapshot?${projectQuery(projectPath)}${projectName ? '&projectName=' + encodeURIComponent(projectName) : ''}`, {signal}),
   createTask: (input: CreateOfficeTaskInput) =>

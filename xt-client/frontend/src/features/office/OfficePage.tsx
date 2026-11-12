@@ -5,7 +5,9 @@ import {useAgentModelSettings} from '../../lib/agent-model-settings';
 import {isTerminalTask, officeApi, type OfficeArtifact, type OfficeArtifactDetail, type OfficeTask, type OfficeTaskDetail} from '../../lib/office';
 import {toast} from '../../components/toast';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
-import {ModalFrame, ModalPresence} from '../../components/modal/ModalFrame';
+import {ModalPresence} from '../../components/modal/ModalFrame';
+import {ArtifactModal} from './ArtifactModal';
+import {MemberChat} from './MemberChat';
 import {CreateTaskModal} from './CreateTaskModal';
 import {OfficeRoom, TaskCard} from './OfficeRoom';
 import {TaskDetail} from './TaskDetail';
@@ -15,19 +17,6 @@ import './office.css';
 type Props = {visible: boolean};
 
 const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
-
-function ArtifactModal({detail, onClose}: {detail: OfficeArtifactDetail; onClose: () => void}) {
-  const artifact = detail.artifact;
-  return <ModalFrame title={artifact.path.split('/').pop() || artifact.path}
-    description={`${artifact.path} · ${artifact.tool} · 来自任务「${artifact.taskTitle}」`}
-    className="office-artifact-modal" onClose={onClose}
-    footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" onClick={onClose}>关闭</button></div>}>
-    {detail.binary && <p className="office-muted">这是二进制文件，暂不预览。</p>}
-    {detail.error && <p className="office-error" role="alert">{detail.error}</p>}
-    {detail.truncated && <p className="office-hint">文件较大，只显示前 256 KB。</p>}
-    {!detail.binary && !detail.error && <pre className="office-artifact-content">{detail.content}</pre>}
-  </ModalFrame>;
-}
 
 export function OfficePage({visible}: Props) {
   const confirm = useConfirm();
@@ -41,6 +30,8 @@ export function OfficePage({visible}: Props) {
   const [detailError, setDetailError] = useState('');
   const [activeTaskId, setActiveTaskId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [handoffGoal, setHandoffGoal] = useState('');
+  const [activeMemberId, setActiveMemberId] = useState('');
   const [artifact, setArtifact] = useState<OfficeArtifactDetail | null>(null);
   const detailRequest = useRef(0);
 
@@ -80,6 +71,7 @@ export function OfficePage({visible}: Props) {
 
   useEffect(() => {
     setActiveTaskId('');
+    setActiveMemberId('');
     setDetail(null);
     setDetailError('');
   }, [selectedPath]);
@@ -120,6 +112,7 @@ export function OfficePage({visible}: Props) {
     || models.find(item => !item.unavailable)?.model || '', [models, enabledModels]);
 
   function selectTask(taskId: string) {
+    setActiveMemberId('');
     if (taskId !== activeTaskId) {
       // Never show the previous task's transcript under the new title while
       // its detail request is still in flight.
@@ -183,7 +176,7 @@ export function OfficePage({visible}: Props) {
     <header className="office-page-head">
       <div>
         <h1>Agent 办公室</h1>
-        <p>小涛负责安排，执行者在项目里真实干活。这里的状态、记录和产物都来自实际运行。</p>
+        <p>找一位伙伴聊聊想法。准备好动手时，再一起整理交接。</p>
       </div>
       <div className="office-page-actions">
         <label className="office-project-picker">
@@ -195,8 +188,8 @@ export function OfficePage({visible}: Props) {
         <button type="button" className="office-ghost" onClick={() => refresh()} disabled={!selectedPath || loading} title="刷新">
           <RefreshCw aria-hidden="true"/><span>{loading ? '刷新中…' : '刷新'}</span>
         </button>
-        <button type="button" className="office-primary" disabled={!selectedPath} onClick={() => setCreating(true)}>
-          <Plus aria-hidden="true"/><span>安排任务</span>
+        <button type="button" className="office-primary" disabled={!selectedPath || !snapshot} onClick={() => {setActiveTaskId(''); setActiveMemberId('xiaotao');}}>
+          <Plus aria-hidden="true"/><span>找小涛聊聊</span>
         </button>
       </div>
     </header>
@@ -210,7 +203,7 @@ export function OfficePage({visible}: Props) {
     <div className="office-layout">
       <div className="office-canvas">
         {snapshot
-          ? <OfficeRoom members={snapshot.members} artifacts={snapshot.artifacts} activeTaskId={activeTaskId} onSelectTask={selectTask} onOpenArtifact={item => void openArtifact(item)}/>
+          ? <OfficeRoom members={snapshot.members} artifacts={snapshot.artifacts} activeTaskId={activeTaskId} activeMemberId={activeMemberId} onSelectTask={selectTask} onSelectMember={id => {setActiveTaskId(''); setActiveMemberId(id);}} onOpenArtifact={item => void openArtifact(item)}/>
           : <div className="office-room office-room-skeleton">{loading ? <p role="status">正在打开办公室…</p> : <p className="office-muted">选择项目后加载办公室。</p>}</div>}
         <section className="office-board" aria-label="任务">
           <header><h2>任务</h2><span>{snapshot ? `${snapshot.tasks.filter(task => !isTerminalTask(task.status)).length} 个进行中 / 共 ${snapshot.tasks.length} 个` : ''}</span></header>
@@ -218,7 +211,7 @@ export function OfficePage({visible}: Props) {
             ? <div className="office-task-list" role="list">{snapshot.tasks.map(task => <div role="listitem" key={task.id}>
                 <TaskCard task={task} active={task.id === activeTaskId} onSelect={() => selectTask(task.id)}/>
               </div>)}</div>
-            : <p className="office-muted">{loading ? '读取任务…' : '这个项目还没有任务。点右上角「安排任务」交给小涛。'}</p>}
+            : <p className="office-muted">{loading ? '读取任务…' : '这个项目还没有任务。先找一位伙伴聊聊想法吧。'}</p>}
         </section>
         {snapshot && snapshot.artifacts.length > 0 && <section className="office-shelf-list" aria-label="全部产物">
           <header><h2>项目资料架</h2><span>{snapshot.artifacts.length} 个</span></header>
@@ -234,13 +227,16 @@ export function OfficePage({visible}: Props) {
           <ul>{snapshot.capabilities.notes.map(note => <li key={note}>{note}</li>)}</ul>
         </section>}
       </div>
-      <TaskDetail projectPath={selectedPath} detail={detail} loading={detailLoading} error={detailError}
-        onRefresh={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onOpenArtifact={item => void openArtifact(item)}
-        onCancel={() => void cancelTask()} onResolveApproval={(id, approved) => void resolveApproval(id, approved)}
-        onPostMessage={postMessage}/>
+      {activeMemberId && snapshot?.members.find(member => member.id === activeMemberId)
+        ? <MemberChat key={`${selectedPath}:${activeMemberId}`} projectPath={selectedPath} projectName={projectName} member={snapshot.members.find(member => member.id === activeMemberId)!}
+            model={preferredModel} models={models} modelConfigs={modelConfigs} onClose={() => setActiveMemberId('')}
+            onHandoff={goal => {setHandoffGoal(goal); setCreating(true);}}/>
+        : <TaskDetail projectPath={selectedPath} detail={activeTaskId ? detail : null} loading={detailLoading} error={detailError}
+            onRefresh={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onOpenArtifact={item => void openArtifact(item)}
+            onCancel={() => void cancelTask()} onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}/>}
     </div>
     <ModalPresence>{creating && <CreateTaskModal projectPath={selectedPath} projectName={projectName} models={models}
-      modelConfigs={modelConfigs} preferredModel={preferredModel}
+      modelConfigs={modelConfigs} preferredModel={preferredModel} initialGoal={handoffGoal}
       onCreated={(task: OfficeTask) => { setCreating(false); toast.success('任务已安排，执行者开始工作'); refresh(); selectTask(task.id); }}
       onClose={() => setCreating(false)}/>}</ModalPresence>
     <ModalPresence>{artifact && <ArtifactModal detail={artifact} onClose={() => setArtifact(null)}/>}</ModalPresence>

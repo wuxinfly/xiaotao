@@ -93,7 +93,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
   useEffect(() => { setDraft(''); setSendError(''); setNotice(''); }, [task?.id]);
   if (!task) {
     return <aside className="office-detail office-detail-empty">
-      {loading ? <p role="status">读取任务中…</p> : error ? <p className="office-error" role="alert">{error}<button type="button" className="office-link" onClick={onRefresh}>重试</button></p> : <p>从左边选一个任务，或者先给小涛派一个活。</p>}
+      {loading ? <p role="status">读取任务中…</p> : error ? <p className="office-error" role="alert">{error}<button type="button" className="office-link" onClick={onRefresh}>重试</button></p> : <p>点一位伙伴开始聊天，或从左边查看任务。</p>}
     </aside>;
   }
   const feed = buildFeed(detail);

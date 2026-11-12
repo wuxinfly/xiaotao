@@ -169,6 +169,7 @@ func (s *Service) Create(options Options) (*Session, error) {
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 		Role:          options.Role,
+		ReadOnly:      options.ReadOnly,
 	}
 	s.mu.Lock()
 	s.runs[session.ID] = &run{}
@@ -357,21 +358,9 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 		}
 	}
 
-	instructions := ""
-	if workspace != nil {
-		instructions, err = workspace.projectInstructions()
-		if err != nil {
-			return err
-		}
-	}
-
-	coreInstructions, err := prepareCore(s.dataDir, len(history.Messages) == 0)
+	coreInstructions, skillInstructions, instructions, err := s.prepareTurnInstructions(workspace, history)
 	if err != nil {
-		return fmt.Errorf("准备小涛 Core: %w", err)
-	}
-	skillInstructions, err := s.localSkillsInstructions()
-	if err != nil {
-		return fmt.Errorf("准备本地 Skills: %w", err)
+		return err
 	}
 	selectedModel := strings.TrimSpace(model)
 	modelChanged := selectedModel != "" && selectedModel != history.Model
@@ -423,7 +412,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions}}
+	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions + officeChatRole(history)}}
 	modelMessages, err := modelHistoryWithSummary(history.Messages, userMessage.ID, history.Summary, s.imageDataURLs)
 	if err != nil {
 		return err
@@ -513,7 +502,7 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 	defer mcpState.close()
 	// A run whose history already contains MCP tool calls must keep those
 	// tool names resolvable, so the servers start before the first request.
-	if historyUsesMCPTools(messages) {
+	if !history.ReadOnly && historyUsesMCPTools(messages) {
 		if _, err := s.enableMCP(ctx, mcpState); err != nil {
 			return err
 		}
@@ -542,6 +531,9 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			tools = append(append([]map[string]any{}, tools...), historicalToolLookupDefinition)
 		}
 		tools = append(append([]map[string]any{}, tools...), mcpState.definitions()...)
+		if history.ReadOnly {
+			tools = nil
+		}
 		var streamed *Message
 		requestMessages := append([]map[string]any{}, messages...)
 		if len(requestMessages) > 0 && requestMessages[0]["role"] == "system" {
@@ -619,6 +611,9 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 				emit(Event{Type: "message", SessionID: history.ID, Message: streamed})
 			}
 			return fmt.Errorf("模型调用失败: %w", err)
+		}
+		if history.ReadOnly && len(result.ToolCalls) > 0 {
+			return fmt.Errorf("只读对话不允许调用工具")
 		}
 		if len(result.ToolCalls) == 0 {
 			content := strings.TrimSpace(result.Content)

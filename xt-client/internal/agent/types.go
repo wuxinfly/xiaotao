@@ -132,7 +132,8 @@ type Session struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Role marks sessions dispatched by the project office. An empty role is
 	// the regular user-facing XiaoTao session.
-	Role string `json:"role,omitempty"`
+	Role     string `json:"role,omitempty"`
+	ReadOnly bool   `json:"readOnly,omitempty"`
 }
 
 type Options struct {
@@ -141,6 +142,7 @@ type Options struct {
 	Role          string         `json:"role,omitempty"`
 	Model         string         `json:"model"`
 	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
+	ReadOnly      bool           `json:"readOnly,omitempty"`
 }
 
 type ModelOption struct {

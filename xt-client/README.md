@@ -30,7 +30,7 @@ Agent 长 query 会在消息气泡内换行，代码块保留格式并在块内�
 
 ## 项目 Agent 办公室（2026-11-12）
 
-左下工作空间导航新增“办公室”，按项目目录展示小涛安排的任务。选好项目、点“安排任务”，小涛会为这个任务创建一个执行者会话，在项目目录里真实执行；办公室和任务视图读取同一份运行数据。
+左下工作空间导航的“办公室”按项目展示可交互场景。选好项目后可直接点小涛、设计师或开发者聊天，不必先创建任务；每人按项目保有独立会话，记录按需读取。讨论时可请员工“整理交接”，再查看、修改交接内容并确认开始；执行仍由小涛的任务会话完成，并非设计师或开发者独立接手。聊天是无工具模式，不读取项目文件、不执行操作；员工只能根据你在对话中提供的内容讨论。模型回复期间不能插入新消息，可等待或停止回复。服务重启后对话记录保留，中断的回复标记失败。
 
 - 任务状态只有实际存在的那几种：排队中、进行中、等待确认（真实审批事件）、已完成、失败、已取消。服务重启后，上次运行中的任务标记为中断失败，不会假装继续。
 - 任务详情显示执行者、模型、真实工具调用和模型请求计数、执行过程、产物和消息。上下文 token 是本地估算并明确标注；上游没返回用量时写明“上游未返回用量”，不填 0。
@@ -39,9 +39,9 @@ Agent 长 query 会在消息气泡内换行，代码块保留格式并在块内�
 - 同一项目的多个执行者共用工作目录，现有文件检查与写入串行，命令和外部编辑不参与，不是操作系统级隔离。任务和产物按项目路径归属，不跨项目展示。
 - 办公室数据保存在当前环境的 `office/office.db`（SQLite，未加密），与 `agent/agent.db` 分开；执行者会话不出现在小涛普通会话列表。正式版与 UAT 独立存储。
 
-办公室是单项目、单执行者的最小闭环：多执行者自由交流、工作流编辑、团队统计和知识库仍未实现。接口：`GET /api/office/snapshot`、`POST /api/office/tasks`、`GET /api/office/tasks/{id}`、`GET .../history`、`POST .../cancel`、`POST .../messages`、`POST .../approval`、`GET /api/office/artifacts/{id}`，均校验同源。
+办公室支持按项目与三个固定角色分别聊天；多员工互相交流、由指定员工独立接手执行、工作流编辑、团队统计和知识库仍未实现。聊天接口为 `/api/office/members/{id}/chat` 及其 `history`、`messages`、`cancel` 子路径；任务接口：`GET /api/office/snapshot`、`POST /api/office/tasks`、`GET /api/office/tasks/{id}`、`GET .../history`、`POST .../cancel`、`POST .../messages`、`POST .../approval`、`GET /api/office/artifacts/{id}`，均校验同源。
 
-前端回归：在 `frontend` 运行 `node --test tests/office.browser.test.mjs tests/navigation-layout.browser.test.mjs`；使用合成 API，不代表桌面壳和真实模型已端到端验收。实现、边界和验证记录见 [项目 Agent 办公室阶段一](../docs/plans/2026-11-12-agent-office-implementation.md)。
+前端回归：在 `frontend` 运行 `node --test tests/office.browser.test.mjs tests/navigation-layout.browser.test.mjs`；使用合成 API，不代表桌面壳和真实模型已端到端验收。聊天使用和验收步骤见 [办公室对话与交接](../docs/plans/2026-11-12-office-conversation.md)，原任务闭环见 [项目 Agent 办公室阶段一](../docs/plans/2026-11-12-agent-office-implementation.md)。
 
 ## 外观主题
 

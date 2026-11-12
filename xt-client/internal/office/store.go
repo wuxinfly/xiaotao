@@ -18,6 +18,7 @@ const schema = `
 PRAGMA busy_timeout=5000;
 PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS office_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS office_chats (project_key TEXT NOT NULL, member_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_key, member_id));
 CREATE TABLE IF NOT EXISTS office_tasks (
 	id TEXT PRIMARY KEY,
 	project_key TEXT NOT NULL,

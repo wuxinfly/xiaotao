@@ -33,6 +33,7 @@ function snapshot(tasks, artifacts = []) {
     tasks,
     members: [
       {id: 'xiaotao', name: '小涛', role: 'coordinator', status: 'idle', todayTasks: 1},
+      {id: 'designer', name: '设计师', role: 'designer', status: 'idle', todayTasks: 0},
       ...tasks.filter(item => item.status === 'running').map(item => ({
         id: item.executor.sessionId, name: item.executor.name, role: 'executor', status: item.status,
         model: item.executor.model, taskId: item.id, taskTitle: item.title, taskStatus: item.status,
@@ -70,6 +71,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     const context = await browser.newContext({viewport: {width: 1280, height: 900}, reducedMotion: 'reduce'});
     const requests = [];
     const posts = [];
+    const chats = {};
     const tasks = [task()];
     const artifacts = [{id: 'art_1', taskId: 'task_1', taskTitle: '给搜索页加空状态', projectPath, path: 'src/search.tsx', size: 2048, tool: 'str_replace', createdAt: '2026-11-12T09:00:05Z', updatedAt: '2026-11-12T09:00:05Z'}];
     const messages = [
@@ -85,6 +87,19 @@ test('office page shows real task state, transcript, artifacts and queued messag
       if (path === '/api/agent/projects') return route.fulfill({json: {projects: [{path: projectPath, name: '演示项目', saved: true}]}});
       if (path === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test/model', label: '测试模型', sourceLabel: '本地'}]}});
       if (path === '/api/office/snapshot') return route.fulfill({json: snapshot(tasks, artifacts)});
+      const chatRoute = path.match(/^\/api\/office\/members\/([^/]+)\/chat(?:\/(messages|history))?$/);
+      if (chatRoute) {
+        const [, member, action] = chatRoute;
+        if (action === 'messages') {
+          chats[member] = req.postDataJSON().content;
+          return route.fulfill({json: {memberId: member, sessionId: member, status: 'completed'}});
+        }
+        if (action === 'history') return route.fulfill({json: history([
+          {id: `${member}-user`, role: 'user', content: chats[member], createdAt: '2026-11-12T09:00:01Z'},
+          {id: `${member}-reply`, role: 'assistant', content: '我们先把想法整理成一份交接。', createdAt: '2026-11-12T09:00:02Z'},
+        ])});
+        return route.fulfill({json: {memberId: member, sessionId: chats[member] ? member : '', status: 'idle'}});
+      }
       if (path === '/api/office/tasks/task_1' && method === 'GET') {
         return route.fulfill({json: {
           task: tasks[0],
@@ -119,6 +134,20 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByText('上次更新').waitFor();
     assert.equal(await page.getByText('参与 23 次').count(), 0, 'prototype demo numbers must not appear');
 
+    await page.getByRole('button', {name: /设计师，空闲/}).click();
+    await page.getByRole('complementary', {name: '与设计师的对话'}).waitFor();
+    await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
+    await page.locator('.member-chat').getByRole('button', {name: '发送', exact: true}).click();
+    await page.getByText('我们先把想法整理成一份交接。').waitFor();
+    assert.equal(chats.designer, '我想调整搜索页面');
+    await page.getByRole('button', {name: '查看交接并安排'}).click();
+    assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
+    await page.keyboard.press('Escape');
+    await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor({state: 'detached'});
+    await page.getByRole('button', {name: /小涛，空闲/}).click();
+    await page.getByRole('complementary', {name: '与小涛的对话'}).waitFor();
+    assert.equal(await page.getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
+
     await page.locator('.office-task-card').first().click();
     await page.getByRole('heading', {name: '给搜索页加空状态'}).waitFor();
     await page.getByText('我先看一下搜索页的实现。').waitFor();
@@ -136,11 +165,8 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(posts.length, 1);
     assert.equal(posts[0].content, '补充一个空状态组件');
 
-    await page.getByRole('button', {name: '安排任务', exact: true}).click();
-    await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor();
-    await page.getByText('执行中不能直接打断执行者聊天').waitFor();
-    await page.keyboard.press('Escape');
-    await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor({state: 'detached'});
+    await page.getByRole('button', {name: '找小涛聊聊', exact: true}).click();
+    await page.getByRole('complementary', {name: '与小涛的对话'}).waitFor();
 
     // Polling must stop once the office page is left.
     const before = requests.filter(item => item.path === '/api/office/snapshot').length;
