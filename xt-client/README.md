@@ -30,9 +30,9 @@ Agent 长 query 会在消息气泡内换行，代码块保留格式并在块内�
 
 ## 项目 Agent 办公室（2026-11-12）
 
-左下工作空间导航的“办公室”按项目展示可交互场景。选好项目后可点击小涛、设计师或开发者，再从员工操作菜单开始聊天，不必先创建任务；每人按项目保有独立会话，记录按需读取。讨论时可请员工“整理交接”，再查看、修改交接内容并确认开始；执行仍由小涛的任务会话完成，并非设计师或开发者独立接手。聊天是无工具模式，不读取项目文件、不执行操作；员工只能根据你在对话中提供的内容讨论。模型回复期间不能插入新消息，可等待或停止回复。服务重启后对话记录保留，中断的回复标记失败。
+左下工作空间导航的“办公室”按项目展示可交互 3D 场景。选好项目后可点击小涛、设计师或开发者，再从员工操作菜单开始聊天，不必先创建任务；每人按项目保有独立会话，记录按需读取。讨论时可请员工“整理交接”，再查看、修改交接内容并确认开始；执行仍由小涛的任务会话完成，并非设计师或开发者独立接手。聊天是无工具模式，不读取项目文件、不执行操作；员工只能根据你在对话中提供的内容讨论。模型回复期间不能插入新消息，可等待或停止回复。服务重启后对话记录保留，中断的回复标记失败。
 
-办公室占满标题栏以下区域，员工在场景内走动并悬浮名字与职位。点击员工会停下并弹出操作菜单，再选择“对话”或“查看任务”；右下角“办公室菜单”可切换项目、刷新、查看任务和运行说明。右侧书架是可点击的项目资料馆，hover 高亮，打开后按项目路径目录把资料归成书，提供目录索引、搜索和原文预览；资料与任务详情会在刷新时隐藏已经移动或删除的文件，历史记录仍保留。
+办公室占满标题栏以下区域，员工以低多边形黏土形象显示，悬浮名字、职责与状态。本地 `office.glb` 由构建脚本生成，不依赖远程 3D 服务；可拖拽平移、滚轮或按钮缩放、复位视角，点击员工会停下并弹出操作菜单，再选择“对话”或“查看任务”。窄窗口通过“选择成员对话”展开成员列表，3D 不可用时仍可使用二维团队列表。右下角“办公室菜单”可切换项目、刷新、查看任务和运行说明。右侧书架是可点击的项目资料馆，打开后按项目路径目录把资料归成书，提供目录索引、搜索和原文预览；资料与任务详情会在刷新时隐藏已经移动或删除的文件，历史记录仍保留。
 
 - 任务状态只有实际存在的那几种：排队中、进行中、等待确认（真实审批事件）、已完成、失败、已取消。服务重启后，上次运行中的任务标记为中断失败，不会假装继续。
 - 任务详情显示执行者、模型、真实工具调用和模型请求计数、执行过程、产物和消息。上下文 token 是本地估算并明确标注；上游没返回用量时写明“上游未返回用量”，不填 0。
@@ -41,9 +41,9 @@ Agent 长 query 会在消息气泡内换行，代码块保留格式并在块内�
 - 同一项目的多个执行者共用工作目录，现有文件检查与写入串行，命令和外部编辑不参与，不是操作系统级隔离。任务和产物按项目路径归属，不跨项目展示。
 - 办公室数据保存在当前环境的 `office/office.db`（SQLite，未加密），与 `agent/agent.db` 分开；执行者会话不出现在小涛普通会话列表。正式版与 UAT 独立存储。
 
-办公室支持按项目与三个固定角色分别聊天；多员工互相交流、由指定员工独立接手执行、工作流编辑、团队统计和知识库仍未实现。聊天接口为 `/api/office/members/{id}/chat` 及其 `history`、`messages`、`cancel` 子路径；任务接口：`GET /api/office/snapshot`、`POST /api/office/tasks`、`GET /api/office/tasks/{id}`、`GET .../history`、`POST .../cancel`、`POST .../messages`、`POST .../approval`、`GET /api/office/artifacts/{id}`，均校验同源。
+办公室支持按项目与已注册团队成员分别聊天；旧固定会话保留为历史，不自动迁移。可创建“产品实现小队”或自定义角色、编辑外观/模型偏好、邀请全局角色、移出或提升成员。角色不能独立接手任务；任务仍由小涛执行者完成。共享 YAML 与历史数据库边界见 [办公室团队架构](../docs/architecture/office-team.md)。聊天接口为 `/api/office/members/{id}/chat` 及其 `history`、`messages`、`cancel` 子路径；团队接口为 `GET /api/office/team`、`POST /api/office/team/bootstrap`、`POST|PUT /api/office/roles` 及 `invite/remove/promote/archive`；任务接口：`GET /api/office/snapshot`、`POST /api/office/tasks`、`GET /api/office/tasks/{id}`、`GET .../history`、`POST .../cancel`、`POST .../messages`、`POST .../approval`、`GET /api/office/artifacts/{id}`，均校验同源。
 
-前端回归：在 `frontend` 运行 `node --test tests/office.browser.test.mjs tests/navigation-layout.browser.test.mjs`；使用合成 API，不代表桌面壳和真实模型已端到端验收。聊天使用和验收步骤见 [办公室对话与交接](../docs/plans/2026-11-12-office-conversation.md)，原任务闭环见 [项目 Agent 办公室阶段一](../docs/plans/2026-11-12-agent-office-implementation.md)。
+前端回归：在 `frontend` 运行 `node --test tests/office.browser.test.mjs tests/office-entry.browser.test.mjs tests/navigation-layout.browser.test.mjs`；前两项使用合成 API，不代表桌面壳和真实模型已端到端验收。`node --test tests/office-team-real.browser.test.mjs` 会启动隔离 Go 服务，验证真实建队、YAML 持久化、3D 点击、角色编辑、资料馆与窄屏对话，不调用真实模型。聊天使用和验收步骤见 [办公室对话与交接](../docs/plans/2026-11-12-office-conversation.md)，原任务闭环见 [项目 Agent 办公室阶段一](../docs/plans/2026-11-12-agent-office-implementation.md)。
 
 ## 外观主题
 
@@ -449,3 +449,6 @@ Qoder 国内/海外账号现支持状态查询、单账号打卡及来源分组�
 统一模型目录的接口、实现与验收见 [统一模型目录](../docs/plans/2026-11-07-unified-model-catalog.md)。前端回归：在 frontend 运行 `node --test --test-concurrency=1 tests/model-catalog.browser.test.mjs tests/model-pricing.browser.test.mjs`，使用隔离合成 API 验证查看、全量/来源刷新、页面间数据同步与失败保留目录。
 
 Agent 文件工具支持 `str_replace`：先用 `read_file` 读取，再对文件中唯一的非重叠精确匹配执行替换；空匹配、冲突及导致文件变空的替换会被拒绝。替换使用同目录临时文件，失败时不回退截断原文件；最终路径的符号链接不受支持。普通权限位尽力保留，ACL、特殊权限位和其他元数据不作保证。文件检查不能阻止外部进程在检查与替换之间修改文件，也不提供备份。`write_file` 拒绝以空内容覆盖已有非空文件。Windows 的 `search_files` 可用 `file_glob` 按文件名筛选，使用 PowerShell `-like` 通配规则且不区分大小写；非 Windows 内置搜索仍不可用。
+
+办公室场景的成员面板按姓名、职责和实时状态列出成员，可折叠并通过键盘选择；窄窗口默认收起，视角和资料入口仍可直接使用。
+

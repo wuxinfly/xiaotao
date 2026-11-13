@@ -31,9 +31,13 @@ func (s *Service) Snapshot(projectPath, projectName string) (*Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	members := buildMembers(tasks)
+	team, err := s.teams.Snapshot(path)
+	if err != nil {
+		return nil, err
+	}
+	members := buildMembers(tasks, team)
 	for i := range members {
-		if !validMember(members[i].ID) {
+		if !roleIDPattern.MatchString(members[i].ID) {
 			continue
 		}
 		chat, err := s.Chat(path, members[i].ID)
@@ -74,17 +78,17 @@ func (s *Service) overlay(task *Task) (*Task, error) {
 
 // buildMembers shows one desk per unfinished task plus a coordinator desk.
 // Everything is derived from real tasks, never invented.
-func buildMembers(tasks []*Task) []Member {
+func buildMembers(tasks []*Task, team TeamSnapshot) []Member {
 	members := []Member{{
 		ID:     coordinatorID,
 		Name:   executorName,
 		Role:   "coordinator",
 		Status: "idle",
-	}, {
-		ID: "designer", Name: "设计师", Role: "designer", Status: "idle",
-	}, {
-		ID: "developer", Name: "开发者", Role: "developer", Status: "idle",
 	}}
+	for _, teammate := range team.Members {
+		appearance, preference := teammate.Appearance, teammate.Model
+		members = append(members, Member{ID: teammate.ID, Name: teammate.Name, Role: teammate.Scope, Responsibility: teammate.Responsibility, Capabilities: teammate.Capabilities, Status: "idle", Model: teammate.Model.ModelID, Appearance: &appearance, ModelPreference: &preference})
+	}
 	for _, task := range tasks {
 		// An executor leaves the room when its task ends; the task record and
 		// its artifacts stay available in the task list and shelf.

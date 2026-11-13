@@ -52,3 +52,7 @@
   .member-chat-toolbar { align-items: stretch; flex-direction: column; }
   .member-chat-context { grid-template-columns: auto 1fr; align-items: center; min-width: 0; }
 }
+.member-chat-profile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px; padding: 10px 12px; border: 1px solid var(--ocean-line, #213e50); border-radius: 8px; background: rgba(10, 36, 50, .65); }
+.member-chat-profile strong { font-size: 13px; }
+.member-chat-profile span { flex: 1; color: var(--ocean-text-soft, #c4dde6); font-size: 12px; }
+.member-chat-profile small { flex-basis: 100%; color: var(--ocean-muted, #8db3c2); font-size: 11px; }

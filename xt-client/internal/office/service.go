@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ type Service struct {
 	closed  bool
 	wg      sync.WaitGroup
 	now     func() time.Time
+	teams   *TeamService
 	// rootCtx is canceled by Close. Every turn derives from it, so shutdown
 	// stops runs that started after Close snapshotted the run map.
 	rootCtx    context.Context
@@ -40,12 +42,19 @@ func New(dataDir string, exec Executor) (*Service, error) {
 		now:        time.Now,
 		rootCtx:    rootCtx,
 		rootCancel: rootCancel,
+		teams:      NewTeamService(NewRegistryStore(filepath.Dir(dataDir))),
 	}
 	db, err := svc.openStore()
 	if err != nil {
 		return nil, err
 	}
 	db.Close()
+	svc.teams.SetActiveCheck(func(projectPath, roleID string) bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		return svc.runs[chatKey(projectPath, roleID)] != nil
+	})
+	svc.teams.store.SetProjectIndex(svc.knownProjects)
 	// The kernel only registers sessions that were listed in this process, and
 	// it marks stale running sessions failed while listing. Do that before any
 	// office task is started so a pre-restart session can accept a new turn.
@@ -59,6 +68,8 @@ func New(dataDir string, exec Executor) (*Service, error) {
 	}
 	return svc, nil
 }
+
+func (s *Service) Teams() *TeamService { return s.teams }
 
 // recoverInterrupted reconciles tasks that were running when the service
 // exited. The kernel cannot resume a half-finished turn, so they become

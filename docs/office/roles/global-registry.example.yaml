@@ -1,0 +1,13 @@
+schema_version: 1
+revision: 1
+roles:
+  - id: role_fedcba9876543210
+    scope: global
+    lifecycle: active
+    name: 全局设计师
+    responsibility: 讨论产品设计与交互
+    capabilities: [设计, 评审]
+    model: {model_id: example/design-model, context_window: 128000, max_output_tokens: 8192, reasoning_effort: medium}
+    appearance: {shape: hexagon, primary_color: "#36a9c9", secondary_color: "#173b55"}
+    created_at: 2026-11-13T08:00:00Z
+    updated_at: 2026-11-13T08:00:00Z

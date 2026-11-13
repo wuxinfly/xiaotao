@@ -27,6 +27,7 @@ export default defineConfig({
     outDir: '../internal/app/web',
     emptyOutDir: true,
     rollupOptions: {
+      output: {manualChunks: {three: ['three']}},
       input: {
         main: 'index.html',
         hud: 'hud.html',

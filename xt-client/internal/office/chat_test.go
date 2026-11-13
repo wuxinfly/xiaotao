@@ -50,48 +50,50 @@ func TestChatRealKernelIsolationAndReadOnlyRestart(t *testing.T) {
 	}
 	svc := create()
 	input := ChatInput{Content: "hello", Model: "test/model"}
-	first, err := svc.SendChat(project, "xiaotao", input)
+	ids := makeTeamForChat(t, svc, project)
+	first, err := svc.SendChat(project, ids[0], input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { c, e := svc.Chat(project, "xiaotao"); return e == nil && c.Status == StatusCompleted })
-	designer, err := svc.SendChat(project, "designer", input)
+	waitFor(t, func() bool { c, e := svc.Chat(project, ids[0]); return e == nil && c.Status == StatusCompleted })
+	designer, err := svc.SendChat(project, ids[1], input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { c, e := svc.Chat(project, "designer"); return e == nil && c.Status == StatusCompleted })
-	otherChat, err := svc.SendChat(other, "xiaotao", input)
+	waitFor(t, func() bool { c, e := svc.Chat(project, ids[1]); return e == nil && c.Status == StatusCompleted })
+	otherIDs := makeTeamForChat(t, svc, other)
+	otherChat, err := svc.SendChat(other, otherIDs[0], input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { c, e := svc.Chat(other, "xiaotao"); return e == nil && c.Status == StatusCompleted })
+	waitFor(t, func() bool { c, e := svc.Chat(other, otherIDs[0]); return e == nil && c.Status == StatusCompleted })
 	if first.SessionID == designer.SessionID || first.SessionID == otherChat.SessionID {
 		t.Fatal("sessions are not isolated")
 	}
-	empty, err := svc.Chat(other, "developer")
+	empty, err := svc.Chat(other, otherIDs[2])
 	if err != nil || empty.SessionID != "" {
 		t.Fatalf("unexpected chat: %+v %v", empty, err)
 	}
 	svc.Close()
 	svc = create()
 	defer svc.Close()
-	restored, err := svc.Chat(project, "xiaotao")
+	restored, err := svc.Chat(project, ids[0])
 	if err != nil || restored.SessionID != first.SessionID {
 		t.Fatalf("session not restored: %+v %v", restored, err)
 	}
 	malicious.Store(true)
-	if _, err = svc.SendChat(project, "xiaotao", input); err != nil {
+	if _, err = svc.SendChat(project, ids[0], input); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { c, e := svc.Chat(project, "xiaotao"); return e == nil && c.Status == StatusFailed })
-	failed, _ := svc.Chat(project, "xiaotao")
+	waitFor(t, func() bool { c, e := svc.Chat(project, ids[0]); return e == nil && c.Status == StatusFailed })
+	failed, _ := svc.Chat(project, ids[0])
 	if !strings.Contains(failed.Error, "只读") {
 		t.Fatalf("missing read-only error: %+v", failed)
 	}
 	if _, err = os.Stat(filepath.Join(project, "bad.txt")); !os.IsNotExist(err) {
 		t.Fatalf("write occurred: %v", err)
 	}
-	page, err := svc.ChatHistory(project, "xiaotao", "")
+	page, err := svc.ChatHistory(project, ids[0], "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +112,9 @@ func TestChatBusyCancel(t *testing.T) {
 		return ctx.Err()
 	}
 	svc, project := newTestService(t, exec)
-	_, err := svc.SendChat(project, "developer", ChatInput{Content: "hi", Model: "test/model"})
+	ids := makeTeamForChat(t, svc, project)
+	memberID := ids[2]
+	_, err := svc.SendChat(project, memberID, ChatInput{Content: "hi", Model: "test/model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,21 +125,42 @@ func TestChatBusyCancel(t *testing.T) {
 	}
 	found := false
 	for _, member := range snapshot.Members {
-		if member.ID == "developer" {
+		if member.ID == memberID {
 			found = member.Status == StatusRunning
 		}
 	}
 	if !found {
 		t.Fatal("running chat missing from snapshot")
 	}
-	if _, err = svc.SendChat(project, "developer", ChatInput{Content: "again"}); err != ErrChatBusy {
+	if _, err = svc.SendChat(project, memberID, ChatInput{Content: "again"}); err != ErrChatBusy {
 		t.Fatalf("busy: %v", err)
 	}
-	if err = svc.CancelChat(project, "developer"); err != nil {
+	if err = svc.CancelChat(project, memberID); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { c, e := svc.Chat(project, "developer"); return e == nil && c.Status == StatusCanceled })
+	waitFor(t, func() bool { c, e := svc.Chat(project, memberID); return e == nil && c.Status == StatusCanceled })
 	if len(exec.created) != 1 || !exec.created[0].ReadOnly {
 		t.Fatal("missing read-only flag")
 	}
+}
+
+func makeTeamForChat(t *testing.T, svc *Service, project string) []string {
+	t.Helper()
+	before, err := svc.teams.Snapshot(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drafts := TeamTemplates()[0].Roles
+	for index := range drafts {
+		drafts[index].Model.ModelID = "test/model"
+	}
+	team, err := svc.teams.Bootstrap(project, drafts, revisions(before))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, len(team.Members))
+	for index, member := range team.Members {
+		ids[index] = member.ID
+	}
+	return ids
 }

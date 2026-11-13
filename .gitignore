@@ -22,3 +22,8 @@ website/dist/
 xt-client/frontend/test-results/
 !/.xiaotao/memory/imports/
 !/.xiaotao/memory/imports/**
+
+# Local OpenSpec installation and project data
+/.agents/skills/openspec-*/
+/.agents/skills/.openspec-target
+/openspec/

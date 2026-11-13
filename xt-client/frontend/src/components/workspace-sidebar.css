@@ -81,6 +81,20 @@
   min-width: 0;
 }
 
+.workspace-shell main:has(> .workspace-page-layout) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.workspace-shell .workspace-page-layout {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .titlebar .titlebar-back {
   display: inline-flex;
   align-items: center;
@@ -123,6 +137,12 @@
   display: flex;
   flex: 1;
   min-width: 0;
+  min-height: 0;
+}
+
+.workspace-shell .workspace-page-view:has(.sea-office),
+.workspace-shell .workspace-page-content:has(.sea-office) {
+  height: 100%;
   min-height: 0;
 }
 

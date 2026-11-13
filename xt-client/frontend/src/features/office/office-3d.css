@@ -1,0 +1,49 @@
+.office-3d-room { overflow: hidden; background: #e5e2d9; }
+.office-3d-room::after { display: none; }
+.office-3d-room .sea-office-head { height: 88px; box-sizing: border-box; align-items: center; padding: 14px 24px; background: #102f3c; }
+.office-3d-room .sea-office-label { color: #9dc2c5; letter-spacing: .06em; }
+.office-3d-room .sea-office-title h1 { margin: 3px 0; color: #f2faf8; font-size: 23px; }
+.office-3d-room .sea-office-title p { color: #a9c7c9; }
+.office-3d-room .sea-office-live { min-width: 0; border: 1px solid #416773; border-radius: 10px; background: #183e4b; color: #effaf7; }
+.office-3d-room .sea-office-live small { color: #a9c7c9; }
+.office-3d-room .sea-office-live svg { color: #83dfc5; }
+.office-3d-room .sea-office-room-label { display: none; }
+.office-3d-stage { position: absolute; inset: 88px 0 0; overflow: hidden; }
+.office-3d-canvas { position: absolute; inset: 0; }
+.office-3d-canvas canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+.office-3d-status { position: absolute; top: 14px; right: 16px; padding: 7px 10px; border-radius: 8px; background: #fffdf5e8; color: #344b53; font-size: 12px; }
+.office-3d-accessible { position: absolute; z-index: 24; top: 104px; left: 16px; width: min(250px, calc(100% - 32px)); max-height: calc(100% - 185px); overflow: auto; border: 1px solid #d6ded8; border-radius: 14px; background: #fbfcf8ed; color: #203f48; box-shadow: 0 12px 35px #253c3c24; }
+.office-3d-accessible summary { display: flex; align-items: center; gap: 8px; padding: 14px; cursor: pointer; font-size: 13px; font-weight: 700; list-style: none; }
+.office-3d-accessible summary::-webkit-details-marker { display: none; }
+.office-3d-accessible summary span { margin-left: auto; color: #68817f; font-size: 11px; }
+.office-3d-accessible > div { display: grid; gap: 4px; padding: 0 8px 8px; }
+.office-3d-accessible button { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #203f48; text-align: left; transition: background 160ms, border-color 160ms; }
+.office-3d-accessible button:hover { border-color: #c5ddd6; background: #e9f4ef; }
+.office-3d-accessible :is(button, summary):focus-visible, .office-3d-room button:focus-visible { outline: 3px solid #168478; outline-offset: 2px; }
+.office-member-avatar { display: grid; flex: 0 0 32px; height: 32px; place-items: center; border-radius: 10px; background: #d7ebe2; color: #23665c; font-weight: 700; }
+.office-member-copy { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.office-member-copy strong, .office-member-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-member-copy strong { font-size: 12px; }
+.office-member-copy small { color: #68817f; font-size: 11px; }
+.office-member-state { flex: none; color: #668078; font-size: 10px; }
+.office-member-state.state-running { color: #087d69; }
+.office-member-state.state-failed, .office-member-state.state-waiting { color: #a45e28; }
+.office-3d-accessible p { margin: 4px 8px 10px; color: #68817f; font-size: 12px; }
+.office-3d-instructions { position: absolute; z-index: 4; left: 18px; bottom: 62px; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; background: #fbfcf8ed; color: #4b6668; font-size: 11px; }
+.office-3d-instructions button { padding: 0 3px; border: 0; color: inherit; font-size: 17px; line-height: 18px; }
+.office-camera-controls { position: absolute; z-index: 4; right: 24px; bottom: 72px; display: flex; gap: 6px; }
+.office-camera-controls .office-ghost, .office-3d-library { border: 1px solid #d2ddd7; border-radius: 9px; background: #fbfcf8f2; color: #294b50; box-shadow: 0 4px 14px #263d3c1c; }
+.office-3d-room .office-camera-controls .office-ghost { min-width: 36px; min-height: 36px; padding: 6px 10px; }
+.office-3d-library { position: absolute; left: 18px; bottom: 18px; display: flex; align-items: center; gap: 7px; padding: 10px 13px; font-weight: 600; }
+.office-3d-room :is(.office-camera-controls .office-ghost, .office-3d-library):hover { background: #e5f4ec; color: #145d54; }
+@media (max-width: 700px) { .office-3d-room .sea-office-head { padding-inline: 16px; } .office-camera-controls { right: 12px; } }
+@media (max-width: 520px) {
+  .office-3d-room .sea-office-head { height: 82px; }
+  .office-3d-stage { inset: 82px 0 0; }
+  .office-3d-accessible { top: 92px; left: 12px; width: min(250px, calc(100% - 24px)); max-height: 45%; }
+  .office-3d-accessible summary { padding: 10px 12px; }
+  .office-3d-instructions { display: none; }
+  .office-3d-library { left: 12px; bottom: 12px; }
+  .office-camera-controls { bottom: 64px; }
+}
+@media (prefers-reduced-motion: reduce) { .office-3d-accessible button { transition: none; } }

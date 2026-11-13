@@ -31,6 +31,7 @@ export function WindowMenu(){
   const next=theme==='dark'?'light':'dark';
   saveTheme(next);
   setTheme(next);
+  close();
  };
  const openDirectory=async(kind:'install'|'data')=>{
   close();
@@ -41,7 +42,9 @@ export function WindowMenu(){
   }catch(error){toast.error(error instanceof Error?error.message:String(error))}
  };
  return <div className="window-menu" ref={menu}
-  onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))close()}}
+  onBlur={event=>{
+   if(!event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget!==trigger.current)close()
+  }}
   onKeyDown={event=>{
    if(event.key==='Escape'){event.preventDefault();close();trigger.current?.focus()}
    if(event.key==='ArrowDown'||event.key==='ArrowUp'||event.key==='Home'||event.key==='End'){

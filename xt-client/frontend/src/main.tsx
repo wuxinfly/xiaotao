@@ -34,6 +34,7 @@ document.addEventListener('scroll', event => {
 function App(){
  const [page,setPage]=useState<Page>('agent');
  const desktop=typeof window.xtWindow==='function';
+ useEffect(()=>{document.documentElement.dataset.page=page;return()=>{delete document.documentElement.dataset.page}},[page]);
  useEffect(()=>{
   let cancelled=false;
   let timer:ReturnType<typeof setTimeout>|undefined;

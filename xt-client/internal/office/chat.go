@@ -27,7 +27,6 @@ type ChatInput struct {
 	ModelSettings *agent.ModelSettings `json:"modelSettings,omitempty"`
 }
 
-func validMember(id string) bool     { return id == "xiaotao" || id == "designer" || id == "developer" }
 func chatKey(path, id string) string { return "chat:" + projectKey(path) + ":" + id }
 
 // chatLocked and saveChatLocked require s.mu, serializing creation and updates.
@@ -74,20 +73,24 @@ func (s *Service) saveChatLocked(path string, chat *Chat) error {
 	return err
 }
 func chatProject(path, id string) (string, error) {
-	if !validMember(id) {
+	if !roleIDPattern.MatchString(id) && id != "xiaotao" && id != "designer" && id != "developer" {
 		return "", fmt.Errorf("员工不存在")
 	}
 	path, _, err := resolveProject(path, "")
 	return path, err
 }
 func (s *Service) Chat(projectPath, id string) (*Chat, error) {
-	path, err := chatProject(projectPath, id)
+	path, _, err := resolveProject(projectPath, "")
 	if err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.chatLocked(path, id)
+}
+
+func (s *Service) HistoricalChat(projectPath, id string) (*Chat, error) {
+	return s.Chat(projectPath, id)
 }
 func (s *Service) ChatHistory(projectPath, id, before string) (*agent.HistoryPage, error) {
 	chat, err := s.Chat(projectPath, id)
@@ -108,6 +111,24 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 	if text == "" || len([]rune(text)) > maxMessageText {
 		return nil, fmt.Errorf("消息不能为空且最多 %d 个字符", maxMessageText)
 	}
+	member, err := s.teams.Snapshot(path)
+	if err != nil {
+		return nil, err
+	}
+	role, err := member.Member(id)
+	if err != nil || role.Lifecycle != RoleActive {
+		return nil, ErrMemberNotFound
+	}
+	model := strings.TrimSpace(input.Model)
+	if model == "" {
+		model = role.Model.ModelID
+	}
+	if model == "" || !s.modelAvailable(model) {
+		return nil, fmt.Errorf("角色模型 %q 当前不可用，请编辑角色或选择可用模型", model)
+	}
+	if input.ModelSettings == nil {
+		input.ModelSettings = modelSettingsFromPreference(role.Model)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -121,14 +142,7 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 	if err != nil {
 		return nil, err
 	}
-	model := strings.TrimSpace(input.Model)
-	if model != "" && !s.modelAvailable(model) {
-		return nil, fmt.Errorf("请选择可用模型")
-	}
 	if chat.SessionID == "" {
-		if model == "" {
-			return nil, fmt.Errorf("请选择可用模型")
-		}
 		session, err := s.exec.CreateSession(agent.Options{ProjectPath: path, ProjectName: input.ProjectName, Role: "office_chat_" + id, Model: model, ModelSettings: input.ModelSettings, ReadOnly: true})
 		if err != nil {
 			return nil, err
@@ -147,6 +161,13 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 	snapshot := *chat
 	go s.runChat(ctx, cancel, path, id, chat.SessionID, text, input.Model, input.ModelSettings)
 	return &snapshot, nil
+}
+
+func modelSettingsFromPreference(preference ModelPreference) *agent.ModelSettings {
+	if preference.ContextWindow == 0 && preference.MaxOutputTokens == 0 && preference.ReasoningEffort == "" {
+		return nil
+	}
+	return &agent.ModelSettings{ContextWindow: preference.ContextWindow, MaxOutputTokens: preference.MaxOutputTokens, ReasoningEffort: preference.ReasoningEffort}
 }
 func (s *Service) runChat(ctx context.Context, cancel context.CancelFunc, path, id, session, text, model string, settings *agent.ModelSettings) {
 	defer s.wg.Done()
@@ -174,7 +195,7 @@ func (s *Service) runChat(ctx context.Context, cancel context.CancelFunc, path, 
 	delete(s.runs, key)
 }
 func (s *Service) CancelChat(projectPath, id string) error {
-	path, err := chatProject(projectPath, id)
+	path, _, err := resolveProject(projectPath, "")
 	if err != nil {
 		return err
 	}

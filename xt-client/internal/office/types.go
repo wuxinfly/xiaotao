@@ -163,16 +163,20 @@ type ProjectInfo struct {
 }
 
 type Member struct {
-	ID             string        `json:"id"`
-	Name           string        `json:"name"`
-	Role           string        `json:"role"`
-	Status         string        `json:"status"`
-	Model          string        `json:"model,omitempty"`
-	TaskID         string        `json:"taskId,omitempty"`
-	TaskTitle      string        `json:"taskTitle,omitempty"`
-	TaskStatus     string        `json:"taskStatus,omitempty"`
-	TodayTasks     int           `json:"todayTasks"`
-	LatestActivity *TaskActivity `json:"latestActivity,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Role            string           `json:"role"`
+	Status          string           `json:"status"`
+	Model           string           `json:"model,omitempty"`
+	TaskID          string           `json:"taskId,omitempty"`
+	TaskTitle       string           `json:"taskTitle,omitempty"`
+	TaskStatus      string           `json:"taskStatus,omitempty"`
+	TodayTasks      int              `json:"todayTasks"`
+	LatestActivity  *TaskActivity    `json:"latestActivity,omitempty"`
+	Responsibility  string           `json:"responsibility,omitempty"`
+	Capabilities    []string         `json:"capabilities,omitempty"`
+	Appearance      *Appearance      `json:"appearance,omitempty"`
+	ModelPreference *ModelPreference `json:"modelPreference,omitempty"`
 }
 
 // Capabilities states what this build really supports. The UI renders these

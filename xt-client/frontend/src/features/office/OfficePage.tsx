@@ -9,14 +9,16 @@ import {ArtifactModal} from './ArtifactModal';
 import {ArtifactLibraryModal} from './ArtifactLibraryModal';
 import {MemberChat} from './MemberChat';
 import {CreateTaskModal} from './CreateTaskModal';
-import {OfficeRoom} from './OfficeRoom';
+import {OfficeEntryFlow, type OfficeEntryHandle} from './OfficeEntryFlow';
 import {OfficeMenu, OfficeMenuButton} from './OfficeMenu';
 import {TaskDetail} from './TaskDetail';
 import {useOfficePolling} from './useOfficePolling';
+import {TeamManager} from './TeamManager';
+import './team.css';
 import './office.css';
 
 type Props = {visible: boolean};
-type Panel = 'menu' | 'task' | 'member' | 'library' | 'artifact' | 'create' | null;
+type Panel = 'menu' | 'task' | 'member' | 'library' | 'artifact' | 'create' | 'team' | null;
 
 const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
 
@@ -39,6 +41,7 @@ export function OfficePage({visible}: Props) {
   const taskSelection = useRef<{path: string; id: string} | null>(null);
   const artifactRequest = useRef(0);
   const artifactReturn = useRef<Panel>(null);
+  const entry = useRef<OfficeEntryHandle>(null);
 
   const project = useMemo(() => projects.find(item => projectKey(item.path) === projectKey(selectedPath)), [projects, selectedPath]);
   const projectName = project?.name || '';
@@ -212,13 +215,14 @@ export function OfficePage({visible}: Props) {
   const currentDetail = detail && visibleArtifacts ? {...detail, artifacts: detail.artifacts.filter(item => visibleArtifacts.has(item.id))} : detail;
   return <div className="office-page office-live-page content-column">
     {error && <p className="office-error office-page-error" role="alert">刷新办公室失败：{error}</p>}
-    {snapshot ? <OfficeRoom projectName={snapshot.project.name} members={snapshot.members} artifacts={snapshot.artifacts}
-      onSelectTask={selectTask} onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')}/>
+    {selectedPath ? <OfficeEntryFlow ref={entry} key={selectedPath} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
+      onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
       : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请在菜单中刷新。'}</div>}
     {!projectsLoading && <OfficeMenuButton count={activeCount} onOpen={() => showPanel('menu')}/>}
     <ModalPresence>
       {panel === 'menu' ? <OfficeMenu projects={projects} selectedPath={selectedPath} snapshot={snapshot} lastUpdated={lastUpdated}
-        loading={loading} onChange={selectProject} onRefresh={() => void refresh()} onTask={selectTask} onClose={close}/>
+        loading={loading} onChange={selectProject} onRefresh={() => void refresh()} onTask={selectTask} onClose={close} onTeam={() => showPanel('team')}/>
+      : panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {entry.current?.setTeam(team); await refresh();}} onClose={close}/>
       : panel === 'member' && member ? <ModalFrame title={`与${member.name}对话`} description={`${projectName} · 办公室对话`}
         className="office-chat-modal" onClose={close} footer={null}>
         <MemberChat key={member.id} projectPath={selectedPath} projectName={projectName} member={member} preferredModel={preferredModel}

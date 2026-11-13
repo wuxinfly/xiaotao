@@ -8,6 +8,8 @@ import {join} from 'node:path';
 
 const projectPath = 'E:\\work\\demo-project';
 const secondProjectPath = 'E:\\work\\second-project';
+const roleId = 'role_0123456789abcdef';
+const appearance = {bodyType: 'standard', skinTone: 'light', hairStyle: 'short', hairColor: '#3c2a20', topStyle: 'crewneck', topColor: '#5b7489', bottomColor: '#364250', shoesColor: '#252a30', accessory: 'none'};
 
 function task(overrides = {}) {
   return {
@@ -33,8 +35,8 @@ function snapshot(tasks, artifacts = []) {
     accessMode: 'safe',
     tasks,
     members: [
-      {id: 'xiaotao', name: '小涛', role: 'coordinator', status: 'idle', todayTasks: 1},
-      {id: 'designer', name: '设计师', role: 'designer', status: 'idle', todayTasks: 0},
+      {id: 'role_0123456789abcdee', name: '开发成员', role: 'project', status: 'idle', todayTasks: 1, appearance},
+      {id: roleId, name: '设计师', role: 'project', status: 'idle', todayTasks: 0, appearance},
       ...tasks.filter(item => item.status === 'running').map(item => ({
         id: item.executor.sessionId, name: item.executor.name, role: 'executor', status: item.status,
         model: item.executor.model, taskId: item.id, taskTitle: item.title, taskStatus: item.status,
@@ -92,6 +94,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
         {path: projectPath, name: '演示项目', saved: true}, {path: secondProjectPath, name: '另一个项目', saved: true},
       ]}});
       if (path === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test/model', label: '测试模型', sourceLabel: '本地', contextWindow: 128000}]}});
+      if (path === '/api/office/team') return route.fulfill({json: {members: snapshot([]).members.slice(0, 2), globalRoles: [], projectRoles: [], onboarding: 'completed', globalRevision: 0, projectRevision: 0, teamRevision: 0}});
       if (path === '/api/office/snapshot') {
         const board = url.searchParams.get('projectPath') === secondProjectPath
           ? {...snapshot([]), project: {path: secondProjectPath, name: '另一个项目'}}
@@ -141,37 +144,21 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.office-page').waitFor();
 
     await page.getByRole('heading', {name: 'Agent 办公室'}).waitFor();
-    await page.getByText('真实运行状态').waitFor();
+    await page.getByText('成员状态').waitFor();
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
     const shelf = page.getByRole('button', {name: '打开项目资料馆'});
     const roomRect = await page.locator('.sea-office').boundingBox();
     const shelfRect = await shelf.boundingBox();
-    assert.ok(shelfRect.x + shelfRect.width / 2 >= roomRect.x + roomRect.width * .7, 'the library must sit on the right side of the room');
+    assert.ok(shelfRect.x >= roomRect.x && shelfRect.x + shelfRect.width <= roomRect.x + roomRect.width, 'the library must remain inside the room');
     await shelf.hover();
-    assert.equal(await shelf.evaluate(node => getComputedStyle(node).borderColor !== 'rgba(139, 210, 207, 0.36)'), true, 'the library must highlight on hover');
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office-dark.png')});
     assert.equal(await page.getByText('参与 23 次').count(), 0, 'prototype demo numbers must not appear');
 
-    const designer = page.getByRole('button', {name: /设计师，产品设计/});
-    await page.emulateMedia({reducedMotion: 'no-preference'});
-    const actor = designer.locator('..');
-    const initialPosition = await actor.evaluate(node => getComputedStyle(node).transform);
-    await page.waitForTimeout(700);
-    assert.notEqual(await actor.evaluate(node => getComputedStyle(node).transform), initialPosition, 'employees must move when motion is enabled');
-    await designer.evaluate(node => node.click());
-    const stoppedPosition = await actor.evaluate(node => getComputedStyle(node).transform);
-    await page.waitForTimeout(300);
-    assert.equal(await actor.evaluate(node => getComputedStyle(node).transform), stoppedPosition, 'employees must remain still after being selected');
-    await page.getByRole('menu', {name: '设计师的操作'}).getByRole('menuitem', {name: '继续走动'}).click();
-    await page.waitForTimeout(300);
-    assert.notEqual(await actor.evaluate(node => getComputedStyle(node).transform), stoppedPosition, 'employees must resume walking');
-    await page.emulateMedia({reducedMotion: 'reduce'});
-    await designer.click();
-    assert.equal(await designer.evaluate(node => node.closest('.office-actor').classList.contains('is-paused')), true, 'clicking an employee must stop the walk animation');
-    const designerActions = page.getByRole('menu', {name: '设计师的操作'});
-    await designerActions.getByRole('menuitem', {name: '对话'}).click();
+    await page.locator('canvas[data-office-renderer="three"]').waitFor();
+    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).focus();
+    await page.keyboard.press('Enter');
     const designerChat = page.getByRole('dialog', {name: '与设计师对话'});
     await designerChat.waitFor();
     assert.equal(await designerChat.evaluate(node => node.parentElement.parentElement === document.body), true);
@@ -180,7 +167,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
     await page.locator('.member-chat').getByRole('button', {name: '发送', exact: true}).click();
     await page.getByText('我们先把想法整理成一份交接。').waitFor();
-    assert.equal(chats.designer, '我想调整搜索页面');
+    assert.equal(chats[roleId], '我想调整搜索页面');
     await page.getByRole('button', {name: '查看交接并安排'}).click();
     assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
     await page.keyboard.press('Escape');
@@ -188,16 +175,15 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await designerChat.waitFor();
     await page.keyboard.press('Escape');
     await designerChat.waitFor({state: 'detached'});
-    await page.getByRole('button', {name: /小涛，办公室协调/}).click();
-    await page.getByRole('menu', {name: '小涛的操作'}).getByRole('menuitem', {name: '对话'}).click();
-    const coordinatorChat = page.getByRole('dialog', {name: '与小涛对话'});
+    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '开发成员'}).focus(); await page.keyboard.press('Enter');
+    const coordinatorChat = page.getByRole('dialog', {name: '与开发成员对话'});
     await coordinatorChat.waitFor();
     assert.equal(await page.getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
 
     await page.keyboard.press('Escape');
     await coordinatorChat.waitFor({state: 'detached'});
-    await page.getByRole('button', {name: /小涛，任务执行/}).click();
-    await page.getByRole('menu', {name: '小涛的操作'}).getByRole('menuitem', {name: '查看任务'}).click();
+    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
+    await page.getByRole('dialog', {name: '办公室菜单'}).locator('.office-task-card').first().click();
     await page.getByRole('dialog', {name: '任务详情'}).waitFor();
     await page.getByRole('button', {name: '查看全部任务'}).click();
     const menu = page.getByRole('dialog', {name: '办公室菜单'});
@@ -245,7 +231,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('button', {name: /办公室菜单/}).click();
     await menu.getByRole('button', {name: '刷新', exact: true}).click();
     await page.keyboard.press('Escape');
-    await shelf.getByText('0 本资料 · 打开目录').waitFor();
+    await shelf.getByText('项目资料馆 · 0 本资料').waitFor();
     await menu.waitFor({state: 'detached'});
     await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
     await menu.getByLabel('项目').selectOption(secondProjectPath);
@@ -270,10 +256,18 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office.png')});
     await page.setViewportSize({width: 380, height: 600});
     assert.equal(await page.locator('.office-page').evaluate(node => node.scrollWidth <= node.clientWidth), true);
-    await page.getByRole('button', {name: /设计师，产品设计/}).click();
-    await page.getByRole('menu', {name: '设计师的操作'}).getByRole('menuitem', {name: '对话'}).click();
-    await designerChat.getByLabel('给设计师发消息').waitFor();
+    await page.locator('.office-3d-accessible summary').click();
+    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).focus(); await page.keyboard.press('Enter');
+    await designerChat.getByLabel('给设计师发消息').waitFor().catch(async error => {
+      await page.screenshot({path: join(tmpdir(), 'xiaotao-office-narrow-failure.png')});
+      throw new Error(`${error.message}\nDialog: ${await designerChat.evaluate(node => ({clientHeight: node.clientHeight, scrollHeight: node.scrollHeight, text: node.textContent}))}`);
+    });
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office-chat-narrow.png')});
+    await page.keyboard.press('Escape');
+    await designerChat.waitFor({state: 'detached'});
+    await page.setViewportSize({width: 1280, height: 900});
+    await page.locator('.office-3d-accessible[open]').waitFor();
+    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).waitFor({state: 'visible'});
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

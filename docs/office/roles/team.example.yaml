@@ -1,0 +1,6 @@
+schema_version: 1
+revision: 1
+members:
+  - role_id: role_0123456789abcdef
+    role_scope: project
+    joined_at: 2026-11-13T08:00:00Z

@@ -23,9 +23,10 @@ type Props = {
   onRefresh: () => void;
   onTask: (id: string) => void;
   onClose: () => void;
+  onTeam: () => void;
 };
 
-export function OfficeMenu({projects, selectedPath, snapshot, lastUpdated, loading, onChange, onRefresh, onTask, onClose}: Props) {
+export function OfficeMenu({projects, selectedPath, snapshot, lastUpdated, loading, onChange, onRefresh, onTask, onClose, onTeam}: Props) {
   const tasks = snapshot?.tasks ?? [];
   const running = tasks.filter(task => !isTerminalTask(task.status)).length;
   return <ModalFrame title="办公室菜单" className="office-menu-modal" onClose={onClose} footer={snapshot && <p className="office-updated">
@@ -41,6 +42,7 @@ export function OfficeMenu({projects, selectedPath, snapshot, lastUpdated, loadi
       <button type="button" className="office-ghost" onClick={onRefresh} disabled={!selectedPath || loading}>
         <RefreshCw size={14} aria-hidden="true"/>{loading ? '刷新中…' : '刷新'}
       </button>
+      <button type="button" className="office-primary" onClick={onTeam} disabled={!selectedPath}>管理团队</button>
     </div>
     <section className="office-board" aria-label="任务">
       <header><h3>任务</h3><span>{running} 个进行中 / 共 {tasks.length} 个</span></header>

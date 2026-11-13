@@ -30,6 +30,7 @@ export function ModalFrame({title, description, className = '', origin, onClose,
   const exiting = useContext(ModalExiting);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const initialOrigin = useRef(origin);
@@ -50,7 +51,7 @@ export function ModalFrame({title, description, className = '', origin, onClose,
   }, []);
 
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
+    previousFocus.current = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
     const focusables = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
       'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
@@ -80,7 +81,8 @@ export function ModalFrame({title, description, className = '', origin, onClose,
     window.addEventListener('keydown', handleKey, true);
     return () => {
       window.removeEventListener('keydown', handleKey, true);
-      previous?.focus();
+      const previous = previousFocus.current;
+      if (previous?.isConnected && (!document.activeElement || document.activeElement === document.body)) previous.focus();
     };
   }, []);
 
@@ -91,6 +93,8 @@ export function ModalFrame({title, description, className = '', origin, onClose,
       <div
         ref={dialogRef}
         className={'app-modal ' + className}
+        inert={exiting}
+        aria-hidden={exiting || undefined}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

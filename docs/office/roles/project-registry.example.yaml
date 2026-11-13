@@ -1,0 +1,13 @@
+schema_version: 1
+revision: 1
+roles:
+  - id: role_0123456789abcdef
+    scope: project
+    lifecycle: active
+    name: 项目产品
+    responsibility: 梳理本项目需求
+    capabilities: [分析]
+    model: {model_id: example/product-model}
+    appearance: {shape: round, primary_color: "#36a9c9", secondary_color: "#173b55"}
+    created_at: 2026-11-13T08:00:00Z
+    updated_at: 2026-11-13T08:00:00Z

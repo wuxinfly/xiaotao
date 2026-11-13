@@ -19,6 +19,7 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 		return true
 	}
 	registerOfficeChatRoutes(mux, svc, guard, send, apiError)
+	registerTeamRoutes(mux, svc, guard, send, apiError)
 	mux.HandleFunc("GET /api/office/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
 			return

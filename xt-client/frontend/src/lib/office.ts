@@ -1,5 +1,6 @@
 import {request} from './http';
 import type {AgentActivity, AgentMessage, AgentRunStats, AgentSession, AgentThought} from './api';
+import type {Appearance, ModelPreference} from './team';
 
 export type OfficeTaskStatus = 'queued' | 'running' | 'waiting' | 'completed' | 'failed' | 'canceled';
 export type OfficeMessageStatus = 'queued' | 'delivered' | 'failed';
@@ -98,11 +99,15 @@ export interface OfficeMember {
   role: 'coordinator' | 'executor' | string;
   status: string;
   model?: string;
+  responsibility?: string;
+  capabilities?: string[];
   taskId?: string;
   taskTitle?: string;
   taskStatus?: OfficeTaskStatus;
   todayTasks: number;
   latestActivity?: OfficeActivity;
+  appearance?: Appearance;
+  modelPreference?: ModelPreference;
 }
 
 export interface OfficeCapabilities {

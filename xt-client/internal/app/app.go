@@ -193,7 +193,7 @@ func guardLocalRequests(s State, mux *http.ServeMux) http.Handler {
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' data:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'")
 		if origin := r.Header.Get("Origin"); origin != "" && origin != s.URL {
 			logging.Default().For(logging.ModuleClient).Warn("same-origin rejected", logging.F("path", r.URL.Path), logging.F("reason", "origin_mismatch"))
 			http.Error(w, "same-origin required", 403)

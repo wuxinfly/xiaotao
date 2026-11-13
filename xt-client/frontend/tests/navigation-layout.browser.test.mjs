@@ -80,7 +80,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.getByRole('button', {name: '更多', exact: true}).click();
     await page.getByRole('menuitem', {name: '切换到浅海主题'}).click();
     assert.equal(await page.locator('html').getAttribute('data-theme'), 'light');
-    await page.getByRole('menuitem', {name: '切换到深海主题'}).waitFor();
+    await page.waitForFunction(() => document.querySelector('.window-menu-trigger')?.getAttribute('aria-expanded') === 'false');
     await page.screenshot({path: join(tmpdir(), 'xiaotao-workspace-navigation.png')});
 
     await page.setViewportSize({width: 540, height: 800});

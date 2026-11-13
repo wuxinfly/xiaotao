@@ -20,7 +20,7 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
-  const [model, setModel] = useState(preferredModel);
+  const [model, setModel] = useState(member.modelPreference?.modelId || preferredModel);
   const sequence = useRef(0);
   const usableModels = useMemo(() => models.filter(item => !item.unavailable), [models]);
   const selectedConfig = modelConfigFor(modelConfigs, model, models);
@@ -72,6 +72,7 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
     catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
   }
   return <div className="member-chat">
+    {member.responsibility && <div className="member-chat-profile"><strong>{member.name}</strong><span>{member.responsibility}</span>{!!member.capabilities?.length && <small>{member.capabilities.join(' · ')}</small>}</div>}
     <div className="member-chat-toolbar">
       <label><span>模型</span><select value={model} onChange={event => setModel(event.target.value)} disabled={busy || sending}>
         {usableModels.map(item => <option key={item.model} value={item.model}>{item.label}{item.sourceLabel ? ` · ${item.sourceLabel}` : ''}</option>)}
