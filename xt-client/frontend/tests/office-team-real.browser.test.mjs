@@ -15,18 +15,19 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
   await mkdir(project);
   const output = resolve('test-results');
   await mkdir(output, {recursive: true});
-  const server = spawn('go', ['run', '../cmd/xiaotao', '--data-dir', data, '--service'], {stdio: ['ignore', 'pipe', 'pipe']});
+  let server;
   let browser;
   let page;
   let base = '';
   let log = '';
-  server.stderr.on('data', chunk => {log += chunk;});
   try {
     await new Promise((resolve, reject) => {
       const build = spawn('npm', ['run', 'build'], {shell: true, stdio: 'inherit'});
       build.once('exit', code => code === 0 ? resolve() : reject(new Error(`frontend build failed: ${code}`)));
       build.once('error', reject);
     });
+    server = spawn('go', ['run', '../cmd/xiaotao', '--data-dir', data, '--service'], {stdio: ['ignore', 'pipe', 'pipe']});
+    server.stderr.on('data', chunk => {log += chunk;});
     for (let attempt = 0; attempt < 100; attempt++) {
       try {base = JSON.parse(await readFile(join(data, 'runtime.json'), 'utf8')).URL; break;} catch {await new Promise(done => setTimeout(done, 100));}
     }
@@ -41,8 +42,9 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
     await page.goto(base);
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
-    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
-    await page.getByRole('button', {name: '管理团队', exact: true}).click();
+    await page.getByRole('button', {name: '稍后设置', exact: true}).click();
+    await page.getByRole('tab', {name: /团队/}).click();
+    await page.locator('.workspace-team').getByRole('button', {name: '管理团队', exact: true}).click();
     await page.getByRole('heading', {name: '建立项目团队'}).waitFor();
     await page.screenshot({path: join(output, 'team-create-real.png')});
     const createResponse = page.waitForResponse(response => response.url().endsWith('/api/office/team/bootstrap'));
@@ -64,22 +66,21 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
       const body = (await page.locator('body').innerText()).slice(0, 1200);
       throw new Error(`3D load failed: entry=${phase}; text=${body}; ${errors.join(' | ')}; ${reason.message}`);
     });
-    await page.getByText('3D 已加载').waitFor();
+    await page.locator('.room-project').getByText('实时同步').waitFor();
     await page.waitForTimeout(500);
     await page.screenshot({path: join(output, 'office-team-real.png')});
     const bounds = await page.locator('canvas[data-office-renderer="three"]').boundingBox();
     const point = projectMember(sceneLayout(team.members)[0], bounds.width, bounds.height);
     await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
-    await page.getByRole('dialog', {name: /与.*对话/}).waitFor();
-    await page.keyboard.press('Escape');
-    await page.getByRole('dialog').waitFor({state: 'detached'});
-    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
+    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
+    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
     await page.getByRole('button', {name: '管理团队', exact: true}).click();
     await page.getByRole('button', {name: '编辑', exact: true}).first().click();
     const editor = page.getByRole('dialog', {name: '管理团队'});
     await editor.getByLabel('姓名', {exact: true}).fill('真实产品设计师');
     await editor.locator('textarea').fill('负责真实需求与交互设计');
-    await editor.locator('select').nth(1).selectOption('hexagon');
+    await editor.getByRole('button', {name: '人物造型'}).click();
+    await page.getByRole('option', {name: '六边形'}).click();
     await editor.locator('input[type="color"]').first().fill('#123456');
     const updateResponse = page.waitForResponse(response => response.url().endsWith('/api/office/roles') && response.request().method() === 'PUT');
     await page.getByRole('button', {name: '保存角色', exact: true}).click();
@@ -100,29 +101,35 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.keyboard.press('Escape');
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
-    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '真实产品设计师'}).waitFor();
-    await page.getByRole('button', {name: /真实产品设计师.*点击对话/}).click();
-    await page.getByRole('dialog', {name: /与.*对话/}).waitFor();
-    await page.keyboard.press('Escape');
-    await page.getByRole('dialog').waitFor({state: 'detached'});
+    await page.getByRole('tab', {name: /团队/}).click();
+    await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).waitFor();
+    await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).click();
+    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
+    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
     const snapshot = await (await fetch(`${base}/api/office/snapshot?projectPath=${encodeURIComponent(project)}`)).json();
     assert.equal(snapshot.members.find(member => member.id === originalId).responsibility, '负责真实需求与交互设计');
     assert.equal(snapshot.members.find(member => member.id === originalId).status, 'idle');
     await page.setViewportSize({width: 600, height: 900});
-    const selector = page.locator('.office-3d-accessible');
-    if (await selector.locator('summary').isVisible()) await selector.locator('summary').click();
-    await selector.locator('[data-member-id]').filter({hasText: '真实产品设计师'}).click();
-    await page.getByRole('dialog', {name: /与.*对话/}).waitFor();
-    await page.keyboard.press('Escape');
-    await page.getByRole('dialog').waitFor({state: 'detached'});
-    if (await selector.locator('summary').isVisible()) await selector.locator('summary').click();
+    await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).click();
+    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
+    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
+    await page.setViewportSize({width: 800, height: 900});
+    assert.equal(await page.locator('.workspace-grid').evaluate(element => getComputedStyle(element).display), 'flex');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow office must not overflow horizontally');
+    await page.evaluate(() => {document.querySelector('.office-live-page').scrollTop = 0;});
+    const sidebar = await page.locator('.workspace-sidebar').boundingBox();
+    const statusbar = await page.locator('.workspace-statusbar').boundingBox();
+    assert.ok(sidebar.y + sidebar.height <= statusbar.y, 'the status bar must not cover the member list');
     await page.screenshot({path: join(output, 'office-team-real-mobile.png')});
+    const name = page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).locator('strong');
+    assert.ok(await name.evaluate(element => element.getBoundingClientRect().height <= 24), 'member name and role must stay on one line');
+    assert.ok(await name.locator(':scope > span').evaluate(element => element.getBoundingClientRect().width >= 80), 'member name must retain a readable column');
     assert.deepEqual(errors, []);
     context.diagnostic(`真实团队已保存到 ${project}；截图位于 ${output}`);
   } finally {
     await page?.screenshot({path: join(output, 'office-team-real-failure.png')}).catch(() => {});
     await browser?.close();
     if (base) await fetch(base + '/api/shutdown', {method: 'POST', headers: {Authorization: `Bearer ${JSON.parse(await readFile(join(data, 'runtime.json'), 'utf8')).Token}`}}).catch(() => {});
-    server.kill();
+    server?.kill();
   }
 });

@@ -4,22 +4,21 @@ import {useAgentModelSettings} from '../../lib/agent-model-settings';
 import {isTerminalTask, officeApi, type OfficeArtifact, type OfficeArtifactDetail, type OfficeTask, type OfficeTaskDetail} from '../../lib/office';
 import {toast} from '../../components/toast';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
-import {ModalFrame, ModalPresence} from '../../components/modal/ModalFrame';
-import {Select} from '../../components/select/Select';
+import {ModalPresence} from '../../components/modal/ModalFrame';
 import {ArtifactModal} from './ArtifactModal';
 import {ArtifactLibraryModal} from './ArtifactLibraryModal';
-import {MemberChat} from './MemberChat';
 import {CreateTaskModal} from './CreateTaskModal';
 import {OfficeEntryFlow, type OfficeEntryHandle} from './OfficeEntryFlow';
-import {OfficeMenu, OfficeMenuButton} from './OfficeMenu';
-import {TaskDetail} from './TaskDetail';
+import {OfficeWorkspace} from './OfficeWorkspace';
 import {useOfficePolling} from './useOfficePolling';
 import {TeamManager} from './TeamManager';
 import './team.css';
 import './office.css';
+import './office-workspace.css';
 
 type Props = {visible: boolean};
-type Panel = 'menu' | 'task' | 'member' | 'library' | 'artifact' | 'create' | 'team' | null;
+type Panel = 'library' | 'artifact' | 'create' | 'team' | null;
+type WorkspaceView = 'tasks' | 'team' | 'task' | 'member';
 
 const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
 
@@ -35,20 +34,19 @@ export function OfficePage({visible}: Props) {
   const [detailError, setDetailError] = useState('');
   const [activeTaskId, setActiveTaskId] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
   const [handoffGoal, setHandoffGoal] = useState('');
   const [activeMemberId, setActiveMemberId] = useState('');
   const [artifact, setArtifact] = useState<OfficeArtifactDetail | null>(null);
   const detailRequest = useRef(0);
   const taskSelection = useRef<{path: string; id: string} | null>(null);
   const artifactRequest = useRef(0);
-  const artifactReturn = useRef<Panel>(null);
+  const artifactReturn = useRef<'library' | null>(null);
   const entry = useRef<OfficeEntryHandle>(null);
 
   const project = useMemo(() => projects.find(item => projectKey(item.path) === projectKey(selectedPath)), [projects, selectedPath]);
   const projectName = project?.name || '';
-  const {snapshot, loading, error, lastUpdated, refresh} = useOfficePolling(selectedPath, projectName, visible);
-  const member = snapshot?.members.find(item => item.id === activeMemberId);
-  const task = snapshot?.tasks.find(item => item.id === activeTaskId);
+  const {snapshot, loading, error, refresh} = useOfficePolling(selectedPath, projectName, visible);
   const {enabledModels, modelConfigs} = useAgentModelSettings();
 
   useEffect(() => {
@@ -81,21 +79,24 @@ export function OfficePage({visible}: Props) {
     }
   }, [selectedPath]);
 
+  function clearTask() {
+    taskSelection.current = null;
+    detailRequest.current++;
+    setActiveTaskId('');
+    setDetail(null);
+    setDetailError('');
+    setDetailLoading(false);
+  }
+
   function showPanel(next: Panel) {
     artifactRequest.current++;
     setPanel(next);
-    if (next !== 'task' && next !== 'artifact') {
-      taskSelection.current = null;
-      detailRequest.current++;
-      setActiveTaskId('');
-      setDetail(null);
-      setDetailError('');
-      setDetailLoading(false);
-    }
   }
 
   function selectProject(path: string) {
-    showPanel('menu');
+    clearTask();
+    showPanel(null);
+    setWorkspaceView('tasks');
     setSelectedPath(path);
   }
 
@@ -103,11 +104,11 @@ export function OfficePage({visible}: Props) {
   // instead of running a second timer. Detail is never loaded for other tasks,
   // and a finished task's transcript is not reloaded on every idle poll.
   useEffect(() => {
-    if (!visible || !activeTaskId || (panel !== 'task' && panel !== 'artifact')) return;
+    if (!visible || !activeTaskId || workspaceView !== 'task') return;
     const current = snapshot?.tasks.find(item => item.id === activeTaskId);
     if (current && isTerminalTask(current.status) && detail?.task.id === activeTaskId) return;
     void loadDetail(activeTaskId, true);
-  }, [visible, activeTaskId, loadDetail, snapshot, detail?.task.id, panel]);
+  }, [visible, activeTaskId, loadDetail, snapshot, detail?.task.id, workspaceView]);
 
   const loadEarlier = useCallback(async () => {
     if (!selectedPath || !activeTaskId || !detail?.history?.before) return;
@@ -135,7 +136,8 @@ export function OfficePage({visible}: Props) {
     || models.find(item => !item.unavailable)?.model || '', [models, enabledModels]);
 
   function selectTask(taskId: string) {
-    showPanel('task');
+    showPanel(null);
+    setWorkspaceView('task');
     taskSelection.current = {path: selectedPath, id: taskId};
     if (taskId !== activeTaskId) {
       // Never show the previous task's transcript under the new title while
@@ -187,7 +189,7 @@ export function OfficePage({visible}: Props) {
         void refresh();
         if (activeTaskId) void loadDetail(activeTaskId, true);
       }
-      artifactReturn.current = panel;
+      artifactReturn.current = panel === 'library' ? 'library' : null;
       setArtifact(result);
       showPanel('artifact');
     } catch (reason) {
@@ -197,7 +199,8 @@ export function OfficePage({visible}: Props) {
 
   function selectMember(id: string) {
     setActiveMemberId(id);
-    showPanel('member');
+    showPanel(null);
+    setWorkspaceView('member');
   }
 
   if (!projectsLoading && !projects.length) {
@@ -211,36 +214,30 @@ export function OfficePage({visible}: Props) {
   }
 
   const close = () => showPanel(null);
-  const activeCount = snapshot?.tasks.filter(item => !isTerminalTask(item.status)).length ?? 0;
   const visibleArtifacts = snapshot ? new Set(snapshot.artifacts.map(item => item.id)) : null;
   const currentDetail = detail && visibleArtifacts ? {...detail, artifacts: detail.artifacts.filter(item => visibleArtifacts.has(item.id))} : detail;
   return <div className="office-page office-live-page content-column">
-    {selectedPath && <label className="office-project-switch"><span>当前项目</span><Select aria-label="切换项目" value={selectedPath} onChange={next => {showPanel(null); setSelectedPath(next);}} options={projects.map(item => ({value: item.path, label: item.name}))}/></label>}
-    {error && <p className="office-error office-page-error" role="alert">刷新办公室失败：{error}</p>}
-    {selectedPath ? <OfficeEntryFlow ref={entry} key={selectedPath} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
-      onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
-      : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请在菜单中刷新。'}</div>}
-    {!projectsLoading && <OfficeMenuButton count={activeCount} onOpen={() => showPanel('menu')}/>}
+    <OfficeWorkspace projectPath={selectedPath} projectName={projectName} projects={projects} snapshot={snapshot} loading={loading} error={error}
+      view={workspaceView} activeTaskId={activeTaskId} activeMemberId={activeMemberId} detail={currentDetail} detailLoading={detailLoading} detailError={detailError}
+      models={models} modelConfigs={modelConfigs} preferredModel={preferredModel}
+      onProject={selectProject} onView={next => {setWorkspaceView(next); clearTask();}}
+      onRefresh={() => void refresh()}
+      onCreate={() => showPanel('create')} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
+      onCloseDetail={() => {clearTask(); setWorkspaceView(workspaceView === 'member' ? 'team' : 'tasks');}}
+      onRefreshDetail={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onCancelTask={() => void cancelTask()}
+      onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}
+      onOpenArtifact={item => void openArtifact(item)} onHandoff={goal => {setHandoffGoal(goal); showPanel('create');}}
+      onOpenLibrary={() => showPanel('library')}>
+      {selectedPath ? <OfficeEntryFlow ref={entry} key={selectedPath} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
+        onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
+        : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请选择项目后重试。'}</div>}
+    </OfficeWorkspace>
     <ModalPresence>
-      {panel === 'menu' ? <OfficeMenu projects={projects} selectedPath={selectedPath} snapshot={snapshot} lastUpdated={lastUpdated}
-        loading={loading} onChange={selectProject} onRefresh={() => void refresh()} onTask={selectTask} onClose={close} onTeam={() => showPanel('team')}/>
-      : panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {entry.current?.setTeam(team); await refresh();}} onClose={close}/>
-      : panel === 'member' && member ? <ModalFrame title={`与${member.name}对话`} description={`${projectName} · 办公室对话`}
-        className="office-chat-modal" onClose={close} footer={null}>
-        <MemberChat key={member.id} projectPath={selectedPath} projectName={projectName} member={member} preferredModel={preferredModel}
-          models={models} modelConfigs={modelConfigs} onHandoff={goal => {setHandoffGoal(goal); showPanel('create');}}/>
-      </ModalFrame>
-      : panel === 'task' ? <ModalFrame title="任务详情" className="office-task-modal" onClose={close}
-        footer={<button type="button" className="office-ghost" onClick={() => showPanel('menu')}>查看全部任务</button>}>
-        <TaskDetail key={activeTaskId} projectPath={selectedPath} detail={currentDetail} loading={detailLoading} error={detailError}
-          onRefresh={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onOpenArtifact={item => void openArtifact(item)}
-          onCancel={() => void cancelTask()} onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}/>
-        {!detail && task && <p className="office-muted">{task.title}</p>}
-      </ModalFrame>
+      {panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {entry.current?.setTeam(team); await refresh();}} onClose={close}/>
       : panel === 'create' ? <CreateTaskModal projectPath={selectedPath} projectName={projectName} models={models}
         modelConfigs={modelConfigs} preferredModel={preferredModel} initialGoal={handoffGoal}
         onCreated={(created: OfficeTask) => {toast.success('任务已安排，执行者开始工作'); void refresh(); selectTask(created.id);}}
-        onClose={() => showPanel('member')}/>
+        onClose={close}/>
       : panel === 'library' ? <ArtifactLibraryModal artifacts={snapshot?.artifacts || []} onOpenArtifact={item => void openArtifact(item)} onClose={close}/>
       : panel === 'artifact' && artifact ? <ArtifactModal detail={artifact} onClose={() => showPanel(artifactReturn.current)}/>
       : null}

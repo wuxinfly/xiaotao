@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "candidate_id": "theme-aware-surface-tokens",
+  "created_at": "2026-11-14T03:30:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.theme-aware-surface-tokens",
+  "text": "xt-client 前端新增或修改主题相关表面时，颜色必须用主题变量或组件级令牌承载，不得把背景写死成单主题色值却让文字继续读 `--muted`、`--ocean-text` 等主题变量。同一套 DOM 必须在深海和浅海主题下都成立；需要在浅色下单独调色的模块，用组件级令牌（如 `--plugin-*`）承载表面、描边和文字色，两套主题各给一组取值。正文对比度不低于 WCAG AA 的 4.5:1，大字不低于 3:1。",
+  "rationale": "模型来源插件区把卡片背景、描边和徽章底色硬编码成深海色，文字却读主题变量。切到浅海主题后 `--muted` 变成深色 #5b7885，压在 #0d2635 的深底上，正文对比度只有约 2:1，插件索引、本机插件包和手动填写路径等区域几乎不可读，且没有报错只能靠肉眼发现。同账号页的 sources.css 全程使用 var(--ocean-panel)、var(--line) 等主题变量所以浅色下自动正确，说明同页两种写法并存，插件区是漏掉主题适配的那一种。改为组件级令牌后浅海主题面板转为浅色表面，深海主题保持原样；新增 `tests/plugin-light-theme.browser.test.mjs` 扫描面板内全部文字节点，两套主题均达到 AA。",
+  "observations": 2,
+  "source_refs": [
+    "xt-client/frontend/src/features/accounts/plugins.css",
+    "xt-client/frontend/src/features/accounts/plugin-accounts.css",
+    "xt-client/frontend/tests/plugin-light-theme.browser.test.mjs",
+    "xt-client/frontend/src/shallow-sea.css",
+    "xt-client/README.md"
+  ]
+}

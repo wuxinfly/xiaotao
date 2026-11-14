@@ -15,10 +15,9 @@ export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function Off
   const entry = useProjectTeam(projectPath, visible);
   const [attempt, setAttempt] = useState(0);
   useImperativeHandle(ref, () => ({setTeam: entry.setTeam}));
-  const showTeam = entry.phase === 'ready' || entry.phase === 'empty' || entry.phase === 'error';
   return <div className="office-entry-flow" data-entry-phase={entry.phase} data-project-path={projectPath}>
     {entry.phase === 'loading' && <section className="office-loading" role="status"><span className="office-loading-mark"/><span className="office-eyebrow">正在打开 {project?.name || '项目办公室'}</span><h1>准备你的工作空间</h1><p>正在读取项目团队与引导设置…</p></section>}
-    {entry.phase === 'onboarding' && entry.team && <TeamOnboarding key={projectPath} projectPath={projectPath} projectName={project?.name || ''} team={entry.team} models={models} onCreated={entry.setTeam} onSkip={team => {entry.setTeam(team); entry.setPhase('empty');}}/>}
+    {entry.phase === 'onboarding' && entry.team && <div className="office-onboarding-overlay"><TeamOnboarding key={projectPath} projectPath={projectPath} projectName={project?.name || ''} team={entry.team} models={models} onCreated={entry.setTeam} onSkip={team => {entry.setTeam(team); entry.setPhase('empty');}}/></div>}
     {entry.phase === 'preparing' && <section className="office-loading" role="status"><span className="office-loading-mark"/><span className="office-eyebrow">团队已就绪</span><h1>正在准备办公室</h1><p>正在加载本地模型并绘制第一帧，不使用模拟进度。</p></section>}
     {(entry.phase === 'ready' || entry.phase === 'preparing' || entry.phase === 'error') && entry.team && <OfficeRoom key={attempt} projectName={project?.name || ''} members={members} artifactCount={artifactCount} active={visible && entry.phase === 'ready'} onSelectMember={onSelectMember} onOpenLibrary={onOpenLibrary} onReady={() => entry.setPhase('ready')} onError={message => entry.setPhase('error', message)}/>} 
     {(entry.phase === 'error' || entry.phase === 'empty' || entry.phase === 'preparing') && <div className="office-fallback-wrap">
@@ -27,6 +26,5 @@ export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function Off
       <TeamList members={members} onSelect={onSelectMember} onManage={onManage}/>
     </div>}
     {children}
-    {showTeam && <button className="office-team-manage-shortcut" onClick={onManage}>团队管理</button>}
   </div>;
 });

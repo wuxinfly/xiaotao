@@ -15,6 +15,7 @@ export class OfficeEngine {
   private characterTemplate: THREE.Group;
   private lost = false;
   private pausedMember = '';
+  private labels = new Map<string, THREE.Sprite>();
   private frame = 0;
   private last = 0;
   private elapsed = 0;
@@ -99,6 +100,8 @@ export class OfficeEngine {
     const signature = `${member.name}|${member.status}|${member.responsibility || member.role || ''}`;
     if (actor.userData.label === signature) return;
     actor.userData.label = signature;
+    const old = this.labels.get(member.id);
+    if (old) {this.scene.remove(old); old.material.map?.dispose(); old.material.dispose(); this.labels.delete(member.id);}
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
     const context = canvas.getContext('2d'); if (!context) return;
     context.fillStyle = '#263b45'; context.beginPath(); context.roundRect(36, 18, 440, 92, 18); context.fill();
@@ -106,15 +109,10 @@ export class OfficeEngine {
     context.fillText(member.name, 256, 59);
     context.fillStyle = member.status === 'failed' ? '#ffc3b0' : member.status === 'running' ? '#b3f0d6' : '#d7e2e4';
     context.font = '23px sans-serif'; context.fillText(`${member.responsibility || member.role || '项目成员'} · ${statusPose(member.status)}`, 256, 93);
-    const old = actor.getObjectByName('member-label') as THREE.Sprite | undefined;
-    if (old) {old.material.map?.dispose(); old.material.dispose(); actor.remove(old);}
     const label = new THREE.Sprite(new THREE.SpriteMaterial({map: new THREE.CanvasTexture(canvas), depthTest: false}));
     label.name = 'member-label'; label.position.set(0, 3.04, 0); label.scale.set(2.25, .5625, 1);
-    actor.updateMatrixWorld(true);
-    label.position.applyMatrix4(actor.matrixWorld.clone().invert());
-    actor.getWorldScale(label.scale);
-    label.scale.set(2.25 / label.scale.x, .5625 / label.scale.y, 1);
-    actor.add(label);
+    this.scene.add(label);
+    this.labels.set(member.id, label);
   }
 
   private resize = () => {
@@ -140,7 +138,11 @@ export class OfficeEngine {
     if (time - this.last >= 1000 / 30) {
       this.elapsed += Math.min(50, time - this.last); this.last = time;
       if (this.reduced) {this.render(); return;}
-      this.actors.forEach((actor, id) => statusMotion(actor, this.elapsed, id === this.pausedMember));
+      this.actors.forEach((actor, id) => {
+        statusMotion(actor, this.elapsed, id === this.pausedMember);
+        const label = this.labels.get(id);
+        if (label) label.position.set(actor.position.x, actor.position.y + 3.04, actor.position.z);
+      });
       this.renderer.render(this.scene, this.camera);
     }
     this.schedule();
@@ -184,6 +186,9 @@ export class OfficeEngine {
   reset() {this.target.set(0, 1, .7); this.camera.position.set(10, 11, -14); this.camera.zoom = 1; this.camera.lookAt(this.target); this.camera.updateProjectionMatrix(); this.render();}
   setActive(active: boolean) {this.enabled = active; this.updateActivity(); if (active) this.render();}
   private dispose(object: THREE.Object3D) {
+    const id = object.userData.memberId as string | undefined;
+    const label = id ? this.labels.get(id) : undefined;
+    if (label) {this.scene.remove(label); label.material.map?.dispose(); label.material.dispose(); this.labels.delete(id!);}
     object.traverse(child => {
       if (!(child instanceof THREE.Mesh) && !(child instanceof THREE.Sprite)) return;
       if ('geometry' in child) child.geometry.dispose();

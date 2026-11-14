@@ -47,6 +47,37 @@
   .office-camera-controls { bottom: 64px; }
 }
 @media (prefers-reduced-motion: reduce) { .office-3d-accessible button { transition: none; } }
+.office-3d-room { min-height: 0; border-radius: 0; background: #e4e4d9; }
+.office-3d-stage { inset: 0; }
+.room-toolbar { position: absolute; z-index: 5; top: 0; right: 0; left: 0; display: flex; align-items: flex-start; justify-content: space-between; padding: 22px; pointer-events: none; }
+.room-project { display: flex; align-items: center; gap: 10px; color: #4c6051; }
+.room-project-icon { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #c5d1bd; border-radius: 8px; background: #f4f6ed99; color: #819272; }
+.room-project strong { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; }
+.room-project small { display: flex; align-items: center; gap: 5px; color: #66765b; font-size: 10px; }
+.room-project small i { width: 5px; height: 5px; border-radius: 50%; background: #b0a884; }
+.room-project small i.is-online { background: #7e9e69; }
+.room-scene-label { padding: 5px 8px; border: 1px solid #cdd5c4; border-radius: 4px; background: #eff1e799; color: #87937b; font-size: 9px; letter-spacing: .04em; }
+.room-caption { position: absolute; z-index: 4; top: 94px; left: 24px; display: grid; gap: 9px; pointer-events: none; }
+.room-caption > span { color: #66755c; font-size: 11px; }
+.room-caption small { display: flex; align-items: center; gap: 5px; color: #77836c; font-size: 10px; }
+.office-3d-room .office-3d-library { right: 21px; bottom: 67px; left: auto; display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; min-width: 128px; padding: 11px 13px; border-color: #ccd5c3; border-radius: 7px; background: #f6f8eee8; color: #748166; box-shadow: 0 3px 8px #5364450a; text-align: left; }
+.office-3d-room .office-3d-library svg { grid-row: 1 / 3; align-self: center; }
+.office-3d-room .office-3d-library span { font-size: 11px; font-weight: 500; }
+.office-3d-room .office-3d-library small { color: #77856b; font-size: 10px; font-weight: 400; }
+.office-3d-room .office-3d-library:hover { background: #fffef5; color: #526b42; }
+.room-floor-label { position: absolute; bottom: 84px; left: 31px; display: flex; align-items: center; gap: 10px; color: #9aa18d; font-size: 9px; letter-spacing: .12em; pointer-events: none; }
+.room-floor-label i { width: 32px; height: 1px; background: #b9c2a9; }
+.room-bottom-bar { position: absolute; z-index: 5; right: 20px; bottom: 18px; left: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }
+.room-bottom-bar > * { pointer-events: auto; }
+.office-3d-room .office-3d-instructions { position: static; padding: 0; background: transparent; color: #75846a; box-shadow: none; font-size: 10px; }
+.office-3d-room .office-3d-instructions button { color: #75846a; font-size: 15px; }
+.room-explore-hint { color: #5d6b53; font-size: 11px; }
+.office-3d-room .office-camera-controls { position: static; display: flex; gap: 0; overflow: hidden; border: 1px solid #cdd5c3; border-radius: 6px; background: #f6f8eddf; }
+.office-3d-room .office-camera-controls button { display: grid; width: 29px; min-width: 0; height: 29px; min-height: 0; place-items: center; padding: 0; border: 0; border-right: 1px solid #d8dfce; background: transparent; color: #819071; }
+.office-3d-room .office-camera-controls button:last-child { border-right: 0; }
+.office-3d-room .office-camera-controls button:hover { background: #e8efdc; color: #4f703c; }
+.office-3d-room .office-3d-status { top: 73px; right: 21px; padding: 6px 9px; border: 1px solid #d3dbc8; background: #f5f7ecdd; color: #8a967b; font-size: 10px; }
+@media (max-width: 520px) { .room-toolbar { padding: 16px; } .room-caption { top: 84px; left: 17px; } .room-caption > span { font-size: 10px; } .room-bottom-bar { right: 13px; bottom: 13px; left: 13px; } .office-3d-room .office-3d-library { right: 14px; bottom: 56px; min-width: 110px; padding: 9px; } .room-floor-label { display: none; } .office-3d-room .office-3d-instructions { font-size: 8px; } }
 .office-project-switch { position: absolute; z-index: 40; top: 17px; right: 24px; display: grid; gap: 4px; width: min(220px, 35%); color: #a9c7c9; font-size: 11px; }
 .office-project-switch .app-select-trigger { width: 100%; min-height: 36px; }
 .office-3d-room .sea-office-title { max-width: 58%; }
@@ -58,5 +89,4 @@
 .office-3d-room .office-member-copy small { color: #536f70; }
 .office-3d-room .office-3d-library { color: #244a4c; }
 .office-3d-room .office-3d-library:hover { color: #145d54; }
-.office-entry-flow .office-team-manage-shortcut { display: none; }
 @media (max-width: 520px) { .office-project-switch { top: 12px; right: 12px; width: 40%; } .office-3d-room .sea-office-title h1 { font-size: 19px; } }

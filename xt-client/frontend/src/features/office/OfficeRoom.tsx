@@ -1,9 +1,9 @@
-import {Library, Users} from 'lucide-react';
+import {Archive, Maximize2, Minus, Plus} from 'lucide-react';
 import type {OfficeMember, OfficeTask} from '../../lib/office';
 import {taskStatusLabel, taskStatusTone} from '../../lib/office';
 import './office-scene.css';
 import './office-3d.css';
-import {useEffect, useRef, useState} from 'react';
+import {useRef, useState} from 'react';
 import {OfficeScene3D, type SceneControls} from './OfficeScene3D';
 import {sceneMembers} from './scene-contract';
 
@@ -19,34 +19,22 @@ type Props = {
 };
 
 export function OfficeRoom({projectName, members, artifactCount, onSelectMember, onOpenLibrary, active, onError, onReady}: Props) {
-  const [instructionsDismissed, setInstructionsDismissed] = useState(false);
-  const [membersExpanded, setMembersExpanded] = useState(() => !matchMedia('(max-width: 520px)').matches);
-  useEffect(() => {
-    const query = matchMedia('(max-width: 520px)');
-    const update = () => setMembersExpanded(!query.matches);
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
+  const [sceneStatus, setSceneStatus] = useState('连接中');
   const controls = useRef<SceneControls>(null);
   const team = sceneMembers(members);
-  const choose = (id: string) => {setInstructionsDismissed(true); onSelectMember(id);};
-  const openLibrary = () => {setInstructionsDismissed(true); onOpenLibrary();};
+  const choose = (id: string) => onSelectMember(id);
+  const openLibrary = () => onOpenLibrary();
   return <section className="office-room sea-office office-3d-room" aria-label="办公室">
-    <header className="sea-office-head">
-      <div className="sea-office-title">
-        <span className="sea-office-label">工作空间 / {projectName}</span>
-        <h1>Agent 办公室</h1>
-        <p>选择一位成员，开始协作。</p>
-      </div>
-    </header>
-    <div className="sea-office-room-label"><Users size={14} aria-hidden="true"/>员工活动区<span>点击员工暂停并打开操作</span></div>
-    <div className="office-3d-stage"><OfficeScene3D ref={controls} active={active} members={team} onSelect={choose} onShelf={openLibrary} onReady={onReady} onError={onError}/>
-      {!active && <div className="office-3d-status" role="status">正在绘制第一帧…</div>}
-      <button className="office-3d-library" onClick={openLibrary} aria-label="打开项目资料馆"><Library size={17}/>项目资料馆 · {artifactCount} 本资料</button>
+    <div className="office-3d-stage"><OfficeScene3D ref={controls} active={active} members={team} onSelect={choose} onShelf={openLibrary} onReady={() => {setSceneStatus('实时同步'); onReady();}} onError={message => {setSceneStatus('场景需重载'); onError(message);}}/>
+      <header className="room-toolbar"><div className="room-project"><span className="room-project-icon"><Archive size={17}/></span><div><strong>{projectName || '项目办公室'}</strong><small><i className={active ? 'is-online' : ''}/>{sceneStatus}</small></div></div><span className="room-scene-label">3D 工作空间</span></header>
+      <div className="room-caption"><span>{team.length} 位成员 · 随时可以聊聊</span></div>
+      {!active && <div className="office-3d-status" role="status">正在准备工作空间…</div>}
+      <button className="office-3d-library" onClick={openLibrary} aria-label="打开项目资料馆"><Archive size={16}/><span>项目资料馆</span><small>{artifactCount} 份资料</small></button>
     </div>
-    <details className="office-3d-accessible" open={membersExpanded} onToggle={event => setMembersExpanded(event.currentTarget.open)}><summary><Users size={15} aria-hidden="true"/>团队成员 <span>{team.length}</span></summary><div>{team.map(member => <button key={member.id} data-member-id={member.id} onClick={() => {controls.current?.pauseMember(member.id); choose(member.id);}}><span className="office-member-avatar" aria-hidden="true">{member.name.slice(0, 1)}</span><span className="office-member-copy"><strong>{member.name}</strong><small>{member.responsibility || '项目成员'}</small></span><span className={`office-member-state state-${member.status}`}>{member.status === 'running' ? '工作中' : member.status === 'failed' ? '需关注' : member.status === 'waiting' ? '等待中' : '空闲'}</span></button>)}{!team.length && <p>暂无成员，可在团队管理中添加。</p>}</div></details>
-    {!instructionsDismissed && <div className="office-3d-instructions"><span>拖拽平移 · 滚轮缩放 · 点击成员对话</span><button aria-label="关闭操作提示" onClick={() => setInstructionsDismissed(true)}>×</button></div>}
-    <div className="office-camera-controls" aria-label="办公室视角"><button className="office-ghost" onClick={() => controls.current?.zoomIn()} aria-label="放大视角">＋</button><button className="office-ghost" onClick={() => controls.current?.zoomOut()} aria-label="缩小视角">−</button><button className="office-ghost" onClick={() => controls.current?.reset()}>复位视角</button></div>
+    <footer className="room-bottom-bar">
+      <span className="room-explore-hint">自由探索你的工作空间</span>
+      <div className="office-camera-controls" aria-label="办公室视角"><button onClick={() => controls.current?.zoomOut()} aria-label="缩小视角" title="缩小"><Minus size={14}/></button><button onClick={() => controls.current?.reset()} aria-label="复位视角" title="复位视角"><Maximize2 size={13}/></button><button onClick={() => controls.current?.zoomIn()} aria-label="放大视角" title="放大"><Plus size={14}/></button></div>
+    </footer>
   </section>;
 }
 

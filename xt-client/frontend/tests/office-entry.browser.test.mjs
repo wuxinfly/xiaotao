@@ -37,7 +37,7 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
     await page.getByRole('heading',{name:'为你的项目，组建一支小队。'}).waitFor();
     await page.setViewportSize({width: 800, height: 500});
-    const scrollArea = page.locator('.office-live-page');
+    const scrollArea = page.locator('.office-onboarding-overlay');
     await scrollArea.evaluate(element => {element.scrollTop = element.scrollHeight;});
     assert.ok(await scrollArea.evaluate(element => element.scrollTop > 0));
     await page.getByRole('button',{name:'稍后设置'}).click();
@@ -47,7 +47,8 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
     await page.getByRole('heading',{name:'项目团队'}).waitFor();
-    await page.getByRole('button',{name:'管理团队',exact:true}).click();
+    await page.getByRole('tab',{name:/团队/}).click();
+    await page.locator('.workspace-team').getByRole('button',{name:'管理团队',exact:true}).first().click();
     await page.keyboard.press('Escape');
     current=team(0,'pending');
     await page.reload();

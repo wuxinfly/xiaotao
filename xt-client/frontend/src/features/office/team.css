@@ -1,14 +1,15 @@
 .team-manager-modal { max-width: 860px; }
 .team-template h3, .team-invite h3 { margin: 0 0 6px; }
 .team-template > p, .team-invite p, .team-member-list p { color: var(--text-secondary); }
-.role-editor { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 18px; border-top: 1px solid var(--border-subtle); padding: 18px 0; }
+.role-editor { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; border-top: 1px solid var(--border-subtle); padding: 18px 0; }
 .role-editor-fields, .role-appearance { display: grid; gap: 10px; align-content: start; }
 .role-editor label { display: grid; gap: 5px; font-size: 12px; }
 .role-editor input, .role-editor .app-select-trigger, .role-editor textarea { min-width: 0; }
 .role-model-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .role-stable-id { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; margin: 0; }
 .role-stable-id code { color: var(--text-primary); }
-.role-preview { display: grid; width: 180px; height: 220px; justify-self: center; place-items: center; color: var(--text-secondary); font-size: 12px; text-align: center; }
+.role-preview { position: relative; display: grid; width: 180px; max-width: 100%; height: 200px; overflow: hidden; justify-self: center; place-items: center; border: 1px solid var(--border-subtle); border-radius: 10px; background: #e4e5d9; color: var(--text-secondary); font-size: 12px; text-align: center; }
+.role-preview canvas { display: block; max-width: 100%; height: auto !important; }
 .team-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; grid-column: 1 / -1; }
 .team-member-list article { padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
 .team-member-list header { display: flex; justify-content: space-between; gap: 10px; }
@@ -58,7 +59,6 @@
 .office-scene-error > div { flex: 1; }
 .office-scene-error p { margin: 5px 0 0; color: var(--text-secondary); }
 .office-fallback-wrap { max-width: 1020px; margin: 0 auto; padding: 30px 18px; }
-.office-team-manage-shortcut { position: fixed; right: 24px; bottom: 24px; color: var(--text-secondary); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 9px 14px; background: var(--bg-secondary); }
 .office-loading-note { text-align: center; color: var(--text-secondary); }
 [data-theme='light'] .office-loading, [data-theme='light'] .onboarding-workspace, [data-theme='light'] .team-fallback { background: #fff; border-color: #c8d9dd; }
 [data-theme='light'] .office-eyebrow { color: #267570; }
@@ -100,3 +100,14 @@
 [data-theme='light'] .office-live-page .onboarding-role summary:hover { background: #e4f2eb; }
 [data-theme='light'] .office-live-page .onboarding-role summary small, [data-theme='light'] .office-live-page .role-edit-label { color: #526f76; }
 @media (max-width: 640px) { .office-live-page .team-onboarding { padding: 90px 16px 110px; } .office-live-page .onboarding-workspace { padding: 16px; } .office-live-page .onboarding-tabs { width: 100%; box-sizing: border-box; } .office-live-page .onboarding-tabs button { flex: 1; justify-content: center; } }
+.office-onboarding-overlay .team-onboarding { box-sizing: border-box; max-width: 940px; padding: 75px 24px 55px; color: #3c5034; }
+.office-onboarding-overlay .onboarding-heading { max-width: none; margin: 0 0 28px; padding: 12px 0 0; text-align: left; }
+.office-onboarding-overlay .onboarding-heading h1 { margin: 8px 0; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.025em; }
+.office-onboarding-overlay .onboarding-heading p { max-width: 640px; color: #819176; }
+.office-onboarding-overlay .onboarding-workspace { border-color: #d5dec9; background: #fafbf6; }
+.office-onboarding-overlay .onboarding-tabs { border-color: #d6e0ca; background: #eef3e6; }
+.office-onboarding-overlay .onboarding-tabs button { color: #829372; }
+.office-onboarding-overlay .onboarding-tabs button.selected { border-color: #6e9360; color: #4e703e; }
+.office-onboarding-overlay .onboarding-role { border-color: #dce4d2; background: #f0f5e9; }
+.office-onboarding-overlay :is(.onboarding-footer > span, .onboarding-role summary small, .onboarding-template p, .role-editor label) { color: #7d8e70; }
+@media (max-width: 640px) { .office-onboarding-overlay .team-onboarding { padding: 65px 16px 35px; } }

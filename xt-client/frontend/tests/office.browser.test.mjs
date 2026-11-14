@@ -143,13 +143,17 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
     await page.locator('.office-page').waitFor();
 
-    await page.getByRole('heading', {name: 'Agent 办公室'}).waitFor();
-    await page.getByLabel('切换项目').waitFor();
+    await page.getByRole('heading', {name: '办公室', exact: true}).waitFor();
+    await page.getByRole('button', {name: '切换项目'}).waitFor();
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
+    await page.getByRole('heading', {name: '任务区'}).waitFor();
+    await page.getByRole('tab', {name: /任务/}).click();
+    await page.locator('.workspace-task-list .office-task-card').first().waitFor();
+    assert.equal(await page.getByRole('button', {name: '办公室菜单', exact: true}).count(), 0);
     const shelf = page.getByRole('button', {name: '打开项目资料馆'});
-    const roomRect = await page.locator('.sea-office').boundingBox();
+    const roomRect = await page.locator('.workspace-scene').boundingBox();
     const shelfRect = await shelf.boundingBox();
     assert.ok(shelfRect.x >= roomRect.x && shelfRect.x + shelfRect.width <= roomRect.x + roomRect.width, 'the library must remain inside the room');
     await shelf.hover();
@@ -157,13 +161,21 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(await page.getByText('参与 23 次').count(), 0, 'prototype demo numbers must not appear');
 
     await page.locator('canvas[data-office-renderer="three"]').waitFor();
-    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).focus();
-    await page.keyboard.press('Enter');
-    const designerChat = page.getByRole('dialog', {name: '与设计师对话'});
-    await designerChat.waitFor();
-    assert.equal(await designerChat.evaluate(node => node.parentElement.parentElement === document.body), true);
-    await designerChat.getByLabel('模型').waitFor();
-    await designerChat.getByText('128,000 tokens').waitFor();
+    const memberPanel = page.locator('.workspace-sidebar');
+    const openMember = async name => {
+      if (await page.getByRole('button', {name: '返回团队成员', exact: true}).isVisible()) await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
+      if (await page.getByRole('button', {name: '返回任务列表', exact: true}).isVisible()) await page.getByRole('button', {name: '返回任务列表', exact: true}).click();
+      await page.getByRole('tab', {name: /团队/}).click();
+      await page.locator('.workspace-member-list [data-member-id]').filter({hasText: name}).click();
+      await page.getByRole('heading', {name: `与${name}对话`}).waitFor();
+    };
+    const closeDetail = async () => {
+      const back = page.locator('.workspace-back');
+      if (await back.isVisible()) await back.click();
+    };
+    await openMember('设计师');
+    await memberPanel.getByLabel('模型').waitFor();
+    await memberPanel.getByText('128,000 tokens').waitFor();
     await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
     await page.locator('.member-chat').getByRole('button', {name: '发送', exact: true}).click();
     await page.getByText('我们先把想法整理成一份交接。').waitFor();
@@ -172,24 +184,13 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
     await page.keyboard.press('Escape');
     await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor({state: 'detached'});
-    await designerChat.waitFor();
-    await page.keyboard.press('Escape');
-    await designerChat.waitFor({state: 'detached'});
-    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '开发成员'}).focus(); await page.keyboard.press('Enter');
-    const coordinatorChat = page.getByRole('dialog', {name: '与开发成员对话'});
-    await coordinatorChat.waitFor();
-    assert.equal(await page.getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
+    await closeDetail();
+    await openMember('开发成员');
+    assert.equal(await memberPanel.locator('.member-chat-history').getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
 
-    await page.keyboard.press('Escape');
-    await coordinatorChat.waitFor({state: 'detached'});
-    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
-    await page.getByRole('dialog', {name: '办公室菜单'}).locator('.office-task-card').first().click();
-    await page.getByRole('dialog', {name: '任务详情'}).waitFor();
-    await page.getByRole('button', {name: '查看全部任务'}).click();
-    const menu = page.getByRole('dialog', {name: '办公室菜单'});
-    await menu.getByLabel('项目').waitFor();
-    await menu.getByText('上次更新').waitFor();
-    await menu.locator('.office-task-card').first().click();
+    await closeDetail();
+    await page.getByRole('tab', {name: /任务/}).click();
+    await page.locator('.workspace-task-list .office-task-card').first().click();
     await page.getByRole('heading', {name: '给搜索页加空状态'}).waitFor();
     await page.getByText('我先看一下搜索页的实现。').waitFor();
     await page.getByText('阅读文件').first().waitFor();
@@ -210,10 +211,8 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('alertdialog').waitFor();
     await page.keyboard.press('Escape');
     await page.getByRole('alertdialog').waitFor({state: 'detached'});
-    const taskDialog = page.getByRole('dialog', {name: '任务详情'});
-    await taskDialog.waitFor();
-    await page.keyboard.press('Escape');
-    await taskDialog.waitFor({state: 'detached'});
+    await page.getByRole('heading', {name: '给搜索页加空状态'}).waitFor();
+    await closeDetail();
     await shelf.click();
     const library = page.getByRole('dialog', {name: '项目资料馆'});
     await library.getByRole('heading', {name: /docs/}).waitFor();
@@ -228,17 +227,18 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.keyboard.press('Escape');
     await library.waitFor({state: 'detached'});
     artifacts.length = 0;
-    await page.getByRole('button', {name: /办公室菜单/}).click();
-    await menu.getByRole('button', {name: '刷新', exact: true}).click();
-    await page.keyboard.press('Escape');
-    await shelf.getByText('项目资料馆 · 0 本资料').waitFor();
-    await menu.waitFor({state: 'detached'});
-    await page.getByRole('button', {name: '办公室菜单', exact: true}).click();
-    await menu.getByLabel('项目').selectOption(secondProjectPath);
-    await page.getByText('工作空间 / 另一个项目').waitFor();
-    await menu.getByText('这个项目还没有任务。').waitFor();
-    await page.keyboard.press('Escape');
-    await menu.waitFor({state: 'detached'});
+    await page.locator('.workspace-heading-right .app-select-trigger').click();
+    await page.getByRole('option', {name: '另一个项目'}).click();
+    await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await page.getByRole('option', {name: '演示项目'}).waitFor({state: 'detached'});
+    await page.getByRole('button', {name: '切换项目'}).click();
+    await page.getByRole('option', {name: '演示项目'}).click();
+    await page.locator('.room-project').getByText('演示项目').waitFor();
+    await shelf.getByText('0 份资料').waitFor();
+    await page.getByRole('button', {name: '切换项目'}).click();
+    await page.getByRole('option', {name: '另一个项目'}).click();
+    await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await page.getByText('现在没有进行中的任务').waitFor();
 
     // Polling must stop once the office page is left.
     const before = requests.filter(item => item.path === '/api/office/snapshot').length;
@@ -251,23 +251,20 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.office-page').waitFor();
     await page.getByRole('button', {name: '更多', exact: true}).click();
     await page.getByRole('menuitem', {name: '切换到浅海主题'}).click();
-    const heading = await page.getByRole('heading', {name: 'Agent 办公室'}).evaluate(element => getComputedStyle(element).color);
+    const heading = await page.getByRole('heading', {name: '办公室', exact: true}).evaluate(element => getComputedStyle(element).color);
     assert.notEqual(heading, 'rgb(232, 247, 250)', 'office heading must follow the light theme');
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office.png')});
     await page.setViewportSize({width: 380, height: 600});
     assert.equal(await page.locator('.office-page').evaluate(node => node.scrollWidth <= node.clientWidth), true);
-    await page.locator('.office-3d-accessible summary').click();
-    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).focus(); await page.keyboard.press('Enter');
-    await designerChat.getByLabel('给设计师发消息').waitFor().catch(async error => {
+    await openMember('设计师');
+    await memberPanel.getByLabel('给设计师发消息').waitFor().catch(async error => {
       await page.screenshot({path: join(tmpdir(), 'xiaotao-office-narrow-failure.png')});
-      throw new Error(`${error.message}\nDialog: ${await designerChat.evaluate(node => ({clientHeight: node.clientHeight, scrollHeight: node.scrollHeight, text: node.textContent}))}`);
+      throw new Error(`${error.message}\nPanel: ${await memberPanel.evaluate(node => ({clientHeight: node.clientHeight, scrollHeight: node.scrollHeight, text: node.textContent}))}`);
     });
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office-chat-narrow.png')});
-    await page.keyboard.press('Escape');
-    await designerChat.waitFor({state: 'detached'});
+    await closeDetail();
     await page.setViewportSize({width: 1280, height: 900});
-    await page.locator('.office-3d-accessible[open]').waitFor();
-    await page.locator('.office-3d-accessible [data-member-id]').filter({hasText: '设计师'}).waitFor({state: 'visible'});
+    await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '设计师'}).waitFor({state: 'visible'});
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();
