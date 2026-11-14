@@ -16,6 +16,11 @@
 .room-project small { display: block; margin-top: 2px; color: var(--office-muted); font-size: 11px; }
 .room-project-icon { display: grid; flex: none; width: 35px; height: 35px; place-items: center; border: 1px solid var(--office-stroke); border-radius: 9px; background: var(--office-raised); color: var(--office-accent); }
 .office-3d-stage { position: relative; min-height: 0; overflow: hidden; background: radial-gradient(ellipse at 48% 42%, #244554, #102936 70%); }
+[data-theme='light'] .office-3d-stage { background: radial-gradient(ellipse at 48% 42%, #effbfa, #c2e1e9 75%); }
+[data-theme='light'] .office-3d-status { color: #345969; }
+.room-time { display: inline-flex; flex: none; align-items: center; gap: 5px; color: var(--office-muted); font-size: 11px; white-space: nowrap; }
+.room-time-day, [data-theme='light'] .room-time-night { display: none; }
+[data-theme='light'] .room-time-day { display: inline-flex; }
 .office-3d-canvas { position: absolute; inset: 0; cursor: grab; touch-action: none; }
 .office-3d-canvas:active { cursor: grabbing; }
 .office-3d-canvas canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
@@ -36,6 +41,6 @@
 .office-workspace .office-camera-controls button { display: grid; width: 29px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--office-muted); }
 .office-workspace .office-camera-controls button:hover:not(:disabled) { background: var(--office-hover); color: var(--office-text); }
 @media (max-width: 520px) {
-  .room-explore-hint, .room-setup svg:last-child { display: none; }
+  .room-explore-hint, .room-setup svg:last-child, .room-toolbar .room-time { display: none; }
   .room-toolbar-actions { flex: 0 1 auto; }
 }

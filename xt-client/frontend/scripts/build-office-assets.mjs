@@ -9,8 +9,9 @@ const palette = {
   wood: '#dbb68a', shell: '#e9f0ed', sofa: '#34837f', cushion: '#65aca0', rug: '#487b8a',
   ink: '#142b3d', ocean: '#237e9f', deep: '#195774', glow: '#94e9dd', coral: '#f0a780',
   leaf: '#428e76', stem: '#285d54', primary: '#56baa9', secondary: '#305176', face: '#bcfaee',
+  window: '#55b6c7', horizon: '#26778e', sunDisc: '#fff0bd', nightDisc: '#c7e9ff', nightStars: '#b8e6ff', lamp: '#ffe1ac',
 };
-const surfaces = {ocean: '#124457', deep: '#103146', glow: '#437d73', face: '#578d81'};
+const surfaces = {ocean: '#124457', deep: '#103146', glow: '#437d73', face: '#578d81', sunDisc: '#ffca78', nightDisc: '#94cafa', nightStars: '#639eee', lamp: '#d09c51'};
 const materialNames = Object.keys(palette);
 const paint = name => {
   const color = new THREE.Color(palette[name]);
@@ -50,23 +51,24 @@ function buildWalls(m) {
   m.box('trim', [-6.86, 2.47, 1.42], [.36, .14, 7.60]);
   m.box('trim', [-1.30, 2.56, 4.91], [8.95, 2.07, .22], .2);
   for (const x of [-4.19, -1.30, 1.59]) {
-    m.box('ocean', [x, 2.56, 4.77], [2.73, 1.78, .12], .18);
-    m.box('deep', [x, 2.10, 4.70], [2.57, .67, .06], .15);
-    m.box('glow', [x, 3.1, 4.70], [2.18, .027, .035], .012);
-    for (const [dx, y, scale] of [[-.69, 2.66, 1], [.09, 2.51, .64], [.59, 2.75, .46]]) {
-      m.oval('glow', [x + dx, y, 4.66], [.14 * scale, .035 * scale, .021]);
-      m.box('glow', [x + dx + .14 * scale, y, 4.66], [.05 * scale, .06 * scale, .03], .014, [0, 0, .6]);
-    }
+    m.box('window', [x, 2.56, 4.77], [2.73, 1.78, .12], .18);
+    m.box('horizon', [x, 2.10, 4.70], [2.57, .67, .06], .15);
+    m.box('glow', [x, 2.40, 4.66], [2.37, .020, .020], .009);
+  }
+  m.oval('sunDisc', [-.67, 2.91, 4.68], [.27, .27, .026]);
+  m.oval('nightDisc', [-.67, 2.91, 4.68], [.21, .21, .026]);
+  for (const [x, y, r] of [[-4.9, 3.08, .027], [-4.37, 2.86, .017], [-3.6, 2.61, .023], [-2.28, 2.93, .021], [-1.56, 2.67, .023], [.9, 2.78, .022], [1.47, 3.18, .027], [2.33, 2.93, .019]]) {
+    m.oval('nightStars', [x, y, 4.67], [r, r, .015]);
   }
   m.box('glow', [-6.69, 1.87, 1.52], [.06, .055, 6.25]);
   m.box('trim', [-6.66, 1.27, .92], [.17, .86, 1.28], .13);
   for (const z of [.58, .92, 1.26]) m.oval('glow', [-6.55, 1.25, z], [.03, .058, .058]);
 }
 
-function desk(m, x) {
-  const z = 3.11;
-  m.box('wood', [x, .96, z], [2.72, .16, 1.16], .10);
-  for (const dx of [-1.05, 1.05]) m.box('trim', [x + dx, .49, z], [.13, .89, .88]);
+function desk(coordinator = false) {
+  const m = new Model(), x = 0, z = 0;
+  m.box(coordinator ? 'sofa' : 'wood', [x, .96, z], [coordinator ? 3.33 : 2.40, .16, 1.12], .10);
+  for (const dx of [-.97, .97]) m.box('trim', [x + dx, .49, z], [.13, .89, .88]);
   m.box('ink', [x, 1.42, z + .14], [1.18, .62, .14], .10);
   m.box('ocean', [x, 1.42, z + .052], [1.02, .46, .044], .055);
   for (let i = 0; i < 3; i++) m.box('glow', [x - .18 + (i % 2) * .06, 1.53 - i * .09, z + .024], [.47 - i * .085, .025, .021], .007);
@@ -74,6 +76,31 @@ function desk(m, x) {
   m.box('shell', [x, 1.06, z - .29], [.69, .045, .24], .026);
   m.tube('coral', [x + .93, 1.15, z - .12], .09, .10, .22);
   m.box('cushion', [x - .87, 1.06, z + .03], [.38, .06, .32], .03);
+  m.tube('trim', [-.9, 1.22, .32], .035, .035, .34);
+  m.box('lamp', [-.9, 1.43, .30], [.34, .12, .27], .055);
+  if (coordinator) {
+    m.box('rug', [0, .050, -.36], [3.68, .042, 2.23], .02);
+    m.box('glow', [0, .89, -.574], [1.58, .028, .029], .012);
+  }
+  return m;
+}
+
+function chair() {
+  const m = new Model();
+  m.tube('ink', [0, .09, 0], .31, .27, .10);
+  m.tube('trim', [0, .26, 0], .066, .062, .29);
+  m.box('sofa', [0, .42, 0], [.79, .14, .68], .066);
+  m.box('trim', [0, .61, -.29], [.1, .30, .095], .03);
+  m.box('cushion', [0, .80, -.31], [.69, .27, .14], .065);
+  return m;
+}
+
+function floorExtension() {
+  const m = new Model();
+  m.box('plinth', [0, -.25, 0], [14.2, .50, 3.30], .13);
+  m.box('floor', [0, -.05, 0], [13.98, .17, 3.30], .05);
+  for (const x of [-.89, 6.24]) m.box('tile', [x, .041, 0], [.048, .014, 3.25], .006);
+  return m;
 }
 
 function plant(m, x, z, scale = 1) {
@@ -103,10 +130,8 @@ function lounge(m) {
 function room() {
   const m = new Model();
   buildWalls(m);
-  for (const x of [-4.19, -.74, 2.71]) desk(m, x);
   lounge(m);
-  m.box('tile', [2.1, .053, -.70], [6.50, .04, 4.36], .018);
-  for (const x of [-.91, 5.11]) m.box('shell', [x, .079, -.70], [.042, .02, 3.91], .009);
+  for (const x of [-.89, 6.24]) m.box('tile', [x, .041, -2.45], [.048, .014, 5.58], .006);
   plant(m, -5.68, 3.65, 1.25); plant(m, 6.18, 4.16, 1.17); plant(m, -6.11, -3.88, .92);
   return m;
 }
@@ -126,14 +151,22 @@ function archive() {
   return m;
 }
 
+function limb(side, part) {
+  const m = new Model();
+  if (part === 'arm') {
+    m.oval('primary', [side * .04, -.15, 0], [.137, .24, .151], [0, 0, side * .15]);
+    m.oval('secondary', [side * .074, -.33, -.04], [.126, .123, .141]);
+  } else if (part === 'thigh') {
+    m.oval('secondary', [0, -.12, 0], [.143, .19, .144]);
+  } else {
+    m.oval('secondary', [0, -.095, 0], [.129, .15, .13]);
+    m.box('shell', [0, -.245, -.085], [.32, .17, .43], .08);
+  }
+  return m;
+}
+
 function character(shape) {
   const m = new Model();
-  for (const side of [-1, 1]) {
-    m.oval('secondary', [side * .219, .32, .01], [.147, .29, .151]);
-    m.box('shell', [side * .225, .132, -.09], [.35, .25, .53], .11);
-    m.oval('primary', [side * .46, .76, -.035], [.137, .28, .151], [0, 0, side * .25]);
-    m.oval('secondary', [side * .514, .57, -.06], [.126, .123, .141]);
-  }
   m.box('primary', [0, .75, 0], [.82, .72, .58], .25);
   m.box('secondary', [0, .86, -.304], [.36, .19, .04], .019);
   m.oval('face', [-.10, .86, -.332], [.037, .035, .019]);
@@ -166,7 +199,7 @@ function character(shape) {
 
 const gltf = {
   asset: {version: '2.0', generator: 'XiaoTao procedural office'},
-  scene: 0, scenes: [{nodes: [0, 1, 2, 3, 4, 5]}],
+  scene: 0, scenes: [{nodes: []}],
   nodes: [], meshes: [], materials: materialNames.map(paint), accessors: [], bufferViews: [], buffers: [],
 };
 const chunks = [];
@@ -184,7 +217,7 @@ function accessor(attribute, type, boundsRequired = false) {
   }
   return gltf.accessors.push(item) - 1;
 }
-function addModel(name, model) {
+function addModel(name, model, translation, children) {
   const primitives = [...model.parts].map(([color, batch]) => {
     const geometry = mergeVertices(mergeGeometries(batch));
     return {
@@ -193,12 +226,21 @@ function addModel(name, model) {
       material: materialNames.indexOf(color),
     };
   });
-  gltf.nodes.push({name, mesh: gltf.meshes.push({primitives}) - 1});
+  return gltf.nodes.push({name, mesh: gltf.meshes.push({primitives}) - 1, translation, children}) - 1;
 }
 
-addModel('OfficeRoom', room());
-addModel('OfficeArchive', archive());
-for (const shape of ['round', 'square', 'hexagon', 'triangle']) addModel(shape === 'round' ? 'QCharacter' : `QCharacter-${shape}`, character(shape));
+const roots = gltf.scenes[0].nodes;
+roots.push(addModel('OfficeRoom', room()), addModel('OfficeArchive', archive()), addModel('OfficeDesk', desk()), addModel('CoordinatorDesk', desk(true)), addModel('OfficeChair', chair()), addModel('OfficeFloorExtension', floorExtension()));
+for (const shape of ['round', 'square', 'hexagon', 'triangle']) {
+  const rig = [];
+  for (const side of [-1, 1]) {
+    const label = side === -1 ? 'Left' : 'Right';
+    const shin = addModel(`${label}Shin`, limb(side, 'shin'), [0, -.28, 0]);
+    rig.push(addModel(`${label}Thigh`, limb(side, 'thigh'), [side * .216, .61, 0], [shin]));
+    rig.push(addModel(`${label}Arm`, limb(side, 'arm'), [side * .43, .94, -.027]));
+  }
+  roots.push(addModel(shape === 'round' ? 'QCharacter' : `QCharacter-${shape}`, character(shape), undefined, rig));
+}
 gltf.buffers.push({byteLength});
 function chunk(data, tag, padding) {
   const payload = Buffer.alloc(Math.ceil(data.length / 4) * 4, padding);

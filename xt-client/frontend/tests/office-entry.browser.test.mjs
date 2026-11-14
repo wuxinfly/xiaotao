@@ -72,7 +72,14 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.locator('canvas[data-office-renderer="three"]').waitFor();
     await page.locator('[data-entry-phase=ready]').waitFor();
     assert.ok(modelRequests>=2);
+    const priorRequests=modelRequests;
+    await page.getByText('夜晚',{exact:true}).waitFor();
     await page.screenshot({path:join(tmpdir(),'xiaotao-office-entry.png')});
+    await page.getByRole('button',{name:'更多',exact:true}).click();
+    await page.getByRole('menuitem',{name:'切换到浅海主题'}).click();
+    await page.getByText('白天',{exact:true}).waitFor();
+    await page.screenshot({path:join(tmpdir(),'xiaotao-office-day.png')});
+    assert.equal(modelRequests,priorRequests);
   } finally {await browser?.close();server.kill();}
 });
 
@@ -83,7 +90,9 @@ test('published local GLB has self-contained nodes and valid local indices',asyn
   const gltf=JSON.parse(buffer.subarray(20,20+length).toString());
   assert.ok(gltf.nodes.some(node=>node.name==='OfficeRoom'));
   assert.ok(gltf.nodes.some(node=>node.name==='QCharacter'));
-  assert.ok(gltf.nodes.some(node=>node.name==='OfficeArchive'));
+  for(const name of ['OfficeArchive','OfficeDesk','CoordinatorDesk','OfficeChair','OfficeFloorExtension','LeftThigh','RightShin']) {
+    assert.ok(gltf.nodes.some(node=>node.name===name), name);
+  }
   for(const shape of ['square','triangle','hexagon']) assert.ok(gltf.nodes.some(node=>node.name===`QCharacter-${shape}`));
   for(const mesh of gltf.meshes) {
     for(const primitive of mesh.primitives) {

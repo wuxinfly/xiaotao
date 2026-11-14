@@ -1,17 +1,25 @@
 import * as THREE from 'three';
-import {createCamera, fitCamera, placeCharacter, resetCamera, statusPose} from './scene-geometry';
-import {sceneLayout, type SceneMember} from './scene-contract';
+import {createCamera, fitCamera, resetCamera, statusPose} from './scene-geometry';
+import type {SceneMember} from './scene-contract';
 import {instantiateCharacter, type OfficeAssets} from './scene-models';
+import {OfficeWorkstations} from './scene-workstations';
+import {OfficeMotion} from './scene-motion';
+import {OfficeLighting} from './scene-lighting';
 
 type Callbacks = {onSelect: (id: string) => void; onShelf: () => void; onError: (message: string) => void};
-const labelOffset = new THREE.Vector3(0, 2.36, 0);
+const labelOffset = new THREE.Vector3(0, 2.30, 0);
+type Actor = ReturnType<typeof instantiateCharacter> & {motion: OfficeMotion};
 
 export class OfficeEngine {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera: THREE.OrthographicCamera;
   private observer: ResizeObserver;
-  private actors = new Map<string, ReturnType<typeof instantiateCharacter>>();
+  private actors = new Map<string, Actor>();
+  private stations: OfficeWorkstations;
+  private lighting: OfficeLighting;
+  private extension = 0;
+  private theme = new MutationObserver(() => this.applyTheme());
   private shelf: THREE.Object3D;
   private room: THREE.Object3D;
   private lost = false;
@@ -45,16 +53,14 @@ export class OfficeEngine {
     this.renderer.domElement.addEventListener('webglcontextlost', this.contextLost);
     element.append(this.renderer.domElement);
     this.camera = createCamera(element.clientWidth, element.clientHeight);
-    this.scene.add(new THREE.HemisphereLight('#edfaff', '#386270', 2.1));
-    const sun = new THREE.DirectionalLight('#ffeddb', 2.35);
-    sun.position.set(1, 12, -5); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024); sun.shadow.normalBias = .035; sun.shadow.intensity = .52;
-    Object.assign(sun.shadow.camera, {left: -10, right: 10, top: 10, bottom: -10});
-    this.scene.add(sun);
     this.room = assets.room.clone(true);
     this.shelf = assets.archive.clone(true);
+    this.stations = new OfficeWorkstations(assets);
+    this.lighting = new OfficeLighting(this.scene, this.room, assets.desk);
     this.shelf.traverse(object => {object.userData.action = 'artifacts';});
-    this.scene.add(this.room, this.shelf);
+    this.scene.add(this.room, this.shelf, this.stations.furniture);
+    this.theme.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+    this.applyTheme();
     this.observer = new ResizeObserver(this.resize);
     this.observer.observe(element);
     this.intersection = new IntersectionObserver(entries => {
@@ -74,33 +80,39 @@ export class OfficeEngine {
   }
 
   update(members: SceneMember[]) {
-    const layouts = sceneLayout(members);
+    const extension = this.stations.update(members);
+    if (extension !== this.extension) {
+      this.extension = extension;
+      this.lighting.fit(extension);
+      this.reset();
+    }
+    const ids = new Set(members.map(member => member.id));
     for (const id of this.actors.keys()) {
-      if (layouts.some(item => item.id === id)) continue;
-      this.removeActor(id);
+      if (!ids.has(id)) this.removeActor(id);
     }
-    for (const layout of layouts) {
-      const member = members.find(item => item.id === layout.id);
-      if (!member) continue;
-      const actor = this.actors.get(layout.id)?.actor;
-      if (actor && JSON.stringify(actor.userData.appearance) === JSON.stringify(member.appearance)) {
-        actor.userData.status = member.status;
-        placeCharacter(actor, layout);
-        statusMotion(actor, this.reduced ? 0 : this.elapsed);
-        this.updateLabel(actor, member);
-        this.placeLabel(actor, layout.id);
-        continue;
-      }
-      if (actor) this.removeActor(layout.id);
-      const next = instantiateCharacter(this.assets, member.appearance, member.id);
-      placeCharacter(next.actor, layout); next.actor.userData.status = member.status;
-      statusMotion(next.actor, this.reduced ? 0 : this.elapsed);
-      this.updateLabel(next.actor, member);
-      this.placeLabel(next.actor, member.id);
-      this.scene.add(next.actor); this.actors.set(member.id, next);
-    }
-    this.animating = [...this.actors.values()].some(({actor}) => actor.userData.status === 'running');
+    for (const member of members) this.updateActor(member);
+    this.animating = [...this.actors.values()].some(({motion}) => motion.animating);
     this.updateActivity();
+    this.render();
+  }
+
+  private updateActor(member: SceneMember) {
+    const station = this.stations.get(member.id);
+    if (!station) return;
+    let entry = this.actors.get(member.id);
+    if (!entry || JSON.stringify(entry.actor.userData.appearance) !== JSON.stringify(member.appearance)) {
+      this.removeActor(member.id);
+      const character = instantiateCharacter(this.assets, member.appearance, member.id);
+      entry = {...character, motion: new OfficeMotion(character, member, station, this.elapsed)};
+      this.scene.add(entry.actor); this.actors.set(member.id, entry);
+    }
+    entry.motion.update(member, this.elapsed);
+    this.updateLabel(entry.actor, {...member, status: member.taskStatus === 'queued' ? 'queued' : member.status});
+    this.placeLabel(entry.actor, member.id);
+  }
+
+  private applyTheme() {
+    this.lighting.setDay(document.documentElement.dataset.theme === 'light', this.extension);
     this.render();
   }
 
@@ -113,7 +125,7 @@ export class OfficeEngine {
     const context = canvas.getContext('2d'); if (!context) return;
     context.fillStyle = '#0d2936'; context.beginPath(); context.roundRect(6, 6, 388, 86, 23); context.fill();
     context.strokeStyle = '#658f9b'; context.lineWidth = 3; context.stroke();
-    const tone = member.status === 'failed' ? '#ffafa1' : member.status === 'waiting' ? '#ffd18d' : member.status === 'running' ? '#80f1cb' : '#b0cbd2';
+    const tone = member.status === 'failed' ? '#ffafa1' : ['waiting', 'queued'].includes(member.status) ? '#ffd18d' : member.status === 'running' ? '#80f1cb' : '#b0cbd2';
     context.fillStyle = '#f0fcff'; context.font = '600 38px "Microsoft YaHei", sans-serif'; context.textAlign = 'center';
     const name = [...member.name].length > 8 ? `${[...member.name].slice(0, 7).join('')}…` : member.name;
     context.fillText(name, 200, 64, 340);
@@ -145,7 +157,7 @@ export class OfficeEngine {
     const width = this.element.clientWidth;
     const height = this.element.clientHeight;
     if (width <= 0 || height <= 0) {this.stop(); return;}
-    fitCamera(this.camera, width, height);
+    fitCamera(this.camera, width, height, this.extension);
     this.renderer.setSize(width, height);
     this.render();
   };
@@ -153,7 +165,7 @@ export class OfficeEngine {
   private motion = (event: MediaQueryListEvent) => {
     this.reduced = event.matches;
     if (this.reduced) {
-      this.actors.forEach(({actor}, id) => {statusMotion(actor, 0); this.placeLabel(actor, id);});
+      this.actors.forEach(({actor, motion}, id) => {motion.snapHome(); this.placeLabel(actor, id);});
       this.stop(); this.render();
     } else this.schedule();
   };
@@ -166,12 +178,24 @@ export class OfficeEngine {
     this.frame = 0;
     if (this.hidden || !this.active || !this.enabled || this.lost) return;
     if (time - this.last >= 1000 / 30) {
-      this.elapsed += Math.min(50, time - this.last); this.last = time;
-      this.actors.forEach(({actor}, id) => {
-        statusMotion(actor, this.elapsed);
-        this.placeLabel(actor, id);
+      const dt = Math.min(50, time - this.last) / 1000;
+      this.elapsed += dt; this.last = time;
+      let nextWalk: OfficeMotion | undefined;
+      if (![...this.actors.values()].some(({motion}) => motion.roaming)) {
+        let due = Infinity;
+        for (const {motion} of this.actors.values()) {
+          if (motion.walkDue < due) {due = motion.walkDue; nextWalk = motion;}
+        }
+      }
+      let changed = false;
+      this.actors.forEach(({actor, motion}, id) => {
+        if (motion.step(this.elapsed, dt, motion === nextWalk)) {
+          this.placeLabel(actor, id);
+          changed = true;
+        }
       });
-      this.render();
+      if (changed) this.render();
+      this.animating = [...this.actors.values()].some(({motion}) => motion.animating);
     }
     this.schedule();
   };
@@ -186,8 +210,9 @@ export class OfficeEngine {
     if (Math.hypot(event.clientX - this.start.x, event.clientY - this.start.y) > 5) this.dragMoved = true;
     if (!this.dragMoved) return;
     const scale = (this.camera.top - this.camera.bottom) / Math.max(1, this.element.clientHeight) / this.camera.zoom;
-    const x = THREE.MathUtils.clamp(this.pan.x - (event.clientX - this.previous.x) * scale, -3, 3);
-    const y = THREE.MathUtils.clamp(this.pan.y + (event.clientY - this.previous.y) * scale, -2.5, 2.5);
+    const roomLength = this.extension / 2;
+    const x = THREE.MathUtils.clamp(this.pan.x - (event.clientX - this.previous.x) * scale, -3 - roomLength, 3 + roomLength);
+    const y = THREE.MathUtils.clamp(this.pan.y + (event.clientY - this.previous.y) * scale, -2.5 - roomLength, 2.5 + roomLength);
     this.camera.translateX(x - this.pan.x); this.camera.translateY(y - this.pan.y);
     this.pan.set(x, y); this.previous = {x: event.clientX, y: event.clientY};
     this.render();
@@ -201,19 +226,22 @@ export class OfficeEngine {
     const pointer = new THREE.Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1, -(event.clientY - bounds.top) / bounds.height * 2 + 1);
     const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(pointer, this.camera);
     const labelsHit = raycaster.intersectObjects([...this.labels.values()])[0];
-    const hit = raycaster.intersectObjects([this.room, this.shelf, ...Array.from(this.actors.values(), item => item.actor)], true)[0];
+    const hit = raycaster.intersectObjects([this.room, this.shelf, this.stations.furniture, ...Array.from(this.actors.values(), item => item.actor)], true)[0];
     const id = labelsHit?.object.userData.memberId ?? hit?.object.userData.memberId;
     if (id) this.callbacks.onSelect(id);
     else if (hit?.object.userData.action === 'artifacts') this.callbacks.onShelf();
   };
   private pointerCancel = () => {this.dragging = false;};
-  zoomBy(amount: number) {this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom + amount, .75, 1.6); this.camera.updateProjectionMatrix(); this.render();}
-  reset() {this.pan.set(0, 0); resetCamera(this.camera); this.render();}
+  zoomBy(amount: number) {
+    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * (1 + amount), .75, 1.6 + this.extension / 8);
+    this.camera.updateProjectionMatrix(); this.render();
+  }
+  reset() {this.pan.set(0, 0); resetCamera(this.camera, this.extension); this.resize();}
   setActive(active: boolean) {this.enabled = active; this.updateActivity(); if (active) this.render();}
   destroy() {
     this.destroyed = true;
     this.stop(); this.observer.disconnect();
-    this.intersection.disconnect();
+    this.intersection.disconnect(); this.theme.disconnect();
     document.removeEventListener('visibilitychange', this.visibility);
     this.motionQuery.removeEventListener('change', this.motion);
     this.element.removeEventListener('wheel', this.wheel); this.element.removeEventListener('pointerdown', this.pointerDown);
@@ -221,11 +249,6 @@ export class OfficeEngine {
     this.element.removeEventListener('pointercancel', this.pointerCancel);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);
     this.actors.forEach((_, id) => this.removeActor(id));
-    this.assets.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); this.renderer.domElement.remove();
+    this.lighting.dispose(); this.assets.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); this.renderer.domElement.remove();
   }
-}
-
-function statusMotion(actor: THREE.Group, time: number) {
-  actor.rotation.x = actor.userData.status === 'failed' ? -.05 : 0;
-  actor.position.y = .04 + (actor.userData.status === 'running' ? Math.abs(Math.sin(time * .003)) * .045 : 0);
 }

@@ -1,14 +1,14 @@
-.team-manager-modal { max-width: 860px; }
+.team-manager-modal { max-width: 920px; }
 .team-template h3, .team-invite h3 { margin: 0 0 6px; }
 .team-template > p, .team-invite p, .team-member-list p { color: var(--text-secondary); }
-.role-editor { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; border-top: 1px solid var(--border-subtle); padding: 18px 0; }
-.role-editor-fields, .role-appearance { display: grid; gap: 10px; align-content: start; }
-.role-editor label { display: grid; gap: 5px; font-size: 12px; }
-.role-editor input, .role-editor .app-select-trigger, .role-editor textarea { min-width: 0; }
+.role-editor { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 22px; border-top: 1px solid var(--border-subtle); padding: 16px 0; }
+.role-editor-fields, .role-appearance { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.role-editor label { display: grid; gap: 5px; font-size: 12px; min-width: 0; }
+.role-editor input, .role-editor .app-select-trigger, .role-editor textarea { min-width: 0; width: 100%; box-sizing: border-box; }
 .role-model-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .role-stable-id { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; margin: 0; }
 .role-stable-id code { color: var(--text-primary); }
-.role-preview { position: relative; display: grid; width: 180px; max-width: 100%; height: 200px; overflow: hidden; justify-self: center; place-items: center; border: 1px solid var(--border-subtle); border-radius: 10px; background: #e4e5d9; color: var(--text-secondary); font-size: 12px; text-align: center; }
+.role-preview { position: relative; display: grid; width: 100%; max-width: 180px; height: 180px; overflow: hidden; justify-self: center; place-items: center; border: 1px solid var(--border-subtle); border-radius: 10px; background: #e4e5d9; color: var(--text-secondary); font-size: 12px; text-align: center; }
 .role-preview canvas { display: block; max-width: 100%; height: auto !important; }
 .team-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; grid-column: 1 / -1; }
 .team-member-list article { padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }

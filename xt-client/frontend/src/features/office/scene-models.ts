@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import type {Appearance} from '../../lib/team';
 
-export type OfficeAssets = {room: THREE.Object3D; archive: THREE.Object3D; characters: Record<Appearance['shape'], THREE.Object3D>; dispose: () => void};
+export type OfficeAssets = {
+  room: THREE.Object3D; archive: THREE.Object3D; desk: THREE.Object3D; coordinatorDesk: THREE.Object3D;
+  chair: THREE.Object3D; floorExtension: THREE.Object3D;
+  characters: Record<Appearance['shape'], THREE.Object3D>; dispose: () => void;
+};
 export async function loadOfficeAssets(signal: AbortSignal): Promise<OfficeAssets> {
   const response = await fetch('/models/office.glb', {signal});
   if (!response.ok) throw new Error(`无法读取本地办公室模型（${response.status}）`);
@@ -20,13 +24,17 @@ export async function loadOfficeAssets(signal: AbortSignal): Promise<OfficeAsset
       if (!object) throw new Error('本地办公室模型缺少所需节点');
       return object;
     }
-    const room = node('OfficeRoom'), archive = node('OfficeArchive');
+    const room = node('OfficeRoom'), archive = node('OfficeArchive'), desk = node('OfficeDesk');
+    const coordinatorDesk = node('CoordinatorDesk'), chair = node('OfficeChair'), floorExtension = node('OfficeFloorExtension');
     const characters = {round: node('QCharacter'), square: node('QCharacter-square'), hexagon: node('QCharacter-hexagon'), triangle: node('QCharacter-triangle')};
-    for (const part of [room, archive]) part.traverse(object => {
-      if (object instanceof THREE.Mesh) {object.receiveShadow = true; object.castShadow = true;}
+    for (const part of [room, archive, desk, coordinatorDesk, chair, floorExtension]) part.traverse(object => {
+      if (object instanceof THREE.Mesh) {
+        object.receiveShadow = true;
+        object.castShadow = !['nightDisc', 'nightStars', 'sunDisc'].includes(object.material.name) && part !== floorExtension;
+      }
     });
     // Keep the asset scene as the owner so it can dispose all shared resources.
-    return {room, archive, characters, dispose};
+    return {room, archive, desk, coordinatorDesk, chair, floorExtension, characters, dispose};
   } catch (error) {dispose(); throw error;}
 }
 
@@ -44,5 +52,10 @@ export function instantiateCharacter(assets: OfficeAssets, appearance: Appearanc
   });
   actor.userData = {memberId: id, appearance};
   actor.add(model);
-  return {actor, dispose: () => {primary.dispose(); secondary.dispose();}};
+  const joint = (root: THREE.Object3D, prefix: string) => root.children.find(child => child.name.startsWith(prefix));
+  const rig = ['Left', 'Right'].map(side => {
+    const thigh = joint(model, `${side}Thigh`);
+    return {thigh, shin: thigh && joint(thigh, `${side}Shin`), arm: joint(model, `${side}Arm`)};
+  });
+  return {actor, rig, dispose: () => {primary.dispose(); secondary.dispose();}};
 }

@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {test} from 'node:test';
 import {chromium} from 'playwright';
-import {projectMember} from '../src/features/office/scene-geometry.ts';
-import {sceneLayout} from '../src/features/office/scene-contract.ts';
+import {Vector3} from 'three';
+import {createCamera} from '../src/features/office/scene-geometry.ts';
 
 test('real service team persistence and 3D interactions', {timeout: 120000}, async context => {
   const root = await mkdtemp(join(tmpdir(), 'xiaotao-team-real-'));
@@ -35,7 +35,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     const response = await fetch(base + '/api/agent/projects', {method: 'POST', headers: {'Content-Type': 'application/json', Origin: base}, body: JSON.stringify({path: project, name: '真实验收项目'})});
     assert.equal(response.status, 200);
     browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true, args: ['--enable-unsafe-swiftshader']});
-    page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+    page = await browser.newPage({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
     await page.route('**/api/agent/models', route => route.fulfill({json: {models: [{model: 'test/model', label: '团队测试模型', contextWindow: 128000, maxOutputTokens: 8192}]}}));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -71,9 +71,9 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.locator('.room-tool').filter({hasText: '成员4'}).waitFor();
     await page.screenshot({path: join(output, 'office-team-real.png')});
     const bounds = await page.locator('canvas[data-office-renderer="three"]').boundingBox();
-    const board = await (await fetch(`${base}/api/office/snapshot?projectPath=${encodeURIComponent(project)}`)).json();
-    const point = projectMember(sceneLayout(board.members).find(item => item.id === originalId), bounds.width, bounds.height);
-    await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
+    // The first employee sits behind the left desk, separate from the coordinator.
+    const point = new Vector3(.78, 2.18, 1.42).project(createCamera(bounds.width, bounds.height));
+    await page.mouse.click(bounds.x + (point.x + 1) * bounds.width / 2, bounds.y + (1 - point.y) * bounds.height / 2);
     await page.getByRole('heading', {name: /与.*对话/}).waitFor();
     await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
     await page.getByRole('button', {name: '管理团队', exact: true}).click();
