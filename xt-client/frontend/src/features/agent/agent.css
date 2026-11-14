@@ -777,10 +777,6 @@
 .agent-default-model > div:first-child { display: flex; align-items: baseline; gap: 9px; }
 .agent-default-model > div:first-child strong { color: #dceff3; font-size: 12px; font-weight: 600; }
 .agent-default-model > div:first-child p { margin: 0; color: #7699a6; font-size: 10.5px; }
-.agent-default-select { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
-.agent-default-select > span { color: #82a3b0; font-size: 10px; }
-.agent-default-select select { width: 100%; padding: 8px 9px; border: 1px solid rgba(98, 164, 187, .24); border-radius: 6px; background: #082230; color: #e2f2f5; font-size: 11.5px; }
-.agent-default-select select:focus-visible { outline: 2px solid #59dfdd; outline-offset: 2px; }
 .agent-default-model .agent-model-execution { padding: 10px 0 0; margin-top: 10px; border-top: 1px solid rgba(89, 223, 221, .12); }
 .agent-rename-modal { width: min(440px, 100%); }
 .agent-rename-modal .agent-field { margin-bottom: 0; }

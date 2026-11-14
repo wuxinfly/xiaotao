@@ -47,3 +47,16 @@
   .office-camera-controls { bottom: 64px; }
 }
 @media (prefers-reduced-motion: reduce) { .office-3d-accessible button { transition: none; } }
+.office-project-switch { position: absolute; z-index: 40; top: 17px; right: 24px; display: grid; gap: 4px; width: min(220px, 35%); color: #a9c7c9; font-size: 11px; }
+.office-project-switch .app-select-trigger { width: 100%; min-height: 36px; }
+.office-3d-room .sea-office-title { max-width: 58%; }
+.office-3d-room .sea-office-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-3d-room .office-3d-accessible { border-color: #d5ded9; background: #f7f9f4; }
+.office-3d-room .office-3d-accessible button { border-color: transparent; background: transparent; }
+.office-3d-room .office-3d-accessible button:hover { background: #e5f1e9; border-color: #b9d7cd; }
+.office-3d-room .office-member-copy strong { color: #203f48; }
+.office-3d-room .office-member-copy small { color: #536f70; }
+.office-3d-room .office-3d-library { color: #244a4c; }
+.office-3d-room .office-3d-library:hover { color: #145d54; }
+.office-entry-flow .office-team-manage-shortcut { display: none; }
+@media (max-width: 520px) { .office-project-switch { top: 12px; right: 12px; width: 40%; } .office-3d-room .sea-office-title h1 { font-size: 19px; } }

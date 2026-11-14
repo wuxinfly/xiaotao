@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import {officeApi, type OfficeMember, type OfficeMemberChat, type OfficeHistory} from '../../lib/office';
 import {modelConfigFor, modelSettingsFor, type AgentModelConfig} from '../../lib/agent-model-settings';
 import type {AgentModelOption} from '../../lib/api';
+import {Select} from '../../components/select/Select';
 import './member-chat.css';
 
 type Props = {
@@ -74,9 +75,8 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
   return <div className="member-chat">
     {member.responsibility && <div className="member-chat-profile"><strong>{member.name}</strong><span>{member.responsibility}</span>{!!member.capabilities?.length && <small>{member.capabilities.join(' · ')}</small>}</div>}
     <div className="member-chat-toolbar">
-      <label><span>模型</span><select value={model} onChange={event => setModel(event.target.value)} disabled={busy || sending}>
-        {usableModels.map(item => <option key={item.model} value={item.model}>{item.label}{item.sourceLabel ? ` · ${item.sourceLabel}` : ''}</option>)}
-      </select></label>
+      <label><span>模型</span><Select size="sm" searchable aria-label="模型" value={model} onChange={setModel} disabled={busy || sending}
+        options={usableModels.map(item => ({value: item.model, label: `${item.label}${item.sourceLabel ? ` · ${item.sourceLabel}` : ''}`}))}/></label>
       <span className="member-chat-context"><small>上下文</small><strong>{selectedConfig?.contextWindow ? `${selectedConfig.contextWindow.toLocaleString()} tokens` : '跟随模型设置'}</strong></span>
     </div>
     <div className="member-chat-history" aria-live="polite">

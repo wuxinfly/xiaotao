@@ -68,7 +68,7 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.accounts-page-container, .dashboard-page, .accounts-main-title, .dashboard-title-row h1, .overview-header strong, .hero-tokens, .submetric-val, .right-today-val, .requests-header h2, .heatmap-title-wrap h2, .req-model-name, .action-title, .popover-date, .popover-row .popover-val, .endpoint-title, .provider-group-name, .account-name, .profile-name, .big-rem-num, .sub-val-cur, .sub-items-title, .provider-item-name, .dialog-header h2, .app-modal-header h2, .model-catalog-row strong, .field-value, .quota-value, .remaining-num, .account-title, .group-title) { color: var(--ocean-text); }
 [data-theme='light'] :is(.accounts-main-subtitle, .endpoint-subtitle, .provider-group-desc, .profile-source, .provider-item-desc, .limit-num, .sub-val-limit, .total-quota-header, .sub-item-label, .detail-meta-footer, .pill-text, .app-modal-header p, .app-modal-count, .app-modal-close, .confirm-description, .confirm-eyebrow, .model-catalog-dialog-subtitle, .model-catalog-dialog-footer, .model-catalog-row code, .model-catalog-toolbar label, .model-catalog-state, .account-alias-form, .account-alias-form > span, .req-account-name, .req-token-line span, .req-token-cache, .req-time-line, .info-icon, .popover-row, .submetric-hint) { color: var(--muted); }
 [data-theme='light'] :is(.hero-label, .requests-toggle-btn, .channel-badge, .total-ratio, .model-catalog-source, .popover-row.highlight .popover-val, .field-icon-btn, .field-action-btn, .card-action-btn.detail-btn, .group-collapse-btn) { color: var(--accent); }
-[data-theme='light'] :is(input, select, .field-box, .copy-value, .detail-total-quota-card, .sub-items-list, .model-catalog-toolbar select, .account-alias-controls input, .capsule-switch-pill) { background: #f1f7f9; color: var(--text); border-color: var(--line); }
+[data-theme='light'] :is(input, .field-box, .copy-value, .detail-total-quota-card, .sub-items-list, .account-alias-controls input, .capsule-switch-pill) { background: #f1f7f9; color: var(--text); border-color: var(--line); }
 [data-theme='light'] :is(input, textarea)::placeholder { color: #6a8590; }
 [data-theme='light'] :is(.app-modal-button.secondary, .dialog-btn.secondary, .rotate-key-btn, .group-add-btn, .model-catalog-copy-btn, .confirm-cancel, .group-collapse-btn) { background: #edf5f7; border-color: #c8dfe5; color: var(--ocean-text-soft); }
 [data-theme='light'] :is(.app-modal-button.secondary:hover, .dialog-btn.secondary:hover, .rotate-key-btn:hover, .group-add-btn:hover, .model-catalog-copy-btn:hover, .confirm-cancel:hover, .group-collapse-btn:hover, .field-icon-btn:hover, .field-action-btn:hover, .card-action-btn:hover) { background: #dfedf2; color: #086570; border-color: #94c8d3; }
@@ -211,3 +211,12 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.metric-right, .provider-icon-trae) { color: var(--accent); }
 [data-theme='light'] .provider-icon-codex { filter: brightness(.3); }
 @media (prefers-reduced-motion: reduce) { .window-menu-panel, .window-menu-panel.is-open { transform: none; transition: none; } }
+
+[data-theme='light'] .app-select-trigger { background: #f1f7f9; color: var(--ocean-text); border-color: var(--ocean-line); }
+[data-theme='light'] .app-select-trigger:hover:not(:disabled) { background: #e5f2f5; border-color: #94c8d3; }
+[data-theme='light'] .app-select-trigger[aria-expanded='true'] { background: #e0f1f1; border-color: #88bfc9; }
+[data-theme='light'] .app-select-search { background: #fff; color: var(--ocean-text); border-color: var(--ocean-line); }
+[data-theme='light'] .app-select-option { color: var(--ocean-text); }
+[data-theme='light'] .app-select-option:hover:not(:disabled), [data-theme='light'] .app-select-option:focus-visible { background: #e5f2f5; color: #086570; }
+[data-theme='light'] .app-select-option[aria-selected='true'] { background: #d5ebee; color: #155969; }
+[data-theme='light'] :is(.app-select-option-hint, .app-select-empty) { color: var(--ocean-muted); }

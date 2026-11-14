@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "candidate_id": "shared-select-adoption",
+  "created_at": "2026-11-14T08:00:00Z",
+  "action": "add",
+  "kind": "convention",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.shared-select-adoption",
+  "text": "xt-client 业务页面不得再新增原生 `<select>`；单选下拉统一使用 `frontend/src/components/select/Select.tsx`，模型、账号等可能较长的列表启用 `searchable`，宽度等布局规则留在页面、外观集中在 `select.css`。弹窗内的 listbox 面板必须带 `data-escape-layer`，保证 Esc 先关下拉、不连带关闭弹窗。",
+  "rationale": "2026-11-14 统一下拉改造前，13 处原生 select 分散在 10 个文件、至少 8 套互不一致样式，展开列表由操作系统绘制并与深海/浅海主题割裂，且缺少悬停与开合过渡，不满足仓库既有交互动效规则。公共 Select 已替换全部调用点，并有 `tests/select.browser.test.mjs` 覆盖键盘、搜索、弹窗层叠、翻转、主题和 reduced-motion；ModalFrame 在 window 捕获阶段处理 Esc，实测只有 `data-escape-layer` 能阻止下拉内 Esc 连带关闭弹窗。",
+  "observations": 2,
+  "source_refs": [
+    "openspec/changes/add-unified-select/specs/select-field/spec.md",
+    "openspec/changes/add-unified-select/design.md",
+    "xt-client/frontend/src/components/select/Select.tsx",
+    "xt-client/frontend/src/components/popover/Popover.tsx",
+    "xt-client/frontend/tests/select.browser.test.mjs",
+    "docs/plans/2026-11-14-unified-select.md"
+  ]
+}

@@ -1,4 +1,4 @@
-import {Library, Radio, Users} from 'lucide-react';
+import {Library, Users} from 'lucide-react';
 import type {OfficeMember, OfficeTask} from '../../lib/office';
 import {taskStatusLabel, taskStatusTone} from '../../lib/office';
 import './office-scene.css';
@@ -19,7 +19,6 @@ type Props = {
 };
 
 export function OfficeRoom({projectName, members, artifactCount, onSelectMember, onOpenLibrary, active, onError, onReady}: Props) {
-  const working = members.filter(member => member.status === 'running').length;
   const [instructionsDismissed, setInstructionsDismissed] = useState(false);
   const [membersExpanded, setMembersExpanded] = useState(() => !matchMedia('(max-width: 520px)').matches);
   useEffect(() => {
@@ -38,11 +37,6 @@ export function OfficeRoom({projectName, members, artifactCount, onSelectMember,
         <span className="sea-office-label">工作空间 / {projectName}</span>
         <h1>Agent 办公室</h1>
         <p>选择一位成员，开始协作。</p>
-      </div>
-      <div className="sea-office-live">
-        <Radio size={14} aria-hidden="true"/>
-        <span>{working ? `${working} 位成员在忙` : '办公室在线'}</span>
-        <small>成员状态</small>
       </div>
     </header>
     <div className="sea-office-room-label"><Users size={14} aria-hidden="true"/>员工活动区<span>点击员工暂停并打开操作</span></div>

@@ -1,6 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 import {Eye, EyeOff} from 'lucide-react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
+import {Select} from '../../components/select/Select';
 import {modelCatalogChanged, modelSources, sourceInput, sourceProtocols, type SourceProtocol, type Source, type SourceInput} from '../../lib/model-sources';
 import {emptyModel, SourceModelFields} from './SourceModelFields';
 
@@ -61,7 +62,7 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
       <fieldset disabled={busy} className="source-form-fields">
         <div className="source-form-grid">
           <label><span>来源名称 <em aria-hidden="true">必填</em></span><input aria-label="来源名称" required value={form.label} onChange={event => setForm({...form, label: event.target.value})} autoComplete="off"/></label>
-          <label><span>上游格式</span><select aria-label="上游格式" value={form.protocol} onChange={event => setForm({...form, protocol: event.target.value as SourceProtocol})}>{Object.entries(sourceProtocols).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label><span>上游格式</span><Select aria-label="上游格式" value={form.protocol} onChange={next => setForm({...form, protocol: next as SourceProtocol})} options={Object.entries(sourceProtocols).map(([value, label]) => ({value, label}))}/></label>
         </div>
         <label><span>API URL <em aria-hidden="true">必填</em></span><input aria-label="API URL" required type="url" value={form.baseURL} onChange={event => setForm({...form, baseURL: event.target.value})} placeholder="https://api.example.com/v1"/><small>填写实际 API 前缀（如 /v1）或所选协议的完整端点地址，不会自动补 /v1。</small>{endpointURL && <small className="source-url-preview">将请求：<code>{endpointURL}</code></small>}</label>
         <label><span>API Key <em aria-hidden="true">{source ? "选填" : "必填"}</em></span><div className="source-api-key"><input aria-label="API Key" type={showAPIKey ? 'text' : 'password'} required={!source} value={form.apiKey ?? ''} onChange={event => setForm({...form, apiKey: event.target.value})} autoComplete="new-password" placeholder={source ? '留空保留已保存的密钥' : '输入 API Key'}/><button type="button" className="source-reveal-key" onClick={() => setShowAPIKey(value => !value)} aria-label={showAPIKey ? '隐藏 API Key' : '显示 API Key'} title={showAPIKey ? '隐藏 API Key' : '显示 API Key'}>{showAPIKey ? <EyeOff size={15}/> : <Eye size={15}/>}</button></div>{source && <small>{source.hasAPIKey ? '已保存密钥；留空保留，不会显示原密钥。' : '尚未保存密钥。'}</small>}</label>

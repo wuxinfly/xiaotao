@@ -10,7 +10,7 @@
 .gateway-models-search input { width:100%; min-width:0; max-width:none; border:0; outline:0; background:transparent; padding:0; color:inherit; font-size:12px; }
 .gateway-models-search:focus-within { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 9%,transparent); }
 .gateway-models-search button { padding:0; display:flex; border:0; color:var(--muted); }
-.gateway-models-toolbar select { width:100%; min-width:0; padding:8px; border:1px solid var(--line); border-radius:8px; color:inherit; background:var(--ocean-panel,#0b2636); font:inherit; font-size:12px; }
+.gateway-models-toolbar .app-select-trigger { width:100%; min-width:0; }
 .gateway-models-bulk { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:17px 0 12px; font-size:11px; color:var(--muted); }
 .gateway-models-bulk > span { margin-right:auto; }
 .gateway-models-bulk button, .gateway-model-actions > button { display:flex; align-items:center; gap:5px; padding:4px 0; border:0; color:var(--accent); font-size:11px; }

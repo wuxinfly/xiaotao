@@ -1,5 +1,6 @@
 import {useMemo, useState} from 'react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
+import {Select} from '../../components/select/Select';
 import type {AgentModelOption} from '../../lib/api';
 import {modelSettingsFor} from '../../lib/agent-model-settings';
 import type {AgentModelConfig} from '../../lib/agent-model-settings';
@@ -75,9 +76,8 @@ export function CreateTaskModal({projectPath, projectName, models, modelConfigs,
     <label className="office-field">
       <span>执行者模型</span>
       {usable.length
-        ? <select value={model} onChange={event => setModel(event.target.value)} disabled={busy}>
-            {usable.map(item => <option key={item.model} value={item.model}>{item.label}{item.sourceLabel ? ` · ${item.sourceLabel}` : ''}</option>)}
-          </select>
+        ? <Select searchable value={model} onChange={setModel} disabled={busy}
+            options={usable.map(item => ({value: item.model, label: `${item.label}${item.sourceLabel ? ` · ${item.sourceLabel}` : ''}`}))}/>
         : <p className="office-hint" role="alert">还没有可用模型，先去左下角「模型接口」添加接口和模型。</p>}
     </label>
     <p className="office-hint">执行中不能直接打断执行者聊天。你可以发消息，它会排队，在本轮成功结束后送达；失败或取消后不会自动补发。</p>

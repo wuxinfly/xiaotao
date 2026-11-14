@@ -5,6 +5,7 @@ import {isTerminalTask, officeApi, type OfficeArtifact, type OfficeArtifactDetai
 import {toast} from '../../components/toast';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 import {ModalFrame, ModalPresence} from '../../components/modal/ModalFrame';
+import {Select} from '../../components/select/Select';
 import {ArtifactModal} from './ArtifactModal';
 import {ArtifactLibraryModal} from './ArtifactLibraryModal';
 import {MemberChat} from './MemberChat';
@@ -214,6 +215,7 @@ export function OfficePage({visible}: Props) {
   const visibleArtifacts = snapshot ? new Set(snapshot.artifacts.map(item => item.id)) : null;
   const currentDetail = detail && visibleArtifacts ? {...detail, artifacts: detail.artifacts.filter(item => visibleArtifacts.has(item.id))} : detail;
   return <div className="office-page office-live-page content-column">
+    {selectedPath && <label className="office-project-switch"><span>当前项目</span><Select aria-label="切换项目" value={selectedPath} onChange={next => {showPanel(null); setSelectedPath(next);}} options={projects.map(item => ({value: item.path, label: item.name}))}/></label>}
     {error && <p className="office-error office-page-error" role="alert">刷新办公室失败：{error}</p>}
     {selectedPath ? <OfficeEntryFlow ref={entry} key={selectedPath} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
       onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>

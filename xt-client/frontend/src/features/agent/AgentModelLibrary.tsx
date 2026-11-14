@@ -3,6 +3,7 @@ import {Check, Cpu, Image, Search, SlidersHorizontal, Sparkles, X, RefreshCw} fr
 import type {AgentModelOption} from '../../lib/api';
 import type {AgentModelSettings} from '../../lib/agent-model-settings';
 import {ModelPriceBadge} from '../../components/ModelPriceBadge';
+import {Select} from '../../components/select/Select';
 import {formatTokens} from '../accounts/modelCatalogUtils';
 import {withMissingModels} from './modelOptions';
 import './model-library.css';
@@ -45,7 +46,7 @@ export function AgentModelLibrary({models, chosen, loading, error, onRetry, onAc
       <div className="model-library-scope" aria-label="模型范围"><button type="button" aria-pressed={scope === 'chosen'} onClick={() => setScope('chosen')}>常用模型 <b>{chosen.size}</b></button><button type="button" aria-pressed={scope === 'all'} onClick={() => setScope('all')}>全部模型 <b>{catalog.length}</b></button></div>
       <label className="model-library-search"><Search size={16}/><input aria-label="搜索模型" placeholder="搜索名称、来源或模型 ID" value={query} onChange={event => setQuery(event.target.value)}/>{query && <button type="button" onClick={() => setQuery('')} aria-label="清除模型搜索"><X size={14}/></button>}</label>
     </div>
-    <div className="model-library-filters"><label><span className="sr-only">筛选模型来源</span><select aria-label="筛选模型来源" value={source} onChange={event => setSource(event.target.value)}><option value="">全部来源 · {sources.length}</option>{sources.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><div className="model-library-capabilities" aria-label="筛选模型能力">{([['all', '不限能力'], ['images', '图片'], ['reasoning', '推理']] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={capability === value} onClick={() => setCapability(value)}>{label}</button>)}</div></div>
+    <div className="model-library-filters"><label><span className="sr-only">筛选模型来源</span><Select size="sm" aria-label="筛选模型来源" value={source} onChange={setSource} options={[{value: '', label: `全部来源 · ${sources.length}`}, ...sources.map(([id, label]) => ({value: id, label}))]}/></label><div className="model-library-capabilities" aria-label="筛选模型能力">{([['all', '不限能力'], ['images', '图片'], ['reasoning', '推理']] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={capability === value} onClick={() => setCapability(value)}>{label}</button>)}</div></div>
     {loading && <p className="model-library-notice" role="status">正在读取本地模型目录…</p>}
     {error && <div className="model-library-notice is-error" role="alert">目录加载失败：{error}。已有选择会保留。<button type="button" onClick={onRetry}>重试</button></div>}
     <div className="model-library-result-head"><span aria-live="polite">显示 {visible.length} 个模型</span>{scope === 'all' && addable.length > 0 && <button type="button" onClick={() => onAdd(addable.map(item => item.model))}>添加当前结果 · {addable.length}</button>}</div>
@@ -61,7 +62,7 @@ export function AgentModelLibrary({models, chosen, loading, error, onRetry, onAc
           {selected && <div className={`model-library-parameters${open ? ' is-open' : ''}`} inert={!open} aria-hidden={!open}><div><div className="agent-model-execution">
             <label><span>上下文窗口</span><div><input aria-label={`${name} 上下文窗口`} type="number" min="1024" step="1024" value={config.contextWindow ?? ''} placeholder="未知" onChange={event => onSetting(item.model, 'contextWindow', event.target.value)}/><small>tokens</small></div></label>
             <label><span>最大输出</span><div><input aria-label={`${name} 最大输出`} type="number" min="16" step="256" value={config.maxOutputTokens ?? ''} placeholder="跟随上游" onChange={event => onSetting(item.model, 'maxOutputTokens', event.target.value)}/><small>tokens</small></div></label>
-            {item.supportsReasoning && <label><span>思考等级</span><div><select aria-label={`${name} 思考等级`} value={config.reasoningEffort ?? ''} onChange={event => onReasoning(item.model, event.target.value)}><option value="">跟随上游</option>{(item.reasoningEfforts || []).map(value => <option key={value} value={value}>{value}</option>)}</select></div></label>}
+            {item.supportsReasoning && <label><span>思考等级</span><div><Select size="sm" aria-label={`${name} 思考等级`} value={config.reasoningEffort ?? ''} onChange={next => onReasoning(item.model, next)} options={[{value: '', label: '跟随上游'}, ...(item.reasoningEfforts || []).map(value => ({value, label: value}))]}/></div></label>}
           </div></div></div>}
         </article>;
       })}

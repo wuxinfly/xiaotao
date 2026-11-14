@@ -1,6 +1,7 @@
 import {ClipboardList, RefreshCw} from 'lucide-react';
 import {createPortal} from 'react-dom';
 import {ModalFrame} from '../../components/modal/ModalFrame';
+import {Select} from '../../components/select/Select';
 import type {AgentProject} from '../../lib/api';
 import {isTerminalTask, type OfficeSnapshot} from '../../lib/office';
 import {TaskCard} from './OfficeRoom';
@@ -35,9 +36,7 @@ export function OfficeMenu({projects, selectedPath, snapshot, lastUpdated, loadi
   </p>}>
     <div className="office-page-actions">
       <label className="office-project-picker"><span>项目</span>
-        <select value={selectedPath} onChange={event => onChange(event.target.value)}>
-          {projects.map(project => <option key={project.path} value={project.path}>{project.name}</option>)}
-        </select>
+        <Select value={selectedPath} onChange={onChange} options={projects.map(project => ({value: project.path, label: project.name}))}/>
       </label>
       <button type="button" className="office-ghost" onClick={onRefresh} disabled={!selectedPath || loading}>
         <RefreshCw size={14} aria-hidden="true"/>{loading ? '刷新中…' : '刷新'}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {ModelPriceBadge} from '../../../components/ModelPriceBadge';
 import { api, type Account, type ModelCatalog, type ModelInfo } from '../../../lib/api';
 import { toast } from '../../../components/toast';
+import {Select} from '../../../components/select/Select';
 import { formatContextWindow, getContextWindowTitle } from '../modelCatalogUtils';
 import './model-catalog.css';
 
@@ -55,9 +56,8 @@ export function ModelCatalogPanel({ accounts, providerId }: { accounts: Account[
     <div className="model-catalog-toolbar">
       <label className="model-catalog-account">
         <span>查看账号</span>
-        <select value={selectedId} onChange={e => setAccountId(e.target.value)}>
-          {accounts.map(a => <option key={a.id} value={a.id}>{a.alias || a.nickname || a.uid}</option>)}
-        </select>
+        <Select size="sm" searchable value={selectedId} onChange={setAccountId}
+          options={accounts.map(a => ({value: a.id, label: a.alias || a.nickname || a.uid}))}/>
       </label>
       <span className="model-catalog-source">{loading ? '正在获取…' : catalog ? `${({ live: '实时获取', builtin: '内置目录', merged: '实时 + 内置目录', cached: '账号缓存', stale: '刷新失败 · 上次目录', error: '目录不可用' }[catalog.source])} · ${(catalog.models?.length ?? 0)} 个模型` : '获取失败'}</span>
       <button type="button" className="group-add-btn" disabled={loading} onClick={() => { refreshRequested.current = true; setRevision(n => n + 1); }}>

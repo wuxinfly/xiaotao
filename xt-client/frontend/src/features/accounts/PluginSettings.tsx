@@ -1,5 +1,6 @@
 import {useState} from 'react';
 import {Settings2} from 'lucide-react';
+import {Select} from '../../components/select/Select';
 
 export type SettingField = {key: string; label: string; description?: string; placeholder?: string; default?: string; options?: string[]};
 
@@ -19,9 +20,8 @@ export function PluginSettings({fields, values, busy, onSave}: {
       {fields.map(field => <label className="plugin-setting" key={field.key}>
         <span>{field.label}</span>
         {field.options?.length
-          ? <select value={current[field.key] ?? ''} disabled={busy} onChange={event => setDraft({...current, [field.key]: event.target.value})}>
-            {field.options.map(option => <option key={option} value={option}>{option}</option>)}
-          </select>
+          ? <Select value={current[field.key] ?? ''} disabled={busy} onChange={next => setDraft({...current, [field.key]: next})}
+              options={field.options.map(option => ({value: option, label: option}))}/>
           : <input value={current[field.key] ?? ''} disabled={busy} placeholder={field.placeholder}
             maxLength={200} onChange={event => setDraft({...current, [field.key]: event.target.value})}/>}
         {field.description && <small>{field.description}</small>}

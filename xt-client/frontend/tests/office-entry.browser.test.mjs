@@ -36,7 +36,12 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.goto('http://127.0.0.1:5234');
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
     await page.getByRole('heading',{name:'为你的项目，组建一支小队。'}).waitFor();
+    await page.setViewportSize({width: 800, height: 500});
+    const scrollArea = page.locator('.office-live-page');
+    await scrollArea.evaluate(element => {element.scrollTop = element.scrollHeight;});
+    assert.ok(await scrollArea.evaluate(element => element.scrollTop > 0));
     await page.getByRole('button',{name:'稍后设置'}).click();
+    await page.setViewportSize({width: 1440, height: 1000});
     await page.getByRole('heading',{name:'项目团队'}).waitFor();
     assert.equal(await page.locator('canvas').count(),0);
     await page.reload();

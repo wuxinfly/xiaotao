@@ -144,7 +144,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.office-page').waitFor();
 
     await page.getByRole('heading', {name: 'Agent 办公室'}).waitFor();
-    await page.getByText('成员状态').waitFor();
+    await page.getByLabel('切换项目').waitFor();
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);

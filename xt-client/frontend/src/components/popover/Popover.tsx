@@ -12,7 +12,7 @@ type Props = {
   initialFocusRef?: RefObject<HTMLElement | null>;
   className?: string;
   id?: string;
-  role?: 'menu' | 'group' | 'dialog';
+  role?: 'menu' | 'group' | 'dialog' | 'listbox';
   'aria-label': string;
   children: ReactNode;
 };
@@ -64,7 +64,7 @@ export function Popover({open, onClose, anchorRef, point, side = 'bottom', align
     const scroll = (event: Event) => {if (!element.contains(event.target as Node)) place();};
     document.addEventListener('scroll', scroll, true);
     let revealFrame = 0;
-    const frame = requestAnimationFrame(() => {revealFrame = requestAnimationFrame(() => setShown(true)); (initialFocusRef?.current ?? element.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"], input, button:not(:disabled)'))?.focus({preventScroll: true});});
+    const frame = requestAnimationFrame(() => {revealFrame = requestAnimationFrame(() => setShown(true)); const target = initialFocusRef?.current ?? element.querySelector<HTMLElement>('[aria-selected="true"]:not(:disabled)') ?? element.querySelector<HTMLElement>('[aria-checked="true"], [aria-pressed="true"], input, button:not(:disabled)'); target?.focus({preventScroll: true});});
     return () => {cancelAnimationFrame(frame); cancelAnimationFrame(revealFrame); observer.disconnect(); window.removeEventListener('resize', place); document.removeEventListener('scroll', scroll, true);};
   }, [mounted, open, anchorRef, point?.x, point?.y, side, align, initialFocusRef]);
 
@@ -84,7 +84,7 @@ export function Popover({open, onClose, anchorRef, point, side = 'bottom', align
   }, [open, anchorRef]);
 
   if (!mounted) return null;
-  return createPortal(<div ref={panel} id={id} role={role} {...aria} className={`app-popover ${className}${shown && open ? ' is-visible' : ''}`} style={position} inert={!open} aria-hidden={!open} onKeyDown={event => {
+  return createPortal(<div ref={panel} id={id} role={role} {...aria} data-escape-layer={role === 'listbox' ? '' : undefined} className={`app-popover ${className}${shown && open ? ' is-visible' : ''}`} style={position} inert={!open} aria-hidden={!open} onKeyDown={event => {
     if ((event.target as HTMLElement).matches('input, textarea') || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
     if (!buttons.length) return;
