@@ -134,7 +134,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
       }
       if (path.startsWith('/api/office/artifacts/art_')) {
         const artifact = artifacts.find(item => `/api/office/artifacts/${item.id}` === path);
-        return route.fulfill({json: {artifact, available: true, content: artifact.id === 'art_1' ? 'export function Search() {}' : '# 搜索页记录'}});
+        return route.fulfill({json: {artifact, available: true, content: artifact.id === 'art_1' ? 'export function Search() {}' : '# 搜索页记录\n\n- **测试清单**\n\n| 状态 |\n| --- |\n| 通过 |\n\n```js\nconst ready = true;\n```'}});
       }
       return route.fulfill({json: {sessions: [], projects: [], accounts: [], models: []}});
     });
@@ -151,8 +151,17 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
+    const taskTrigger = page.getByRole('button', {name: '任务', exact: true});
+    assert.equal(await taskTrigger.getAttribute('aria-expanded'), 'false');
+    const scene = page.locator('.workspace-scene');
+    const fullWidth = (await scene.boundingBox()).width;
+    await taskTrigger.click();
     await page.getByRole('heading', {name: '项目任务'}).waitFor();
-    await page.getByRole('tab', {name: /任务/}).click();
+    assert.equal((await scene.boundingBox()).width, fullWidth, 'opening the drawer must not resize the room');
+    await page.keyboard.press('Escape');
+    assert.equal(await taskTrigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(await taskTrigger.evaluate(node => node === document.activeElement), true);
+    await taskTrigger.click();
     await page.locator('.workspace-task-list .office-task-card').first().waitFor();
     assert.equal(await page.getByRole('button', {name: '办公室菜单', exact: true}).count(), 0);
     const shelf = page.getByRole('button', {name: '打开项目资料馆'});
@@ -168,6 +177,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     const openMember = async name => {
       if (await page.getByRole('button', {name: '返回团队成员', exact: true}).isVisible()) await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
       if (await page.getByRole('button', {name: '返回任务列表', exact: true}).isVisible()) await page.getByRole('button', {name: '返回任务列表', exact: true}).click();
+      if (!await page.locator('.workspace-sidebar').getByRole('tab', {name: /团队/}).isVisible()) await taskTrigger.click();
       await page.getByRole('tab', {name: /团队/}).click();
       await page.locator('.workspace-member-list [data-member-id]').filter({hasText: name}).click();
       await page.getByRole('heading', {name: `与${name}对话`}).waitFor();
@@ -180,8 +190,8 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await memberPanel.getByLabel('模型').waitFor();
     await memberPanel.getByText('128,000 tokens').waitFor();
     await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
-    await page.locator('.member-chat').getByRole('button', {name: '发送', exact: true}).click();
-    await page.getByText('我们先把想法整理成一份交接。').waitFor();
+    await page.locator('.member-chat .agent-composer').getByRole('button', {name: '发送消息', exact: true}).click();
+    await page.locator('.member-chat .agent-message.role-assistant').getByText('我们先把想法整理成一份交接。').waitFor();
     assert.equal(chats[roleId], '我想调整搜索页面');
     await page.getByRole('button', {name: '查看交接并安排'}).click();
     assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
@@ -227,6 +237,22 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByText('export function Search() {}').waitFor();
     await page.keyboard.press('Escape');
     await library.waitFor();
+    assert.equal(await library.getByLabel('查找资料').inputValue(), 'search.tsx');
+    await library.getByLabel('查找资料').fill('search-notes.md');
+    const book = library.getByRole('button', {name: '打开资料 search-notes.md'});
+    await book.click();
+    const markdown = page.getByRole('dialog', {name: 'search-notes.md'});
+    await markdown.getByRole('heading', {name: '搜索页记录'}).waitFor();
+    await markdown.getByRole('table').getByRole('cell', {name: '通过'}).waitFor();
+    assert.equal(await markdown.locator('pre code').textContent(), 'const ready = true;\n');
+    assert.equal(await page.locator('.office-library-modal').isVisible(), true);
+    assert.equal(await page.locator('.office-library-modal').locator('..').getAttribute('inert'), '');
+    await page.keyboard.press('Escape');
+    await library.waitFor();
+    assert.equal(await library.getByLabel('查找资料').inputValue(), 'search-notes.md');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === '打开资料 search-notes.md', null, {timeout: 1500}).catch(async reason => {
+      throw new Error(`${reason.message}\nFocus: ${await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 350))}`);
+    });
     await page.keyboard.press('Escape');
     await library.waitFor({state: 'detached'});
     artifacts.length = 0;
@@ -234,6 +260,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('option', {name: '另一个项目'}).click();
     await page.locator('.room-project').getByText('另一个项目').waitFor();
     await page.locator('[data-entry-phase="ready"] canvas[data-office-renderer="three"]').waitFor();
+    await taskTrigger.click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-member-list [data-member-id="coordinator"]').waitFor();
     assert.equal(await page.locator('.workspace-member-list [data-member-id]').count(), 1);
@@ -245,6 +272,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('button', {name: '切换项目'}).click();
     await page.getByRole('option', {name: '另一个项目'}).click();
     await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await taskTrigger.click();
     await page.getByText('现在没有进行中的任务').waitFor();
 
     // Polling must stop once the office page is left.

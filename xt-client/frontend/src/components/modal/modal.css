@@ -49,6 +49,7 @@
 
 @keyframes app-modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 .app-modal-backdrop.is-exiting { animation: app-modal-backdrop-out 180ms ease forwards; pointer-events: none; }
+.app-modal-backdrop.is-stacked { z-index: 1001; backdrop-filter: none; background: rgba(2, 15, 25, .32); }
 .app-modal-backdrop.is-exiting .app-modal { animation: app-modal-out 180ms ease forwards; }
 @keyframes app-modal-backdrop-out { to { opacity: 0; } }
 @keyframes app-modal-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-14px); } }

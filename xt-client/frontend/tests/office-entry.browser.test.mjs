@@ -55,7 +55,8 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
     await page.locator('[data-entry-phase=ready]').waitFor();
-    await page.getByRole('tab',{name:/团队/}).click();
+    if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
+    await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-team').getByRole('button',{name:'管理团队',exact:true}).first().click();
     await page.keyboard.press('Escape');
     current=team(0,'pending');
@@ -66,8 +67,11 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.getByRole('button',{name:'组建小队',exact:true}).click();
     await page.getByRole('button',{name:'创建我的小队'}).click();
     assert.equal(current.onboarding,'completed');
-    await page.getByRole('heading',{name:'项目团队'}).waitFor();
+    await page.getByRole('button', {name: '任务', exact: true}).click();
+    await page.getByRole('tab', {name: /团队/}).click();
+    await page.getByRole('region', {name: '团队成员列表'}).getByRole('heading',{name:'项目团队'}).waitFor();
     failModel=false;
+    await page.getByRole('button', {name: '收起协作面板'}).click();
     await page.getByRole('button',{name:'重新加载'}).click();
     await page.locator('canvas[data-office-renderer="three"]').waitFor();
     await page.locator('[data-entry-phase=ready]').waitFor();

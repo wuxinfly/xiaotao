@@ -17,8 +17,8 @@ import './office.css';
 import './office-workspace.css';
 
 type Props = {visible: boolean};
-type Panel = 'library' | 'artifact' | 'create' | 'team' | null;
-type WorkspaceView = 'tasks' | 'team' | 'task' | 'member';
+type Panel = 'library' | 'create' | 'team' | null;
+type WorkspaceView = 'tasks' | 'team' | 'task' | 'member' | null;
 
 const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
 
@@ -34,14 +34,13 @@ export function OfficePage({visible}: Props) {
   const [detailError, setDetailError] = useState('');
   const [activeTaskId, setActiveTaskId] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('tasks');
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(null);
   const [handoffGoal, setHandoffGoal] = useState('');
   const [activeMemberId, setActiveMemberId] = useState('');
-  const [artifact, setArtifact] = useState<OfficeArtifactDetail | null>(null);
+  const [artifact, setArtifact] = useState<{id: number; detail: OfficeArtifactDetail; trigger: HTMLElement | null} | null>(null);
   const detailRequest = useRef(0);
   const taskSelection = useRef<{path: string; id: string} | null>(null);
   const artifactRequest = useRef(0);
-  const artifactReturn = useRef<'library' | null>(null);
   const entry = useRef<OfficeEntryHandle>(null);
   const currentProject = useRef(selectedPath);
   currentProject.current = selectedPath;
@@ -92,6 +91,7 @@ export function OfficePage({visible}: Props) {
 
   function showPanel(next: Panel) {
     artifactRequest.current++;
+    setArtifact(null);
     setPanel(next);
   }
 
@@ -101,7 +101,7 @@ export function OfficePage({visible}: Props) {
     showPanel(null);
     setActiveMemberId('');
     setHandoffGoal('');
-    setWorkspaceView('tasks');
+    setWorkspaceView(null);
     setSelectedPath(path);
   }
 
@@ -185,7 +185,7 @@ export function OfficePage({visible}: Props) {
     refresh();
   }
 
-  async function openArtifact(item: OfficeArtifact) {
+  async function openArtifact(item: OfficeArtifact, trigger = document.activeElement) {
     const id = ++artifactRequest.current;
     try {
       const result = await officeApi.artifact(selectedPath, item.id);
@@ -194,9 +194,7 @@ export function OfficePage({visible}: Props) {
         void refresh();
         if (activeTaskId) void loadDetail(activeTaskId, true);
       }
-      artifactReturn.current = panel === 'library' ? 'library' : null;
-      setArtifact(result);
-      showPanel('artifact');
+      setArtifact({id, detail: result, trigger: trigger instanceof HTMLElement ? trigger : null});
     } catch (reason) {
       if (id === artifactRequest.current) toast.error(reason instanceof Error ? reason.message : String(reason));
     }
@@ -228,6 +226,7 @@ export function OfficePage({visible}: Props) {
       view={workspaceView} activeTaskId={activeTaskId} activeMemberId={activeMemberId} detail={currentDetail} detailLoading={detailLoading} detailError={detailError}
       models={models} modelConfigs={modelConfigs} preferredModel={preferredModel}
       onProject={selectProject} onView={next => {setWorkspaceView(next); clearTask();}}
+      onCloseDrawer={() => {clearTask(); setWorkspaceView(null);}}
       onRefresh={() => void refresh()}
       onCreate={() => {setHandoffGoal(''); showPanel('create');}} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
       onCloseDetail={() => {clearTask(); setWorkspaceView(workspaceView === 'member' ? 'team' : 'tasks');}}
@@ -250,9 +249,9 @@ export function OfficePage({visible}: Props) {
         modelConfigs={modelConfigs} preferredModel={preferredModel} initialGoal={handoffGoal}
         onCreated={(created: OfficeTask) => {toast.success('任务已安排，执行者开始工作'); void refresh(); selectTask(created.id);}}
         onClose={close}/>
-      : panel === 'library' ? <ArtifactLibraryModal artifacts={snapshot?.artifacts || []} onOpenArtifact={item => void openArtifact(item)} onClose={close}/>
-      : panel === 'artifact' && artifact ? <ArtifactModal detail={artifact} onClose={() => showPanel(artifactReturn.current)}/>
+      : panel === 'library' ? <ArtifactLibraryModal artifacts={snapshot?.artifacts || []} covered={!!artifact} onOpenArtifact={(item, trigger) => void openArtifact(item, trigger)} onClose={close}/>
       : null}
     </ModalPresence>
+    <ModalPresence>{artifact && <ArtifactModal key={artifact.id} detail={artifact.detail} stacked={panel === 'library'} returnFocus={artifact.trigger} onClose={() => {artifactRequest.current++; setArtifact(null);}}/>}</ModalPresence>
   </div>;
 }

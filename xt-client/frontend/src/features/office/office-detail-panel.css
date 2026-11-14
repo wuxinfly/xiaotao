@@ -4,13 +4,13 @@
 .workspace-sidebar .office-detail { width: auto; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--office-text); }
 .workspace-sidebar :is(.office-detail-head, .office-detail-meta, .office-transcript, .office-artifacts, .office-messages) { padding: 12px 16px; border-color: var(--office-stroke); }
 .workspace-sidebar .office-detail-meta { margin: 0; }
-.workspace-sidebar :is(h2, h3, .member-chat-profile strong, .office-artifact-name) { color: var(--office-text); }
-.workspace-sidebar :is(.office-detail-goal, .office-detail-foot, .office-muted, .office-detail-meta dt, .office-detail-meta dd, .office-artifact small, .member-chat-profile span, .member-chat-profile small, .member-chat-actions small, .member-chat-handoff) { color: var(--office-muted); }
-.workspace-sidebar :is(.office-feed-message, .office-feed-activity, .office-feed-thought, .office-artifact, .member-chat-profile, .member-chat-bubble > div) { border-color: var(--office-stroke); background: var(--office-raised); color: var(--office-text); }
+.workspace-sidebar :is(.office-detail h2, .office-detail h3, .office-artifact-name) { color: var(--office-text); }
+.workspace-sidebar :is(.office-detail-goal, .office-detail-foot, .office-muted, .office-detail-meta dt, .office-detail-meta dd, .office-artifact small) { color: var(--office-muted); }
+.workspace-sidebar :is(.office-feed-message, .office-feed-activity, .office-feed-thought, .office-artifact) { border-color: var(--office-stroke); background: var(--office-raised); color: var(--office-text); }
 .workspace-sidebar .office-feed-body { color: var(--office-text); font-size: 12px; }
 .workspace-sidebar .office-feed-body pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.workspace-sidebar :is(.office-message-compose textarea, .member-chat-compose textarea) { border-color: var(--office-stroke); background: var(--office-bg); color: var(--office-text); }
-.workspace-sidebar :is(.office-message-compose textarea, .member-chat-compose textarea)::placeholder { color: var(--office-muted); }
+.workspace-sidebar .office-message-compose textarea { border-color: var(--office-stroke); background: var(--office-bg); color: var(--office-text); }
+.workspace-sidebar .office-message-compose textarea::placeholder { color: var(--office-muted); }
 .office-workspace .workspace-sidebar .office-ghost { border-color: var(--office-stroke); background: var(--office-raised); color: var(--office-text); }
 .office-workspace .workspace-sidebar .office-ghost:hover:not(:disabled) { background: var(--office-hover); color: var(--office-text); }
 .office-workspace .workspace-sidebar .office-ghost.danger { color: var(--office-danger); }
@@ -18,8 +18,3 @@
 .workspace-conversation-title { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--office-stroke); }
 .workspace-conversation-title h2 { margin: 0 0 3px; font-size: 16px; }
 .workspace-conversation-title p { margin: 0; color: var(--office-muted); font-size: 11px; }
-.workspace-sidebar .member-chat-profile { margin: 12px 15px 0; }
-.workspace-sidebar :is(.member-chat-toolbar, .member-chat-compose) { border-color: var(--office-stroke); background: transparent; }
-.workspace-sidebar :is(.member-chat-context small, .member-chat-context strong, .member-chat-toolbar label > span, .member-chat-bubble > span) { color: var(--office-muted); }
-.workspace-sidebar .member-chat-bubble.role-user > div { background: var(--office-hover); color: var(--office-text); }
-@media (max-width: 840px) { .workspace-detail-wrap { max-height: min(70vh, 670px); } }

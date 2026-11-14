@@ -45,6 +45,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.locator('[data-entry-phase=ready]').waitFor();
     await page.getByRole('button', {name: '组建小队', exact: true}).click();
     await page.getByRole('button', {name: '稍后设置', exact: true}).click();
+    if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-team').getByRole('button', {name: '管理团队', exact: true}).click();
     await page.getByRole('heading', {name: '建立项目团队'}).waitFor();
@@ -96,6 +97,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     assert.equal(team.members[0].appearance.shape, 'hexagon');
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({state: 'detached'});
+    await page.getByRole('button', {name: '收起协作面板'}).click();
     await page.getByRole('button', {name: '放大视角', exact: true}).click();
     await page.getByRole('button', {name: '复位视角', exact: true}).click();
     await page.getByRole('button', {name: '打开项目资料馆', exact: true}).first().click();
@@ -103,6 +105,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.keyboard.press('Escape');
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).waitFor();
     await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).click();
@@ -118,8 +121,10 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.setViewportSize({width: 800, height: 900});
     assert.ok(await page.locator('.workspace-grid').evaluate(element => {
       const [scene, panel] = element.children;
-      return scene.getBoundingClientRect().bottom <= panel.getBoundingClientRect().top;
-    }), 'narrow office stacks the room above the collaboration panel');
+      const room = scene.getBoundingClientRect();
+      const drawer = panel.getBoundingClientRect();
+      return Math.abs(room.right - drawer.right) <= 2 && drawer.width < room.width;
+    }), 'narrow office keeps the drawer over the right side of the full-width room');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow office must not overflow horizontally');
     await page.evaluate(() => {document.querySelector('.office-live-page').scrollTop = 0;});
     const sidebar = await page.locator('.workspace-sidebar').boundingBox();

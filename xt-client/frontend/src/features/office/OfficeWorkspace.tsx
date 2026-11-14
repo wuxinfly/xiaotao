@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import {Archive, ArrowLeft, ClipboardList, MessageCircle, Plus, Settings2, Users} from 'lucide-react';
+import {Archive, ArrowLeft, ClipboardList, MessageCircle, PanelRightClose, Plus, Settings2, Users} from 'lucide-react';
 import type {AgentModelOption} from '../../lib/api';
 import type {AgentModelConfig} from '../../lib/agent-model-settings';
 import type {CSSProperties, ReactNode} from 'react';
@@ -17,7 +17,7 @@ type Props = {
   snapshot: OfficeSnapshot | null;
   loading: boolean;
   error: string;
-  view: 'tasks' | 'team' | 'task' | 'member';
+  view: 'tasks' | 'team' | 'task' | 'member' | null;
   activeTaskId: string;
   activeMemberId: string;
   detail: OfficeTaskDetail | null;
@@ -29,6 +29,7 @@ type Props = {
   children: ReactNode;
   onProject: (path: string) => void;
   onView: (view: 'tasks' | 'team') => void;
+  onCloseDrawer: () => void;
   onRefresh: () => void;
   onCreate: () => void;
   onManage: () => void;
@@ -53,22 +54,35 @@ function roleColor(member: OfficeMember) {
 }
 
 export function OfficeWorkspace(props: Props) {
-  const {snapshot, view} = props;
+  const {snapshot, view, onCloseDrawer} = props;
   const [filters, setFilters] = useState({path: props.projectPath, task: 'active'});
   const projectChanged = filters.path !== props.projectPath;
   if (projectChanged) setFilters({path: props.projectPath, task: 'active'});
   const taskFilter = projectChanged ? 'active' : filters.task;
   const panel = useRef<HTMLElement>(null);
-  const previous = useRef({view, path: props.projectPath});
+  const close = useRef<HTMLButtonElement>(null);
+  const open = view !== null;
   useEffect(() => {
-    const sameProject = previous.current.path === props.projectPath;
-    const changedView = previous.current.view !== view;
-    previous.current = {view, path: props.projectPath};
-    if (!sameProject || !changedView) return;
-    if (!matchMedia('(max-width: 840px)').matches) return;
-    const target = panel.current;
-    if (target && target.getBoundingClientRect().top > window.innerHeight - 120) target.scrollIntoView({block: 'start'});
-  }, [view, props.projectPath]);
+    if (!open) return;
+    const trigger = document.activeElement;
+    const drawer = panel.current;
+    close.current?.focus({preventScroll: true});
+    return () => {
+      if (trigger instanceof HTMLElement && (document.activeElement === document.body || drawer?.contains(document.activeElement))) {
+        trigger.focus({preventScroll: true});
+      }
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('.app-modal-backdrop:not(.is-exiting), .confirm-overlay')) return;
+      if (event.target instanceof Element && event.target.closest('[data-escape-layer]')) return;
+      onCloseDrawer();
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [open, onCloseDrawer]);
   const tasks = snapshot?.tasks.filter(task => taskFilter === 'all' || (taskFilter === 'active' ? !isTerminalTask(task.status) : isTerminalTask(task.status))) || [];
   const activeCount = snapshot?.tasks.filter(task => !isTerminalTask(task.status)).length || 0;
   const canCreate = !!snapshot;
@@ -76,14 +90,17 @@ export function OfficeWorkspace(props: Props) {
   return <div className="office-workspace">
     <header className="workspace-heading">
       <div><span className="workspace-kicker">项目协作</span><h1>办公室</h1></div>
-      <div className="workspace-heading-right"><span className="workspace-project-label">当前项目</span><Select aria-label="切换项目" value={props.projectPath} onChange={props.onProject} options={props.projects.map(project => ({value: project.path, label: project.name}))}/><button className="workspace-create" type="button" disabled={!canCreate} onClick={props.onCreate}><Plus size={17}/>新建任务</button></div>
+      <div className="workspace-heading-right"><span className="workspace-project-label">当前项目</span><Select aria-label="切换项目" value={props.projectPath} onChange={props.onProject} options={props.projects.map(project => ({value: project.path, label: project.name}))}/>
+        <button type="button" className="workspace-icon-button workspace-task-trigger" aria-label="任务" aria-controls="office-drawer" aria-expanded={view === 'tasks' || view === 'task'} onClick={() => view === 'tasks' || view === 'task' ? onCloseDrawer() : props.onView('tasks')}><ClipboardList size={15}/>任务{activeCount > 0 && <span aria-hidden="true">{activeCount}</span>}</button>
+        <button className="workspace-create" type="button" disabled={!canCreate} onClick={props.onCreate}><Plus size={17}/>新建任务</button></div>
     </header>
     <div className="workspace-grid">
       <div className="workspace-scene" role="region" aria-label={`${props.projectName}的办公室`}>
         {props.children}
         {props.error && <p className="office-error workspace-scene-error" role="alert">刷新办公室失败：{props.error}<button className="office-link" onClick={props.onRefresh}>重试</button></p>}
       </div>
-      <aside ref={panel} className={`workspace-sidebar ${view === 'task' || view === 'member' ? 'is-detail' : ''}`} aria-label="办公室协作面板">
+      <aside ref={panel} id="office-drawer" className={`workspace-sidebar ${open ? 'is-open' : ''} ${view === 'member' ? 'is-chat' : ''}`} aria-label="办公室协作面板" inert={!open}>
+        <div className="workspace-drawer-heading"><strong>协作面板</strong><button type="button" ref={close} className="workspace-icon-button" aria-label="收起协作面板" onClick={onCloseDrawer}><PanelRightClose size={16}/></button></div>
         {view === 'task' ? <div className="workspace-detail-wrap">
           <button type="button" className="workspace-back" onClick={props.onCloseDetail}><ArrowLeft size={15}/>返回任务列表</button>
           <TaskDetail key={props.activeTaskId} projectPath={props.projectPath} detail={props.detail} loading={props.detailLoading} error={props.detailError}
@@ -99,7 +116,7 @@ export function OfficeWorkspace(props: Props) {
             <button type="button" role="tab" aria-selected={view === 'tasks'} className={view === 'tasks' ? 'is-selected' : ''} onClick={() => props.onView('tasks')}><ClipboardList size={15}/>任务{activeCount > 0 && <span>{activeCount}</span>}</button>
             <button type="button" role="tab" aria-selected={view === 'team'} className={view === 'team' ? 'is-selected' : ''} onClick={() => props.onView('team')}><Users size={15}/>团队<span>{snapshot?.members.length || 0}</span></button>
           </div>
-          {view === 'tasks' ? <section className="workspace-tasks" aria-label="任务列表">
+          {view !== 'team' ? <section className="workspace-tasks" aria-label="任务列表">
             <div className="workspace-panel-heading"><div><h2>项目任务</h2><p>跟踪进度和执行记录</p></div></div>
             <div className="workspace-task-filters" aria-label="筛选任务">{[['active', '进行中'], ['finished', '已结束'], ['all', '全部']].map(([value, label]) => <button type="button" key={value} className={taskFilter === value ? 'is-selected' : ''} aria-pressed={taskFilter === value} onClick={() => setFilters({path: props.projectPath, task: value})}>{label}</button>)}</div>
             <div className="workspace-task-list">{tasks.map(task => <TaskCard key={task.id} task={task} onSelect={() => props.onSelectTask(task.id)}/>)}

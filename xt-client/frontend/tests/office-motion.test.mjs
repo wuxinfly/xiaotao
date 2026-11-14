@@ -46,13 +46,35 @@ function createMotion(person) {
 
 test('idle member walks away, gets back to the same desk and bends their knees to sit', () => {
   const {actor, rig, home, motion, tick} = createMotion(member('employee'));
-  tick(240, 278);
+  tick(240, 316);
   assert.ok(actor.position.distanceTo(home) > .4);
   assert.ok(Math.abs(rig[0].thigh.rotation.x) < .5);
-  tick(278, 510);
+  tick(316, 565);
   assert.equal(motion.roaming, false);
   assert.ok(actor.position.distanceTo(home) < .001);
   assert.ok(rig[0].thigh.rotation.x > 1 && rig[0].shin.rotation.x < -1);
+});
+
+test('the character stands before moving and faces the direction of each step', () => {
+  const {actor, home, motion, rig} = createMotion(member('employee'));
+  let moved = false, seatedAgain = false;
+  for (let i = 0; i < 570; i++) {
+    const previous = actor.position.clone();
+    motion.step(i * .025, .025, true);
+    const dx = actor.position.x - previous.x, dz = actor.position.z - previous.z;
+    if (Math.hypot(dx, dz) > .006) {
+      moved = true;
+      assert.ok(rig[0].thigh.rotation.x < .5, 'do not translate while seated');
+      const alignment = (-Math.sin(actor.rotation.y) * dx - Math.cos(actor.rotation.y) * dz) / Math.hypot(dx, dz);
+      assert.ok(alignment > .99, 'no sideways sliding when the route turns');
+    }
+    if (moved && !motion.roaming) {
+      assert.ok(actor.position.distanceTo(home) < .001);
+      seatedAgain = true;
+      break;
+    }
+  }
+  assert.ok(moved && seatedAgain);
 });
 
 test('work interrupts a walk, and coordinator and queued executor stay at their desks', () => {

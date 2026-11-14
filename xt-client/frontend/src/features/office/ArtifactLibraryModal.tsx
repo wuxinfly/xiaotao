@@ -7,11 +7,12 @@ import './library.css';
 
 type Props = {
   artifacts: OfficeArtifact[];
-  onOpenArtifact: (artifact: OfficeArtifact) => void;
+  covered: boolean;
+  onOpenArtifact: (artifact: OfficeArtifact, trigger: HTMLButtonElement) => void;
   onClose: () => void;
 };
 
-export function ArtifactLibraryModal({artifacts, onOpenArtifact, onClose}: Props) {
+export function ArtifactLibraryModal({artifacts, covered, onOpenArtifact, onClose}: Props) {
   const [query, setQuery] = useState('');
   const [directoryId, setDirectoryId] = useState('');
   const allBooks = useMemo(() => artifacts.map(artifactBook), [artifacts]);
@@ -26,6 +27,7 @@ export function ArtifactLibraryModal({artifacts, onOpenArtifact, onClose}: Props
     title="项目资料馆"
     description="员工已按目录归档，点一本书即可打开原文。"
     className="office-library-modal"
+    covered={covered}
     onClose={onClose}
     footer={<button type="button" className="app-modal-button secondary" onClick={onClose}>关闭</button>}
   >
@@ -64,7 +66,7 @@ export function ArtifactLibraryModal({artifacts, onOpenArtifact, onClose}: Props
               type="button"
               className="office-library-book"
               style={{animationDelay: `${Math.min(index * 45, 320)}ms`}}
-              onClick={() => onOpenArtifact(item.artifact)}
+              onClick={event => onOpenArtifact(item.artifact, event.currentTarget)}
               aria-haspopup="dialog"
               aria-label={`打开资料 ${item.fileName}`}
             >

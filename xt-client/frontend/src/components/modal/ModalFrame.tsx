@@ -21,16 +21,19 @@ export interface ModalFrameProps {
   description?: string;
   className?: string;
   origin?: {x: number; y: number};
+  covered?: boolean;
+  stacked?: boolean;
+  returnFocus?: HTMLElement | null;
   onClose: () => void;
   children: ReactNode;
   footer: ReactNode;
 }
 
-export function ModalFrame({title, description, className = '', origin, onClose, children, footer}: ModalFrameProps) {
+export function ModalFrame({title, description, className = '', origin, covered, stacked, returnFocus, onClose, children, footer}: ModalFrameProps) {
   const exiting = useContext(ModalExiting);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
+  const initialFocus = useRef(returnFocus);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const initialOrigin = useRef(origin);
@@ -49,16 +52,26 @@ export function ModalFrame({title, description, className = '', origin, onClose,
     dialog.style.setProperty('--modal-enter-y', `${(point.y - rect.top - rect.height / 2) * .1}px`);
     dialog.style.animation = '';
   }, []);
+  useLayoutEffect(() => {
+    const target = initialFocus.current;
+    if (!exiting || !target) return;
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (target.isConnected && (active === document.body || dialogRef.current?.contains(active))) target.focus({preventScroll: true});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [exiting]);
 
   useEffect(() => {
-    previousFocus.current = document.activeElement as HTMLElement | null;
+    const previous = initialFocus.current || document.activeElement;
     const dialog = dialogRef.current;
     const focusables = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]',
     ) ?? []).filter(node => !node.matches(':disabled') && !node.closest('[inert], [hidden], [aria-hidden="true"]') && node.getClientRects().length > 0);
     focusables()[0]?.focus();
 
     const handleKey = (event: KeyboardEvent) => {
+      if (dialog?.closest('[inert]')) return;
       if (event.key === 'Escape') {
         if (event.target instanceof Element && event.target.closest('[data-escape-layer]')) return;
         event.preventDefault();
@@ -81,20 +94,18 @@ export function ModalFrame({title, description, className = '', origin, onClose,
     window.addEventListener('keydown', handleKey, true);
     return () => {
       window.removeEventListener('keydown', handleKey, true);
-      const previous = previousFocus.current;
-      if (previous?.isConnected && (!document.activeElement || document.activeElement === document.body)) previous.focus();
+      if (previous instanceof HTMLElement && previous.isConnected && (!document.activeElement || document.activeElement === document.body)) previous.focus({preventScroll: true});
     };
   }, []);
 
   return createPortal(
-    <div className={'app-modal-backdrop' + (exiting ? ' is-exiting' : '')} inert={exiting} onPointerDown={event => {
+    <div className={'app-modal-backdrop' + (exiting ? ' is-exiting' : '') + (stacked ? ' is-stacked' : '')} inert={exiting || covered} onPointerDown={event => {
       if (event.target === event.currentTarget) onClose();
     }}>
       <div
         ref={dialogRef}
         className={'app-modal ' + className}
-        inert={exiting}
-        aria-hidden={exiting || undefined}
+        aria-hidden={exiting || covered || undefined}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

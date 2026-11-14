@@ -1,6 +1,7 @@
 import {normaliseImage} from './imageNormalise';
 import {AgentDroplet} from './AgentDroplet';
 import {MessageRow, RunTimeline} from './messages/MessageFeed';
+import {ChatComposer, ChatSendButton} from './messages/ChatComposer';
 import {runDuration, runPhase, thoughtKindLabel} from './messages/runStats';
 import {useBranchSession} from './useBranchSession';
 import {Popover} from '../../components/popover/Popover';
@@ -21,7 +22,6 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import {
-  ArrowUp,
   ArrowDown,
   CircleAlert,
   CircleCheck,
@@ -40,7 +40,6 @@ import {
   Search,
   Settings2,
   Trash2,
-  Square,
   Route,
   Terminal,
   Wrench,
@@ -1512,17 +1511,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
           {!active && path && <button type="button" className="agent-project-clear" disabled={busy} onClick={() => {setPath(''); setProjectName('');}} aria-label="清空工作区目录" title="清空工作区目录"><X aria-hidden="true"/></button>}
           </div>
         </div>
-        <div className="agent-composer" ref={referenceComposerRef}>
-          {!!quotes.length && <div className="agent-quote-drafts" aria-label="引用的文字">{quotes.map((item, index) => <div className="agent-quote-chip" key={item.id}><button type="button" className="agent-quote-chip-open" title={item.text} onClick={() => setEditingQuote(item.id)} aria-label={`编辑引用 ${index + 1}`}><span>{index + 1}</span><span>{item.text}</span></button><button type="button" className="agent-quote-chip-remove" aria-label={`移除引用 ${index + 1}`} onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(current => current === item.id ? null : current);}}><X aria-hidden="true"/></button></div>)}</div>}
-          {!!composerImages.length && <div className="agent-composer-images" aria-label="待发送图片">
-            {composerImages.map((image, index) => <div className="agent-composer-image" key={image.id}>
-              <img src={image.preview} alt={image.name} title={image.name}/>
-              <button type="button" aria-label={`移除图片 ${index + 1}`} title="移除图片" onClick={() => setComposerImages(current => current.filter(item => item.id !== image.id))}><X aria-hidden="true"/></button>
-            </div>)}
-          </div>}
-          <EditorContent editor={editor} className="agent-editor"/>
-          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
-          <div className="agent-toolbar">
+        <ChatComposer composerRef={referenceComposerRef} controls={<>
             <div className="agent-composer-meta">
             <div className="agent-mode-picker">
               <button ref={modeButtonRef} type="button" className="agent-option" aria-label="访问模式" aria-expanded={modeMenuOpen} disabled={!accessReady} onClick={() => setModeMenuOpen(open => !open)}>{accessMode === 'safe' ? '安全模式' : '完全访问'}<ChevronDown aria-hidden="true"/></button>
@@ -1544,12 +1533,19 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
               </div>
               {!!composerImages.length && currentModelSupportsImages && <span className="agent-image-model-hint"><Image aria-hidden="true"/>图片将随消息发送</span>}
               {(!!composerImages.length || historyHasImages) && !currentModelSupportsImages && <span className="agent-image-model-warning" role="status">{historyHasImages ? '会话包含图片，当前模型不支持' : '当前模型不支持图片'}</span>}
-              {busy
-                ? <button type="button" className="agent-send is-stop" onClick={stop} aria-label="停止任务" title="停止任务"><Square aria-hidden="true"/></button>
-                : <button type="button" className="agent-send" disabled={!canSendRef.current} onClick={() => void send()} aria-label="发送消息" title="发送消息"><ArrowUp aria-hidden="true"/></button>}
+              <ChatSendButton busy={busy} disabled={!canSendRef.current} onSend={() => void send()} onStop={stop}/>
             </div>
-          </div>
-        </div>
+          </>}>
+          {!!quotes.length && <div className="agent-quote-drafts" aria-label="引用的文字">{quotes.map((item, index) => <div className="agent-quote-chip" key={item.id}><button type="button" className="agent-quote-chip-open" title={item.text} onClick={() => setEditingQuote(item.id)} aria-label={`编辑引用 ${index + 1}`}><span>{index + 1}</span><span>{item.text}</span></button><button type="button" className="agent-quote-chip-remove" aria-label={`移除引用 ${index + 1}`} onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(current => current === item.id ? null : current);}}><X aria-hidden="true"/></button></div>)}</div>}
+          {!!composerImages.length && <div className="agent-composer-images" aria-label="待发送图片">
+            {composerImages.map((image, index) => <div className="agent-composer-image" key={image.id}>
+              <img src={image.preview} alt={image.name} title={image.name}/>
+              <button type="button" aria-label={`移除图片 ${index + 1}`} title="移除图片" onClick={() => setComposerImages(current => current.filter(item => item.id !== image.id))}><X aria-hidden="true"/></button>
+            </div>)}
+          </div>}
+          <EditorContent editor={editor} className="agent-editor"/>
+          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
+        </ChatComposer>
         <div className="agent-hint">
           <span className="agent-project-context" title={activeProjectPath || '小涛数据目录中的默认工作区'}>{activeProjectPath ? `工作目录：${activeProjectPath}` : '工作目录：小涛数据目录中的默认工作区'}</span>
           {!active && !model && <button type="button" onClick={() => setSettingsOpen(true)}>先选择模型，才能发送</button>}
