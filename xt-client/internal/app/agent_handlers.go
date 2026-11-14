@@ -185,6 +185,7 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 			apiError(w, 400, "请求格式无效")
 			return
 		}
+		options.Member = nil
 		session, err := svc.Create(options)
 		if err != nil {
 			apiError(w, 400, err.Error())

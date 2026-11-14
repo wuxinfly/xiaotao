@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func (s *Service) prepareTurnInstructions(workspace *Workspace, history *Session) (string, string, string, error) {
 	if history.ReadOnly {
@@ -26,6 +29,16 @@ func (s *Service) prepareTurnInstructions(workspace *Workspace, history *Session
 }
 
 func officeChatRole(session *Session) string {
+	if session.Member != nil {
+		identity := "\n你是项目办公室成员" + session.Member.Name + "。"
+		if responsibility := strings.TrimSpace(session.Member.Responsibility); responsibility != "" {
+			identity += "你的职责是：" + responsibility + "。"
+		}
+		if session.ReadOnly {
+			return identity + "当前是直接对话，你没有任何工具，无法读取项目文件或执行操作；不要声称看过未提供的文件或已经执行操作。"
+		}
+		return identity + "当前是你已接受的项目任务。职责说明不是额外权限；按用户确认的目标和现有工具规则执行，不声称代表其他成员工作。"
+	}
 	if !session.ReadOnly {
 		return ""
 	}

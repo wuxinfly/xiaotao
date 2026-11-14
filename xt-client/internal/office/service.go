@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,15 +16,16 @@ import (
 // requests: the office goroutine owns the context, so leaving a page never
 // cancels a task, while Close cancels every remaining run.
 type Service struct {
-	dataDir string
-	exec    Executor
-	mu      sync.Mutex
-	active  map[string]*Task
-	runs    map[string]context.CancelFunc
-	closed  bool
-	wg      sync.WaitGroup
-	now     func() time.Time
-	teams   *TeamService
+	dataDir     string
+	exec        Executor
+	mu          sync.Mutex
+	active      map[string]*Task
+	runs        map[string]context.CancelFunc
+	closed      bool
+	wg          sync.WaitGroup
+	now         func() time.Time
+	teams       *TeamService
+	subscribers map[string]map[chan agent.Event]struct{}
 	// rootCtx is canceled by Close. Every turn derives from it, so shutdown
 	// stops runs that started after Close snapshotted the run map.
 	rootCtx    context.Context
@@ -50,9 +50,7 @@ func New(dataDir string, exec Executor) (*Service, error) {
 	}
 	db.Close()
 	svc.teams.SetActiveCheck(func(projectPath, roleID string) bool {
-		svc.mu.Lock()
-		defer svc.mu.Unlock()
-		return svc.runs[chatKey(projectPath, roleID)] != nil
+		return svc.memberBusy(projectPath, roleID)
 	})
 	svc.teams.store.SetProjectIndex(svc.knownProjects)
 	// The kernel only registers sessions that were listed in this process, and
@@ -128,6 +126,7 @@ func (s *Service) Close() {
 	// Cancel the root first: it reaches every turn, including one that claimed
 	// its slot after the run map was inspected.
 	s.rootCancel()
+	s.closeTaskEvents()
 	s.mu.Lock()
 	cancels := make([]context.CancelFunc, 0, len(s.runs))
 	for _, cancel := range s.runs {
@@ -141,57 +140,32 @@ func (s *Service) Close() {
 }
 
 func (s *Service) CreateTask(req CreateTaskRequest) (*Task, error) {
-	projectPath, projectName, err := resolveProject(req.ProjectPath, req.ProjectName)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+	prepared, err := s.prepareMemberTaskLocked(req)
 	if err != nil {
 		return nil, err
 	}
-	goal := strings.TrimSpace(req.Goal)
-	if goal == "" {
-		return nil, fmt.Errorf("任务目标不能为空")
-	}
-	if len([]rune(goal)) > maxTaskGoal {
-		return nil, fmt.Errorf("任务目标最多 %d 个字符", maxTaskGoal)
-	}
-	model := strings.TrimSpace(req.Model)
-	if model == "" {
-		return nil, fmt.Errorf("请先选择执行模型")
-	}
-	if !s.modelAvailable(model) {
-		return nil, fmt.Errorf("所选模型当前不可用，请先在模型接口或 Agent 设置中启用")
-	}
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		title = titleFromGoal(goal)
-	}
-	if len([]rune(title)) > 100 {
-		return nil, fmt.Errorf("任务标题最多 100 个字符")
-	}
-	s.mu.Lock()
-	closed := s.closed
-	s.mu.Unlock()
-	if closed {
-		return nil, ErrClosed
-	}
-	session, err := s.exec.CreateSession(agent.Options{
-		ProjectPath:   projectPath,
-		ProjectName:   projectName,
-		Role:          executorRole,
-		Model:         model,
-		ModelSettings: req.ModelSettings,
-	})
+	session, err := s.exec.CreateSession(prepared.options)
 	if err != nil {
 		return nil, err
 	}
 	now := s.now()
 	task := &Task{
 		ID:            "task_" + randomID(8),
-		ProjectPath:   projectPath,
-		ProjectName:   projectName,
-		Title:         title,
-		Goal:          goal,
+		ProjectPath:   prepared.projectPath,
+		ProjectName:   prepared.projectName,
+		Title:         prepared.title,
+		Goal:          prepared.goal,
 		Status:        StatusQueued,
-		Executor:      ExecutorInfo{Kind: executorKind, Name: executorName, Role: executorRole, Model: model, ModelLabel: modelLabel(s.exec.AvailableModels(), model), SessionID: session.ID},
+		Executor:      ExecutorInfo{Kind: prepared.kind, Name: prepared.name, Role: prepared.role, Model: prepared.model, ModelLabel: modelLabel(s.exec.AvailableModels(), prepared.model), SessionID: session.ID},
 		SessionID:     session.ID,
+		MemberID:      prepared.memberID,
+		ChatSessionID: prepared.chatSessionID,
+		Discussion:    prepared.discussion,
 		ModelSettings: req.ModelSettings,
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -204,14 +178,22 @@ func (s *Service) CreateTask(req CreateTaskRequest) (*Task, error) {
 	if err = s.writeTask(db, task); err != nil {
 		return nil, err
 	}
-	s.mu.Lock()
 	s.active[task.ID] = task
 	// Copy under the lock: once the run starts, the goroutine mutates the
 	// shared pointer while the caller still needs its initial snapshot.
 	copied := snapshotTask(task)
-	s.mu.Unlock()
-	s.startRun(task.ID, session.ID, taskPrompt(title, goal), "")
+	s.startRunLocked(task.ID, session.ID, taskPrompt(prepared.title, prepared.goal)+prepared.prompt, "")
 	return copied, nil
+}
+
+func (s *Service) startRunLocked(taskID, sessionID, text, messageID string) {
+	if !s.claimRunLocked(taskID) {
+		return
+	}
+	go func() {
+		defer s.wg.Done()
+		s.runLoop(taskID, sessionID, text, messageID)
+	}()
 }
 
 func (s *Service) startRun(taskID, sessionID, text, messageID string) {
@@ -231,6 +213,10 @@ func (s *Service) startRun(taskID, sessionID, text, messageID string) {
 func (s *Service) claimRun(taskID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.claimRunLocked(taskID)
+}
+
+func (s *Service) claimRunLocked(taskID string) bool {
 	if s.closed {
 		return false
 	}
@@ -289,7 +275,10 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 			return
 		}
 		delivered := false
-		emit := func(event agent.Event) { delivered = s.handleEvent(taskID, event, messageID, delivered) }
+		emit := func(event agent.Event) {
+			delivered = s.handleEvent(taskID, event, messageID, delivered)
+			s.publishTask(taskID, event)
+		}
 		err := s.exec.RunTurn(ctx, sessionID, text, "", nil, emit)
 		cancel()
 		next, loadErr := s.nextQueuedMessage(taskID)

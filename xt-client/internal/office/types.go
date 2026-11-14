@@ -40,12 +40,14 @@ var (
 	ErrTaskNotFound     = errors.New("任务不存在")
 	ErrArtifactNotFound = errors.New("产物不存在")
 	ErrNotRunning       = errors.New("任务当前不在运行")
+	ErrMemberBusy       = errors.New("成员已有未结束任务，请先结束当前任务")
 )
 
 // Executor is the subset of the agent kernel the office needs. It is an
 // interface so orchestration can be tested without model calls.
 type Executor interface {
 	CreateSession(options agent.Options) (*agent.Session, error)
+	SetMember(sessionID string, member *agent.MemberIdentity) error
 	RunTurn(ctx context.Context, sessionID, text, model string, settings *agent.ModelSettings, emit func(agent.Event)) error
 	Cancel(sessionID string) bool
 	History(sessionID, before string) (*agent.HistoryPage, error)
@@ -68,6 +70,9 @@ type Task struct {
 	Approval        *TaskApproval        `json:"approval,omitempty"`
 	Executor        ExecutorInfo         `json:"executor"`
 	SessionID       string               `json:"sessionId,omitempty"`
+	MemberID        string               `json:"memberId,omitempty"`
+	ChatSessionID   string               `json:"chatSessionId,omitempty"`
+	Discussion      string               `json:"discussion,omitempty"`
 	RunID           string               `json:"runId,omitempty"`
 	ModelSettings   *agent.ModelSettings `json:"modelSettings,omitempty"`
 	Stats           TaskStats            `json:"stats"`
@@ -216,6 +221,8 @@ type CreateTaskRequest struct {
 	Goal          string               `json:"goal"`
 	Model         string               `json:"model"`
 	ModelSettings *agent.ModelSettings `json:"modelSettings"`
+	MemberID      string               `json:"memberId,omitempty"`
+	ChatSessionID string               `json:"chatSessionId,omitempty"`
 }
 
 func defaultCapabilities() Capabilities {

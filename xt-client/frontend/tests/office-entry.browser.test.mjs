@@ -41,6 +41,17 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     assert.ok(bounds.x>=sidebar.x && bounds.x+bounds.width<=sidebar.x+sidebar.width);
     await office.click();
     await page.locator('[data-entry-phase=ready]').waitFor();
+    await page.locator('.workspace-page-view').evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished));
+    });
+    const surface = page.locator('.office-3d-canvas');
+    const roomBounds = await surface.boundingBox();
+    const content = await page.getByRole('main', {name: 'office'}).boundingBox();
+    assert.deepEqual(roomBounds, content, 'the 3D surface fills the workspace below the title bar');
+    await page.getByRole('button', {name: '任务', exact: true}).click();
+    await page.getByRole('tab', {name: /团队/}).waitFor();
+    assert.deepEqual(await surface.boundingBox(), roomBounds, 'opening the drawer must keep the 3D viewport in place');
+    await page.keyboard.press('Escape');
     await page.getByRole('button',{name:'组建小队',exact:true}).click();
     await page.getByRole('heading',{name:'为你的项目，组建一支小队。'}).waitFor();
     await page.setViewportSize({width: 800, height: 500});
@@ -77,11 +88,17 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.locator('[data-entry-phase=ready]').waitFor();
     assert.ok(modelRequests>=2);
     const priorRequests=modelRequests;
-    await page.getByText('夜晚',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('heading', {name: '办公室', exact: true}).count(), 0);
+    assert.equal(await page.getByText('夜晚', {exact: true}).count(), 0);
+    const stage = page.locator('.office-3d-stage');
+    const darkBackground = await stage.evaluate(element => getComputedStyle(element).backgroundImage);
+    await page.locator('.workspace-sidebar').waitFor({state:'hidden'});
     await page.screenshot({path:join(tmpdir(),'xiaotao-office-entry.png')});
     await page.getByRole('button',{name:'更多',exact:true}).click();
     await page.getByRole('menuitem',{name:'切换到浅海主题'}).click();
-    await page.getByText('白天',{exact:true}).waitFor();
+    await page.locator('html[data-theme=light]').waitFor();
+    assert.equal(await page.getByText('白天', {exact: true}).count(), 0);
+    assert.notEqual(await stage.evaluate(element => getComputedStyle(element).backgroundImage), darkBackground);
     await page.screenshot({path:join(tmpdir(),'xiaotao-office-day.png')});
     assert.equal(modelRequests,priorRequests);
   } finally {await browser?.close();server.kill();}

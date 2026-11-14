@@ -28,7 +28,7 @@ export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function Off
   const setup = showSetup && <button type="button" className="room-setup" onClick={() => setOnboardingOpen(true)}><UsersRound size={15}/>组建小队<ArrowRight size={14}/></button>;
   const teamError = entry.error && <div className="room-team-error" role="alert">无法读取组队设置 <button type="button" onClick={entry.retry} title={entry.error}>重试</button></div>;
   return <div className="office-entry-flow" data-entry-phase={scene} data-project-path={projectPath}>
-    {scene !== 'error' ? <OfficeRoom key={attempt} projectName={project?.name || ''} members={members} artifactCount={artifactCount}
+    {scene !== 'error' ? <OfficeRoom key={attempt} members={members} artifactCount={artifactCount}
       active={visible && !onboardingOpen} ready={scene === 'ready'} onSelectMember={onSelectMember} onOpenLibrary={onOpenLibrary}
       onShowTeam={onShowTeam} setup={setup || teamError} onReady={() => setScene('ready')} onError={message => {setSceneError(message); setScene('error');}}/>
     : <div className="office-fallback-wrap">

@@ -1,4 +1,4 @@
-import {Archive, Box, Maximize2, Minus, Moon, Plus, Sun, UsersRound} from 'lucide-react';
+import {Archive, Maximize2, Minus, Plus, UsersRound} from 'lucide-react';
 import type {OfficeMember, OfficeTask} from '../../lib/office';
 import {taskStatusLabel, taskStatusTone} from '../../lib/office';
 import './office-3d.css';
@@ -11,7 +11,6 @@ type Props = {
   artifactCount: number;
   onError: (message: string) => void;
   onReady: () => void;
-  projectName: string;
   onSelectMember: (memberId: string) => void;
   onOpenLibrary: () => void;
   onShowTeam: () => void;
@@ -20,16 +19,12 @@ type Props = {
   active: boolean;
 };
 
-export function OfficeRoom({projectName, members, artifactCount, onSelectMember, onOpenLibrary, onShowTeam, active, ready, setup, onError, onReady}: Props) {
+export function OfficeRoom({members, artifactCount, onSelectMember, onOpenLibrary, onShowTeam, active, ready, setup, onError, onReady}: Props) {
   const controls = useRef<SceneControls>(null);
   const team = useMemo(() => sceneMembers(members), [members]);
   return <section className="office-room office-3d-room" aria-label="办公室">
     <header className="room-toolbar">
-      <div className="room-project"><span className="room-project-icon"><Box size={18}/></span><div><strong title={projectName}>{projectName || '项目办公室'}</strong><small>3D 工作空间</small></div></div>
-      <div className="room-toolbar-actions">
-        <span className="room-time room-time-day"><Sun size={14}/>白天</span><span className="room-time room-time-night"><Moon size={14}/>夜晚</span>
-        {setup}<button type="button" className="room-tool" onClick={onShowTeam}><UsersRound size={16}/><span>成员</span><b>{team.length}</b></button>
-      </div>
+      {setup}<button type="button" className="room-tool" onClick={onShowTeam}><UsersRound size={16}/><span>成员</span><b>{team.length}</b></button>
     </header>
     <div className="office-3d-stage">
       <OfficeScene3D ref={controls} active={active} members={team} onSelect={onSelectMember} onShelf={onOpenLibrary} onReady={onReady} onError={onError}/>

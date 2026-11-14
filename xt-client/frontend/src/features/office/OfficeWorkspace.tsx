@@ -32,6 +32,7 @@ type Props = {
   onCloseDrawer: () => void;
   onRefresh: () => void;
   onCreate: () => void;
+  onExecuteMember: (member: OfficeMember, chatSessionId: string) => void;
   onManage: () => void;
   onSelectTask: (id: string) => void;
   onSelectMember: (id: string) => void;
@@ -42,7 +43,6 @@ type Props = {
   onResolveApproval: (id: string, approved: boolean) => void;
   onPostMessage: (text: string) => Promise<void>;
   onOpenArtifact: (item: OfficeSnapshot['artifacts'][number]) => void;
-  onHandoff: (goal: string) => void;
   onOpenLibrary: () => void;
 };
 
@@ -89,8 +89,7 @@ export function OfficeWorkspace(props: Props) {
   const selected = props.activeMemberId && snapshot?.members.find(member => member.id === props.activeMemberId);
   return <div className="office-workspace">
     <header className="workspace-heading">
-      <div><span className="workspace-kicker">项目协作</span><h1>办公室</h1></div>
-      <div className="workspace-heading-right"><span className="workspace-project-label">当前项目</span><Select aria-label="切换项目" value={props.projectPath} onChange={props.onProject} options={props.projects.map(project => ({value: project.path, label: project.name}))}/>
+      <div className="workspace-heading-right"><Select aria-label="切换项目" value={props.projectPath} onChange={props.onProject} options={props.projects.map(project => ({value: project.path, label: project.name}))}/>
         <button type="button" className="workspace-icon-button workspace-task-trigger" aria-label="任务" aria-controls="office-drawer" aria-expanded={view === 'tasks' || view === 'task'} onClick={() => view === 'tasks' || view === 'task' ? onCloseDrawer() : props.onView('tasks')}><ClipboardList size={15}/>任务{activeCount > 0 && <span aria-hidden="true">{activeCount}</span>}</button>
         <button className="workspace-create" type="button" disabled={!canCreate} onClick={props.onCreate}><Plus size={17}/>新建任务</button></div>
     </header>
@@ -110,7 +109,7 @@ export function OfficeWorkspace(props: Props) {
           <button type="button" className="workspace-back" onClick={props.onCloseDetail}><ArrowLeft size={15}/>返回团队成员</button>
           <div className="workspace-conversation-title"><span className="workspace-member-avatar" style={roleColor(selected)}>{selected.name.slice(0, 1)}</span><div><h2>与{selected.name}对话</h2><p>{roleLabel[selected.role] || '项目成员'} · 对话不操作项目文件</p></div></div>
           <MemberChat key={selected.id} projectPath={props.projectPath} projectName={props.projectName} member={selected}
-            preferredModel={props.preferredModel} models={props.models} modelConfigs={props.modelConfigs} onHandoff={props.onHandoff}/>
+            preferredModel={props.preferredModel} models={props.models} modelConfigs={props.modelConfigs} onExecute={props.onExecuteMember} onSelectTask={props.onSelectTask}/>
         </div> : <>
           <div className="workspace-tabs" role="tablist" aria-label="协作面板">
             <button type="button" role="tab" aria-selected={view === 'tasks'} className={view === 'tasks' ? 'is-selected' : ''} onClick={() => props.onView('tasks')}><ClipboardList size={15}/>任务{activeCount > 0 && <span>{activeCount}</span>}</button>
@@ -133,6 +132,6 @@ export function OfficeWorkspace(props: Props) {
         </>}
       </aside>
     </div>
-    <footer className="workspace-statusbar"><span><i className={`workspace-live-dot ${snapshot && !props.error ? 'is-connected' : ''}`}/>{props.error ? '同步失败' : props.loading ? '正在同步' : snapshot ? '状态自动同步' : '等待同步'}</span><span>{snapshot ? `${snapshot.members.length} 位成员 · ${activeCount} 个进行中任务` : ''}</span><span>任务在项目目录内执行</span></footer>
+    <footer className="workspace-statusbar" aria-label="办公室状态"><span><i className={`workspace-live-dot ${snapshot && !props.error ? 'is-connected' : ''}`}/>{props.error ? '同步失败' : props.loading ? '正在同步' : snapshot ? '状态自动同步' : '等待同步'}</span>{snapshot && <span className="workspace-status-count">{snapshot.members.length} 位成员 · {activeCount} 个进行中任务</span>}</footer>
   </div>;
 }

@@ -47,6 +47,8 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.ok(history.y + history.height <= footer.y, 'navigation must not cover scrollable session history');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
     assert.deepEqual(await footerButtons.allTextContents(), ['办公室', '仪表盘', '模型接口']);
+    const dockBackgrounds = () => footerButtons.evaluateAll(buttons => buttons.map(button => getComputedStyle(button).backgroundColor));
+    assert.equal(new Set(await dockBackgrounds()).size, 1, 'all dock entries use the same resting background');
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
     await page.locator('.agent-workspace').waitFor();
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
@@ -54,6 +56,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
     await page.getByRole('button', {name: '返回小涛', exact: true}).click();
     await page.locator('.agent-workspace').waitFor();
+    assert.equal(new Set(await dockBackgrounds()).size, 1, 'returning from the office restores the resting background');
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();
     await page.locator('.dashboard-page').waitFor();
     assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'secondary pages must not reserve the left sidebar');

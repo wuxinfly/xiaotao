@@ -132,17 +132,25 @@ type Session struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Role marks sessions dispatched by the project office. An empty role is
 	// the regular user-facing XiaoTao session.
-	Role     string `json:"role,omitempty"`
-	ReadOnly bool   `json:"readOnly,omitempty"`
+	Role     string          `json:"role,omitempty"`
+	ReadOnly bool            `json:"readOnly,omitempty"`
+	Member   *MemberIdentity `json:"member,omitempty"`
+}
+
+type MemberIdentity struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Responsibility string `json:"responsibility,omitempty"`
 }
 
 type Options struct {
-	ProjectPath   string         `json:"projectPath"`
-	ProjectName   string         `json:"projectName"`
-	Role          string         `json:"role,omitempty"`
-	Model         string         `json:"model"`
-	ModelSettings *ModelSettings `json:"modelSettings,omitempty"`
-	ReadOnly      bool           `json:"readOnly,omitempty"`
+	ProjectPath   string          `json:"projectPath"`
+	ProjectName   string          `json:"projectName"`
+	Role          string          `json:"role,omitempty"`
+	Model         string          `json:"model"`
+	ModelSettings *ModelSettings  `json:"modelSettings,omitempty"`
+	ReadOnly      bool            `json:"readOnly,omitempty"`
+	Member        *MemberIdentity `json:"member,omitempty"`
 }
 
 type ModelOption struct {

@@ -6,7 +6,6 @@ import {aisleX, seatOffset, type Workstation} from './scene-workstations';
 type PosedCharacter = ReturnType<typeof instantiateCharacter>;
 const seatedAngle = Math.PI;
 const floor = .035;
-const walkingSpeed = 1.5;
 const acceleration = 5;
 const turnSpeed = 7;
 
@@ -14,28 +13,26 @@ function angleDelta(from: number, to: number) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
-function delay(id: string) {
-  let hash = 0;
-  for (const char of id) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
-  return 1.8 + hash % 4200 / 1000;
-}
+type WalkStop = {position: THREE.Vector2; pause?: {duration: number; look: number}};
 
 export class OfficeMotion {
   private seat = 1;
-  private route: THREE.Vector2[] = [];
+  private route: WalkStop[] = [];
   private nextWalk: number;
   private locked: boolean;
   private working = false;
   private stride = 0;
   private speed = 0;
+  private pace = 1.5;
   private gait = 0;
   private waitUntil = 0;
+  private lookAngle = 0;
   private readonly home: THREE.Vector2;
   roaming = false;
 
-  constructor(private character: PosedCharacter, member: SceneMember, private desk: Workstation, time: number) {
+  constructor(private character: PosedCharacter, member: SceneMember, desk: Workstation, time: number, private random = Math.random) {
     this.home = new THREE.Vector2(desk.x, desk.z - seatOffset);
-    this.nextWalk = time + delay(member.id);
+    this.nextWalk = time + this.sample(2.5, 8);
     this.locked = mustBeSeated(member);
     this.working = member.status === 'running';
     this.snapHome();
@@ -44,7 +41,7 @@ export class OfficeMotion {
   update(member: SceneMember, time: number) {
     const locked = mustBeSeated(member);
     if (locked && !this.locked) this.routeHome();
-    if (!locked && this.locked) this.nextWalk = time + delay(member.id);
+    if (!locked && this.locked) this.nextWalk = time + this.sample(4, 11);
     this.locked = locked;
     const wasWorking = this.working;
     this.working = member.status === 'running';
@@ -69,22 +66,37 @@ export class OfficeMotion {
     const target = this.route[0];
     if (target) {
       this.seat = Math.max(0, this.seat - dt * 2.5);
-      if (this.seat === 0 && time >= this.waitUntil) this.move(target, dt, time);
+      if (this.seat === 0) {
+        if (time < this.waitUntil) this.turn(this.lookAngle, dt, 3);
+        else this.move(target, dt, time);
+      }
     } else if (this.turn(seatedAngle, dt) < .015) {
       this.seat = Math.min(1, this.seat + dt * 2.25);
     }
-    this.gait = THREE.MathUtils.damp(this.gait, this.speed / walkingSpeed, 18, dt);
+    this.gait = THREE.MathUtils.damp(this.gait, this.speed / this.pace, 13, dt);
     if (this.roaming && !this.route.length && this.seat === 1) {
       this.roaming = false;
-      this.nextWalk = time + 7;
+      this.nextWalk = time + this.sample(6, 17);
     }
     this.pose(time, this.gait);
     return true;
   }
 
   private walk() {
-    const lane = new THREE.Vector2(aisleX, this.home.y);
-    this.route = [lane, new THREE.Vector2(aisleX, lane.y + (this.desk.z > 0 ? -1.48 : 1.48)), lane, this.home];
+    const x = aisleX + this.sample(-.13, .13);
+    const z = this.home.y;
+    const lane = {position: new THREE.Vector2(x, z)};
+    // The floor always reaches past this chair, even if desks farther down are removed.
+    const low = Math.min(-4.32, z - 1);
+    const high = 3.65;
+    const direction = this.random() < .5 ? -1 : 1;
+    const distance = this.sample(.95, 3.15);
+    const destination = THREE.MathUtils.clamp(z + direction * distance, low, high);
+    this.pace = this.sample(1.1, 1.65);
+    this.route = [lane, {
+      position: new THREE.Vector2(x, destination),
+      pause: this.random() < .72 ? {duration: this.sample(.6, 1.8), look: this.sample(-1.1, 1.1)} : undefined,
+    }, lane, {position: this.home}];
     this.stride = this.waitUntil = 0;
     this.roaming = true;
   }
@@ -93,19 +105,20 @@ export class OfficeMotion {
     if (!this.roaming) return;
     const {position} = this.character.actor;
     this.waitUntil = 0;
-    this.route = Math.abs(position.z - this.home.y) < .01 ? [this.home] :
-      [new THREE.Vector2(aisleX, this.home.y), this.home];
+    const home = {position: this.home};
+    this.route = Math.abs(position.z - this.home.y) < .01 ? [home] :
+      [{position: new THREE.Vector2(position.x, this.home.y)}, home];
   }
 
-  private move(target: THREE.Vector2, dt: number, time: number) {
-    const {position} = this.character.actor;
+  private move({position: target, pause}: WalkStop, dt: number, time: number) {
+    const {position, rotation} = this.character.actor;
     const x = target.x - position.x, z = target.y - position.z;
     const distance = Math.hypot(x, z);
     if (distance > .005 && this.turn(Math.atan2(-x, -z), dt) > .10) {
       this.speed = 0;
       return;
     }
-    this.speed = Math.min(this.speed + dt * acceleration, walkingSpeed, Math.sqrt(2 * acceleration * distance));
+    this.speed = Math.min(this.speed + dt * acceleration, this.pace, Math.sqrt(2 * acceleration * distance));
     const step = Math.min(distance, dt * this.speed);
     if (distance > .005 && distance > step) {
       position.x += x * step / distance; position.z += z * step / distance;
@@ -115,13 +128,18 @@ export class OfficeMotion {
     position.x = target.x; position.z = target.y;
     this.speed = 0;
     this.route.shift();
-    if (this.route.length === 2 && !this.locked) this.waitUntil = time + .38;
+    if (pause) {
+      this.waitUntil = time + pause.duration;
+      this.lookAngle = rotation.y + pause.look;
+    }
   }
 
-  private turn(angle: number, dt: number) {
+  private sample(min: number, max: number) {return min + (max - min) * this.random();}
+
+  private turn(angle: number, dt: number, rate = turnSpeed) {
     const rotation = this.character.actor.rotation;
     const delta = angleDelta(rotation.y, angle);
-    const step = THREE.MathUtils.clamp(delta, -dt * turnSpeed, dt * turnSpeed);
+    const step = THREE.MathUtils.clamp(delta, -dt * rate, dt * rate);
     rotation.y += step;
     return Math.abs(delta - step);
   }

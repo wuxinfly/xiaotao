@@ -170,6 +170,7 @@ func (s *Service) Create(options Options) (*Session, error) {
 		UpdatedAt:     time.Now(),
 		Role:          options.Role,
 		ReadOnly:      options.ReadOnly,
+		Member:        options.Member,
 	}
 	s.mu.Lock()
 	s.runs[session.ID] = &run{}

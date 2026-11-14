@@ -36,8 +36,21 @@ func (s *Service) Snapshot(projectPath, projectName string) (*Snapshot, error) {
 		return nil, err
 	}
 	members := buildMembers(tasks, team)
+	for _, task := range tasks {
+		if task.MemberID == "" {
+			continue
+		}
+		for index := range members {
+			if members[index].ID == task.MemberID {
+				members[index].TodayTasks++
+				members[index].TaskID = task.ID
+				members[index].TaskTitle = task.Title
+				members[index].TaskStatus = task.Status
+			}
+		}
+	}
 	for i := range members {
-		if !roleIDPattern.MatchString(members[i].ID) {
+		if members[i].ID != coordinatorID && !roleIDPattern.MatchString(members[i].ID) {
 			continue
 		}
 		chat, err := s.Chat(path, members[i].ID)
@@ -93,6 +106,18 @@ func buildMembers(tasks []*Task, team TeamSnapshot) []Member {
 		// An executor leaves the room when its task ends; the task record and
 		// its artifacts stay available in the task list and shelf.
 		if isTerminal(task.Status) {
+			continue
+		}
+		if task.MemberID != "" {
+			for index := range members {
+				if members[index].ID == task.MemberID {
+					members[index].Status = task.Status
+					members[index].TaskID = task.ID
+					members[index].TaskTitle = task.Title
+					members[index].TaskStatus = task.Status
+					members[index].LatestActivity = task.LatestActivity
+				}
+			}
 			continue
 		}
 		status := task.Status

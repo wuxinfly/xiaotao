@@ -3,7 +3,10 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+
+	"xiaotao/xt-client/internal/agent"
 
 	"xiaotao/xt-client/internal/office"
 )
@@ -68,6 +71,37 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 			return
 		}
 		send(w, page)
+	})
+	mux.HandleFunc("GET /api/office/tasks/{id}/events", func(w http.ResponseWriter, r *http.Request) {
+		if !guard(w, r) {
+			return
+		}
+		events, unsubscribe, err := svc.SubscribeTask(r.URL.Query().Get("projectPath"), r.PathValue("id"))
+		if err != nil {
+			officeError(w, err, apiError)
+			return
+		}
+		defer unsubscribe()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			apiError(w, 500, "当前环境不支持流式响应")
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Connection", "keep-alive")
+		flusher.Flush()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case event, open := <-events:
+				if !open {
+					return
+				}
+				writeOfficeEvent(w, flusher, event)
+			}
+		}
 	})
 	mux.HandleFunc("POST /api/office/tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
@@ -202,11 +236,20 @@ func officeError(w http.ResponseWriter, err error, apiError func(http.ResponseWr
 	switch {
 	case errors.Is(err, office.ErrTaskNotFound), errors.Is(err, office.ErrArtifactNotFound):
 		apiError(w, 404, err.Error())
-	case errors.Is(err, office.ErrNotRunning), errors.Is(err, office.ErrChatBusy):
+	case errors.Is(err, office.ErrNotRunning), errors.Is(err, office.ErrChatBusy), errors.Is(err, office.ErrMemberBusy):
 		apiError(w, 409, err.Error())
 	case errors.Is(err, office.ErrClosed):
 		apiError(w, 503, err.Error())
 	default:
 		apiError(w, 400, err.Error())
 	}
+}
+
+func writeOfficeEvent(w http.ResponseWriter, flusher http.Flusher, event agent.Event) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+	flusher.Flush()
 }

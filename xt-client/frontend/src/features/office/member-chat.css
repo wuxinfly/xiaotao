@@ -6,18 +6,10 @@
 .member-chat-welcome strong { color: var(--office-text); font-size: 16px; }
 .member-chat-welcome p { margin: 5px 0 0; }
 .member-chat-compose { flex: none; padding: 6px 12px 10px; }
-.member-chat .agent-composer textarea {
-  display: block; width: 100%; min-height: 58px; resize: vertical; max-height: 28vh;
-  padding: 6px; border: 0; background: transparent; color: var(--office-text); font: inherit; font-size: 13.5px;
-}
-.member-chat .agent-composer textarea::placeholder { color: var(--office-muted); }
 .member-chat .agent-composer:focus-within { border-color: var(--office-accent); }
 .member-chat .agent-composer-actions, .member-chat .app-select-trigger { min-width: 0; }
 .member-chat .app-select-trigger { max-width: min(40vw, 210px); }
 .member-chat-context { min-width: 0; color: var(--office-muted); font-size: 10px; }
-.member-chat-handoff { flex: none; padding: 0 16px 12px; color: var(--office-muted); font-size: 11px; line-height: 1.5; }
-.member-chat-handoff p { margin: 0 0 8px; }
-.member-chat-handoff > div { display: flex; gap: 8px; flex-wrap: wrap; }
 .member-chat > .office-error { margin: 4px 16px; }
 .member-chat-profile {
   display: flex; flex: none; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 10px 16px 0;

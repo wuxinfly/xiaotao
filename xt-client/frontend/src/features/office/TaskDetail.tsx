@@ -5,6 +5,9 @@ import remarkBreaks from 'remark-breaks';
 import type {AgentActivity, AgentMessage, AgentThought} from '../../lib/api';
 import type {OfficeArtifact, OfficeTask, OfficeTaskDetail} from '../../lib/office';
 import {formatBytes, formatClock, formatDuration, isTerminalTask, taskStatusLabel} from '../../lib/office';
+import {TaskTimeline} from './TaskTimeline';
+import {useTaskEvents} from './useTaskEvents';
+import './member-task.css';
 
 type Props = {
   projectPath: string;
@@ -90,6 +93,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
   const [sendError, setSendError] = useState('');
   const [notice, setNotice] = useState('');
   const task = detail?.task;
+  const session = useTaskEvents(projectPath, detail, onRefresh);
   useEffect(() => { setDraft(''); setSendError(''); setNotice(''); }, [task?.id]);
   if (!task) {
     return <aside className="office-detail office-detail-empty">
@@ -131,7 +135,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
     {error && <p className="office-error" role="alert">{error}</p>}
     <dl className="office-detail-meta">
       <div><dt>执行者</dt><dd>{task.executor.name} · {task.executor.modelLabel || task.executor.model}</dd></div>
-      <div><dt>安排方式</dt><dd>小涛自主安排（单执行者）</dd></div>
+      <div><dt>安排方式</dt><dd>{task.memberId ? '指定成员执行（单任务）' : '小涛执行者（旧任务）'}</dd></div>
       <div><dt>运行统计</dt><dd>{statsLine(task)}</dd></div>
       <div><dt>用量</dt><dd>{usageLine(task)}</dd></div>
       {task.error && <div><dt>失败原因</dt><dd className="office-error-text">{task.error}</dd></div>}
@@ -148,7 +152,8 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
       <h3>执行过程</h3>
       {detail.historyError && <p className="office-error" role="alert">读取过程记录失败：{detail.historyError}</p>}
       {detail.history?.before && <button type="button" className="office-ghost office-load-earlier" onClick={onLoadEarlier}>加载更早记录</button>}
-      {feed.length ? <div className="office-feed">{feed.map((row, index) => <FeedItem key={`${row.kind}-${index}-${row.at}`} row={row}/>)}</div>
+      {session ? <TaskTimeline session={session} detail={detail} onRefresh={onRefresh}/>
+        : feed.length ? <div className="office-feed">{feed.map((row, index) => <FeedItem key={`${row.kind}-${index}-${row.at}`} row={row}/>)}</div>
         : <p className="office-muted">{loading ? '读取中…' : '还没有执行记录。'}</p>}
     </section>
     <section className="office-artifacts" aria-label="任务产物">

@@ -50,6 +50,21 @@ func TestChatRealKernelIsolationAndReadOnlyRestart(t *testing.T) {
 	}
 	svc := create()
 	input := ChatInput{Content: "hello", Model: "test/model"}
+	coordinator, err := svc.SendChat(project, coordinatorID, input)
+	if err != nil {
+		t.Fatalf("send to the built-in coordinator without a team: %v", err)
+	}
+	waitFor(t, func() bool {
+		c, e := svc.Chat(project, coordinatorID)
+		return e == nil && c.Status == StatusCompleted
+	})
+	coordinatorHistory, err := svc.ChatHistory(project, coordinatorID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if coordinatorHistory.Session.ID != coordinator.SessionID || len(coordinatorHistory.Session.Messages) != 2 {
+		t.Fatalf("unexpected coordinator history: %+v", coordinatorHistory.Session)
+	}
 	ids := makeTeamForChat(t, svc, project)
 	first, err := svc.SendChat(project, ids[0], input)
 	if err != nil {

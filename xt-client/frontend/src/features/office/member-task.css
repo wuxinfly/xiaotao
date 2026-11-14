@@ -1,0 +1,17 @@
+.member-chat-execute { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 8px; padding: 9px 10px; border: 1px solid var(--office-stroke); border-radius: 9px; background: var(--office-raised); }
+.member-chat-execute span { color: var(--office-muted); font-size: 11px; line-height: 1.55; }
+.member-chat-execute button { flex: none; padding: 6px 10px; font-size: 11px; }
+.member-task-context { max-height: 160px; overflow-y: auto; margin: 0 0 12px; padding: 10px; border: 1px solid var(--office-stroke); border-radius: 8px; background: var(--office-raised); }
+.member-task-context strong { display: block; margin-bottom: 6px; font-size: 12px; }
+.member-task-context p { margin: 5px 0 0; color: var(--office-muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.member-task-access { margin: 0 0 12px; color: var(--office-warn); font-size: 11px; line-height: 1.6; }
+.member-task-return { display: grid; flex: none; gap: 4px; margin: 0 16px 8px; padding: 10px; border: 1px solid var(--office-stroke); border-radius: 9px; background: var(--office-raised); color: var(--office-text); text-align: left; }
+.member-task-return:hover { background: var(--office-hover); }
+.member-task-return span { font-size: 12px; }
+.member-task-return small { color: var(--office-muted); font-size: 11px; }
+.office-task-timeline { display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
+.office-task-timeline .agent-message { max-width: 100%; }
+.office-task-timeline .agent-message-body, .office-task-timeline .agent-run-bubble { min-width: 0; }
+.office-task-process { display: grid; gap: 6px; margin: 8px 0; padding: 10px; border: 1px solid var(--office-stroke); border-radius: 8px; background: var(--office-raised); }
+.office-task-process p { margin: 0; color: var(--office-muted); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .member-chat-execute { align-items: stretch; flex-direction: column; gap: 7px; } }

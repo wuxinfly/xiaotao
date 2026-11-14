@@ -4,16 +4,19 @@ import {modelConfigFor, modelSettingsFor, type AgentModelConfig} from '../../lib
 import type {AgentModelOption} from '../../lib/api';
 import {Select} from '../../components/select/Select';
 import {ChatComposer, ChatSendButton} from '../agent/messages/ChatComposer';
+import {ChatEditor, editorMarkdown, useChatEditor} from '../agent/messages/ChatEditor';
 import {MessageRow} from '../agent/messages/MessageFeed';
 import './member-chat.css';
+import './member-task.css';
 
 type Props = {
   projectPath: string; projectName: string; member: OfficeMember; preferredModel: string;
   models: AgentModelOption[]; modelConfigs: AgentModelConfig[];
-  onHandoff: (goal: string) => void;
+  onExecute: (member: OfficeMember, chatSessionId: string) => void;
+  onSelectTask: (taskId: string) => void;
 };
 
-export function MemberChat({projectPath, projectName, member, preferredModel, models, modelConfigs, onHandoff}: Props) {
+export function MemberChat({projectPath, projectName, member, preferredModel, models, modelConfigs, onExecute, onSelectTask}: Props) {
   const [chat, setChat] = useState<OfficeMemberChat | null>(null);
   const [history, setHistory] = useState<OfficeHistory | null>(null);
   const [older, setOlder] = useState<OfficeHistory | null>(null);
@@ -68,14 +71,25 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
       setOlder(current => current ? {...page, session: {...page.session, messages: [...page.session.messages, ...current.session.messages]}} : page);
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
   }
-  const lastReply = [...messages].reverse().find(item => item.role === 'assistant' && item.content.trim())?.content || '';
-  async function send(content: string) {
-    if (!content.trim() || !model || !chat || sending || busy) return;
+  const canSend = !!(draft && model && chat && !sending && !busy);
+  const editor = useChatEditor({
+    label: `给${member.name}发消息`,
+    onUpdate: editor => setDraft(editorMarkdown(editor)),
+    onSend: () => {
+      if (!canSend) return false;
+      void send();
+      return true;
+    },
+  });
+  async function send() {
+    if (!canSend || !editor) return;
+    const content = editorMarkdown(editor);
+    if (!content) return;
     setSending(true); setError('');
     try {
-      await officeApi.sendMemberMessage(projectPath, member.id, {content: content.trim(), model, projectName, modelSettings: modelSettingsFor(modelConfigs, model, models)});
+      await officeApi.sendMemberMessage(projectPath, member.id, {content, model, projectName, modelSettings: modelSettingsFor(modelConfigs, model, models)});
       follow.current = true;
-      setDraft('');
+      if (!editor.isDestroyed && editorMarkdown(editor) === content) editor.commands.clearContent();
       await load();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
     finally {setSending(false);}
@@ -86,6 +100,8 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
   }
   return <div className="member-chat">
     {member.responsibility && <div className="member-chat-profile"><strong>{member.name}</strong><span>{member.responsibility}</span>{!!member.capabilities?.length && <small>{member.capabilities.join(' · ')}</small>}</div>}
+    <div className="member-chat-execute"><span>讨论保持只读；确认任务后，{member.name}才可以操作项目文件。</span><button type="button" className="office-primary" disabled={!chat?.sessionId || busy || (!!member.taskId && !['completed', 'failed', 'canceled'].includes(member.taskStatus || ''))} onClick={() => chat?.sessionId && onExecute(member, chat.sessionId)}>{member.taskId && !['completed', 'failed', 'canceled'].includes(member.taskStatus || '') ? '已有任务进行中' : '交给TA执行'}</button></div>
+    {member.taskId && <button type="button" className="member-task-return" onClick={() => onSelectTask(member.taskId!)}><span>{member.taskStatus === 'completed' ? '任务已完成' : member.taskStatus === 'failed' ? '任务失败' : member.taskStatus === 'canceled' ? '任务已停止' : '任务进行中'} · {member.taskTitle}</span><small>查看真实结果与产物，回到对话继续讨论</small></button>}
     <div ref={feed} className="agent-feed member-chat-history" aria-label="成员对话记录" onScroll={event => {
       const element = event.currentTarget;
       follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
@@ -104,12 +120,11 @@ export function MemberChat({projectPath, projectName, member, preferredModel, mo
         <div className="agent-composer-actions">
           <Select size="sm" searchable aria-label="模型" value={model} onChange={setModel} disabled={busy || sending}
             options={usableModels.map(item => ({value: item.model, label: `${item.label}${item.sourceLabel ? ` · ${item.sourceLabel}` : ''}`}))}/>
-          <ChatSendButton busy={!!busy} disabled={!draft.trim() || !model || !chat || sending} onSend={() => void send(draft)} onStop={() => void stop()} stopLabel="停止回复"/>
+          <ChatSendButton busy={!!busy} disabled={!canSend} onSend={() => void send()} onStop={() => void stop()} stopLabel="停止回复"/>
         </div>
       </>}>
-        <textarea aria-label={`给${member.name}发消息`} value={draft} onChange={event => setDraft(event.target.value)} placeholder="说说你的想法……" rows={3} maxLength={20000} onKeyDown={event => {if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {event.preventDefault(); void send(draft);}}}/>
+        <ChatEditor editor={editor}/>
       </ChatComposer>
     </div>
-    <div className="member-chat-handoff"><p>聊天不能读取或修改项目文件；需要动手时，先整理交接，再由你确认开始。</p><div><button type="button" className="office-ghost" disabled={!!busy || sending || !model || !chat} onClick={() => void send('请根据我们的对话整理一份简短的任务交接，包含目标、需要做的事和验收方式；如果还有关键问题，请先问我。暂时不要执行。')}>整理交接</button><button type="button" className="office-ghost" disabled={!lastReply || !!busy} onClick={() => onHandoff(lastReply)}>查看交接并安排</button></div></div>
   </div>;
 }

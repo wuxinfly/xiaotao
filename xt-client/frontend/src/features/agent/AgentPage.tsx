@@ -2,6 +2,7 @@ import {normaliseImage} from './imageNormalise';
 import {AgentDroplet} from './AgentDroplet';
 import {MessageRow, RunTimeline} from './messages/MessageFeed';
 import {ChatComposer, ChatSendButton} from './messages/ChatComposer';
+import {ChatEditor, editorMarkdown, hasActiveNode, useChatEditor} from './messages/ChatEditor';
 import {runDuration, runPhase, thoughtKindLabel} from './messages/runStats';
 import {useBranchSession} from './useBranchSession';
 import {Popover} from '../../components/popover/Popover';
@@ -10,17 +11,9 @@ import {ModalPresence} from '../../components/modal/ModalFrame';
 import {Fragment as ReactFragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {SessionList} from './SessionList';
 import {createPortal} from 'react-dom';
-import {renderToStaticMarkup} from 'react-dom/server';
-import {EditorContent, useEditor} from '@tiptap/react';
 import type {Editor, JSONContent} from '@tiptap/core';
-import {NodeSelection, TextSelection} from '@tiptap/pm/state';
+import {NodeSelection} from '@tiptap/pm/state';
 import type {EditorState} from '@tiptap/pm/state';
-import {DOMParser as ProseMirrorDOMParser, Fragment, Slice} from '@tiptap/pm/model';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
 import {
   ArrowDown,
   CircleAlert,
@@ -50,7 +43,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import {mergeModelCatalog, modelPickerLabel, ModelPickerOptions, pickerModels, useModelCatalogChanged} from './modelOptions';
-import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentEvent, type AgentMessage, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
+import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
 import {modelConfigFor, modelLabelsKey, modelSettingsFor, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
 import {AgentSettingsModal} from './AgentSettingsModal';
 import {ProjectModal, RenameSessionModal} from './AgentModals';
@@ -61,58 +54,9 @@ import {ConversationReference, conversationReferenceType} from './ConversationRe
 import './agent.css';
 import './agent-sidebar.css';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
+import {applyEvent, avatarOwners as avatarOwnersForEntries, conversationEntries, conversationHasImages, conversationMessages, mergeHistory, mergeRunStats, readEventStream} from './messages/conversationEvents';
 
 declare global { interface Window { xtPickFolder?: () => Promise<string>; xtOpenDirectory?: (kind: 'data' | 'install') => Promise<void>; } }
-
-async function readEventStream(response: Response, onEvent: (event: AgentEvent) => void) {
-  if (!response.body) throw new Error('当前环境不支持流式消息');
-  const reader = response.body.getReader(), decoder = new TextDecoder();
-  let buffer = '', data: string[] = [];
-  const dispatch = () => {
-    if (data.length) {
-      try { onEvent(JSON.parse(data.join('\n')) as AgentEvent); } catch { /* malformed frame */ }
-    }
-    data = [];
-  };
-  for (;;) {
-    const {done, value} = await reader.read();
-    buffer += decoder.decode(value, {stream: !done});
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line) dispatch();
-      else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-    }
-    if (done) {
-      if (buffer.startsWith('data:')) data.push(buffer.slice(5).trimStart());
-      dispatch();
-      return;
-    }
-  }
-}
-
-function mergeHistory<T extends {id: string}>(older: T[] | null | undefined, newer: T[] | null | undefined): T[] {
-  const merged = new Map<string, T>();
-  for (const item of [...(older ?? []), ...(newer ?? [])]) {
-    const previous = merged.get(item.id);
-    const before = previous as (T & {role?: string; content?: string}) | undefined;
-    const after = item as T & {role?: string; content?: string};
-    // A history snapshot may predate an SSE fragment. Formal answers are monotonic.
-    if (before?.role === 'assistant' && before.content && after.content !== undefined && before.content.startsWith(after.content)) continue;
-    merged.set(item.id, item);
-  }
-  return Array.from(merged.values());
-}
-
-function mergeRunStats(older: AgentRunStats[] | null | undefined, newer: AgentRunStats[] | null | undefined): AgentRunStats[] {
-  const merged = new Map<string, AgentRunStats>();
-  for (const item of [...(older ?? []), ...(newer ?? [])]) {
-    const previous = merged.get(item.runId);
-    if (previous?.endedAt && !item.endedAt) continue;
-    merged.set(item.runId, item);
-  }
-  return Array.from(merged.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-}
 
 type ThoughtTraceRow = {
   id: string;
@@ -161,69 +105,6 @@ function traceOffset(startedAt: string, time: string) {
 
 function traceStatusLabel(status: ThoughtTraceRow['status']) {
   return status === 'running' ? '进行中' : status === 'failed' ? '失败' : '完成';
-}
-
-function applyEvent(session: AgentSession, event: AgentEvent): AgentSession {
-  if (event.type === 'answer_end' && event.message) {
-    const message = event.message;
-    const existing = session.messages.find(item => item.id === message.id);
-    // start is idempotent; deltas append only to the formal answer, never drafts.
-    const next = existing && existing.content.startsWith(message.content) ? existing : message;
-    return {...session,
-      streamDrafts: (session.streamDrafts ?? []).filter(item => item.runId !== message.runId),
-      messages: existing ? session.messages.map(item => item.id === message.id ? next : item) : [...session.messages, next],
-    };
-  }
-  if (event.type === 'message_delta' && event.message) {
-    if (session.messages.some(item => item.role === 'assistant' && item.runId === event.message!.runId)) return session;
-    const current = session.streamDrafts ?? [];
-    const existing = current.find(item => item.id === event.message!.id);
-    const draft = existing ? {...existing, content: existing.content + event.message.content} : event.message;
-    return {...session, streamDrafts: existing ? current.map(item => item.id === draft.id ? draft : item) : [...current, draft]};
-  }
-  if ((event.type === 'message' || event.type === 'session') && event.message) {
-    const message = event.message;
-    const existing = session.messages.find(item => item.id === message.id);
-    const streamDrafts = event.type === 'message' && message.runId ? (session.streamDrafts ?? []).filter(item => item.runId !== message.runId) : session.streamDrafts;
-    return {...session, streamDrafts, hasImages: session.hasImages || !!message.images?.length, status: event.status || session.status, error: event.type === 'session' ? '' : session.error, messages: existing ? session.messages.map(item => item.id === message.id ? message : item) : [...session.messages, message]};
-  }
-  if (event.type === 'activity' && event.activity) {
-    const activity = (session.activity ?? []).filter(item => item.id !== event.activity!.id);
-    const runId = event.activity.runId;
-    const streamDrafts = runId ? (session.streamDrafts ?? []).filter(item => item.runId !== runId) : session.streamDrafts;
-    return {...session, streamDrafts, activity: [...activity, event.activity]};
-  }
-  if (event.type === 'thought' && event.thought) {
-    const thoughts = (session.thoughts ?? []).filter(item => item.id !== event.thought!.id);
-    return {...session, thoughts: [...thoughts, event.thought]};
-  }
-  if (event.type === 'run_stats' && event.runStats) {
-    return {...session, runStats: mergeRunStats(session.runStats, [event.runStats])};
-  }
-  if (event.type === 'status' || event.type === 'error') {
-    if (event.type === 'error' && ['completed', 'failed', 'canceled'].includes(session.status)) return {...session, error: session.error || event.error};
-    if (event.type === 'status' && event.status === 'running') return {...session, status: event.status, error: ''};
-    const status = event.status || (event.type === 'error' ? 'failed' : session.status);
-    return {...session, status, error: event.error || '', runStats: (session.runStats ?? []).map(item =>
-      (!event.runId || item.runId === event.runId) && !item.endedAt && status !== 'running' && status !== 'idle'
-        ? {...item, phase: status, endedAt: new Date().toISOString()} : item)};
-  }
-  return session;
-}
-
-function conversationMessages(messages: AgentMessage[]): AgentMessage[] {
-  const finalIds = new Map<string, string>();
-  let legacyTurn = 0;
-  for (const item of messages) {
-    if (item.role === 'user') legacyTurn++;
-    if (item.role === 'assistant' && !item.toolCalls?.length) finalIds.set(item.runId ?? `legacy:${legacyTurn}`, item.id);
-  }
-  const ids = new Set(finalIds.values());
-  return messages.filter(item => item.role !== 'tool' && (item.role !== 'assistant' || ids.has(item.id)));
-}
-
-function conversationHasImages(messages: AgentMessage[], hasImages?: boolean) {
-  return !!hasImages || messages.some(item => !!item.images?.length);
 }
 
 // 最终回复有两种渲染形状：MessageRow 的 .agent-message.role-assistant 与 RunTimeline 的 .agent-run-bubble，
@@ -371,65 +252,6 @@ function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
   </div>, document.body);
 }
 
-function inlineMarkdown(node: JSONContent): string {
-  if (node.type === conversationReferenceType) return '@' + String(node.attrs?.title || '');
-  if (node.type === 'text') {
-    let text = node.text ?? '';
-    for (const mark of node.marks ?? []) {
-      if (mark.type === 'code') text = '`' + text + '`';
-      else if (mark.type === 'bold') text = '**' + text + '**';
-      else if (mark.type === 'italic') text = '*' + text + '*';
-      else if (mark.type === 'strike') text = '~~' + text + '~~';
-      else if (mark.type === 'underline') text = '<u>' + text + '</u>';
-      else if (mark.type === 'link') text = '[' + text + '](' + (mark.attrs?.href ?? '') + ')';
-    }
-    return text;
-  }
-  if (node.type === 'hardBreak') return '  \n';
-  const content = (node.content ?? []).map(inlineMarkdown).join('');
-  return content;
-}
-
-function blocksMarkdown(nodes: JSONContent[], indent = 0): string {
-  return nodes.map(node => blockMarkdown(node, indent)).filter(Boolean).join('\n\n');
-}
-
-function listMarkdown(node: JSONContent, indent: number): string {
-  const ordered = node.type === 'orderedList';
-  const start = Number(node.attrs?.start) || 1;
-  return (node.content ?? []).map((item, index) => {
-    const children = item.content ?? [];
-    const first = children[0];
-    const prefix = ' '.repeat(indent) + (ordered ? (start + index) + '. ' : '- ');
-    const head = first ? inlineMarkdown(first).replace(/\n/g, '\n' + ' '.repeat(prefix.length)) : '';
-    const rest = children.slice(1);
-    const nested = rest.length ? '\n' + blocksMarkdown(rest, indent + 2).replace(/\n\n/g, '\n') : '';
-    return prefix + head + nested;
-  }).join('\n');
-}
-
-function blockMarkdown(node: JSONContent, indent: number): string {
-  if (node.type === 'paragraph') return ' '.repeat(indent) + inlineMarkdown(node);
-  if (node.type === 'heading') {
-    const level = Math.min(6, Math.max(1, Number(node.attrs?.level) || 1));
-    return ' '.repeat(indent) + '#'.repeat(level) + ' ' + inlineMarkdown(node);
-  }
-  if (node.type === 'bulletList' || node.type === 'orderedList') return listMarkdown(node, indent);
-  if (node.type === 'blockquote') {
-    return (node.content ?? []).map(child => blockMarkdown(child, 0).split('\n').map(line => ' '.repeat(indent) + '> ' + line).join('\n')).join('\n\n');
-  }
-  if (node.type === 'codeBlock') {
-    const language = String(node.attrs?.language || '');
-    return ' '.repeat(indent) + '```' + language + '\n' + (node.content ?? []).map(child => child.text ?? '').join('') + '\n' + ' '.repeat(indent) + '```';
-  }
-  if (node.type === 'horizontalRule') return ' '.repeat(indent) + '---';
-  return ' '.repeat(indent) + inlineMarkdown(node);
-}
-
-function editorMarkdown(editor: Editor): string {
-  return blocksMarkdown(editor.getJSON().content ?? []).trim();
-}
-
 function editorReferenceIds(editor: Editor): string[] {
   const ids: string[] = [];
   const visit = (node: JSONContent) => {
@@ -497,53 +319,6 @@ function referenceQueryAtCursor(state: EditorState): {from: number; query: strin
   const match = /(?:^|\s)@([^\s@]*)$/.exec(textBefore);
   if (!match) return null;
   return {from: from - match[1].length - 1, query: match[1]};
-}
-
-function hasActiveNode(state: EditorState, names: string[]): boolean {
-  const { $from } = state.selection;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if (names.includes($from.node(depth).type.name)) return true;
-  }
-  return false;
-}
-
-function isEmptyListItem(state: EditorState): boolean {
-  const { $from, $to } = state.selection;
-  return $from.parentOffset === 0 && $to.parentOffset === 0 &&
-    $from.parent.content.size === 0 && hasActiveNode(state, ['listItem']);
-}
-
-function exitEmptyListItem(editor: Editor): boolean {
-  const { state } = editor;
-  const { $from } = state.selection;
-  let listDepth = -1;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if ($from.node(depth).type.name === 'listItem') {
-      listDepth = depth;
-      break;
-    }
-  }
-  if (listDepth < 0) return false;
-
-  const list = $from.node(listDepth - 1);
-  const listStart = $from.before(listDepth - 1);
-  const itemIndex = $from.index(listDepth - 1);
-  const item = list.child(itemIndex);
-  if (itemIndex !== list.childCount - 1 || !item.firstChild?.isTextblock || item.firstChild.content.size) return false;
-
-  const paragraph = state.schema.nodes.paragraph.create();
-  const transaction = state.tr;
-  if (list.childCount === 1) {
-    transaction.replaceWith(listStart, listStart + list.nodeSize, paragraph);
-  } else {
-    transaction.delete($from.before(listDepth), $from.after(listDepth));
-    const afterList = listStart + list.nodeSize - item.nodeSize - 1;
-    transaction.insert(afterList, paragraph);
-  }
-  const after = listStart + list.nodeSize - item.nodeSize + 1;
-  transaction.setSelection(TextSelection.near(transaction.doc.resolve(Math.min(after, transaction.doc.content.size))));
-  editor.view.dispatch(transaction.scrollIntoView());
-  return true;
 }
 
 export function AgentPage({visible, navigation}: {visible: boolean; navigation?: React.ReactNode}) {
@@ -853,113 +628,48 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
       .catch(reason => setError(reason instanceof Error ? reason.message : String(reason)));
     if (files.length > available) setError('每条消息最多添加 4 张图片');
   }, []);
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({trailingNode: false}),
-      Placeholder.configure({placeholder: '描述你想完成的事…'}),
-      ConversationReference,
-    ],
-    editorProps: {
-      attributes: {'aria-label': '给小涛发消息', role: 'textbox', 'aria-multiline': 'true'},
-      handlePaste: (view, event) => {
-        const imageFiles = pastedImageFiles(event.clipboardData);
-        if (imageFiles.length) {
-          event.preventDefault();
-          addComposerImages(imageFiles);
-          return true;
-        }
-        if (hasActiveNode(view.state, ['codeBlock'])) return false;
-        const text = event.clipboardData?.getData('text/plain').replace(/\r\n?/g, '\n');
-        const match = text?.match(/^\s*(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*\s*$/i);
-        if (text && !match && !text.includes('\n') && /\\/.test(text) && !/^[a-z][a-z\d+.-]*:\/\//i.test(text)) {
-          view.dispatch(view.state.tr.insertText(text).setMeta('preventAutolink', true).scrollIntoView());
-          event.preventDefault();
-          return true;
-        }
-        const html = event.clipboardData?.getData('text/html') ?? '';
-        const source = new DOMParser().parseFromString(html, 'text/html');
-        const codeContainer = source.body.querySelector('pre') || Array.from(source.body.querySelectorAll<HTMLElement>('[style]')).find(element => element.style.whiteSpace === 'pre');
-        if (!match && text && codeContainer) {
-          const nodes = text.split('\n').flatMap((line, index) => [
-            ...(index ? [view.state.schema.nodes.hardBreak.create()] : []),
-            ...(line ? [view.state.schema.text(line)] : []),
-          ]);
-          view.dispatch(view.state.tr.replaceSelection(new Slice(Fragment.fromArray(nodes), 0, 0)).scrollIntoView());
-          event.preventDefault();
-          return true;
-        }
-        if (!match) return false;
-        const container = document.createElement('div');
-        container.innerHTML = renderToStaticMarkup(<Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{match[2]}</Markdown>);
-        const slice = ProseMirrorDOMParser.fromSchema(view.state.schema).parseSlice(container);
-        view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+  const editor = useChatEditor({
+    label: '给小涛发消息',
+    extensions: [ConversationReference],
+    handlePaste: (_view, event) => {
+      const imageFiles = pastedImageFiles(event.clipboardData);
+      if (imageFiles.length) {
         event.preventDefault();
+        addComposerImages(imageFiles);
         return true;
-      },
-      handleTextInput: (view, from, to, text) => {
-        if (text !== ' ' || from !== to || hasActiveNode(view.state, ['codeBlock'])) return false;
-        const { $from } = view.state.selection;
-        const before = $from.parent.textBetween(0, $from.parentOffset, '\n', '\ufffc');
-        const match = /(^|[^`])`([^`\n]+)`$/.exec(before);
-        if (!match || !view.state.schema.marks.code) return false;
-        const start = from - match[2].length - 2;
-        let formatted = false;
-        view.state.doc.nodesBetween(start, from, node => { if (node.isText && node.marks.length) formatted = true; });
-        if (formatted) return false;
-        const code = view.state.schema.text(match[2], [view.state.schema.marks.code.create()]);
-        const space = view.state.schema.text(' ');
-        view.dispatch(view.state.tr.replaceWith(start, to, [code, space]).scrollIntoView());
-        return true;
-      },
-      handleKeyDown: (view, event) => {
-        if (referenceOpenRef.current && !event.isComposing) {
-          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault();
-            setReferenceIndex(index => referenceResults.length ? (index + (event.key === 'ArrowDown' ? 1 : -1) + referenceResults.length) % referenceResults.length : 0);
-            return true;
-          }
-          if (event.key === 'Enter' && referenceResults.length) {
-            event.preventDefault();
-            chooseReference(referenceResults[referenceIndex]);
-            return true;
-          }
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            return true;
-          }
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            closeReferencePicker();
-            return true;
-          }
-        }
-        if (event.key !== 'Enter' || event.isComposing) return false;
-        if (event.ctrlKey || event.metaKey) {
-          if (!canSendRef.current) return false;
-          event.preventDefault();
-          sendRef.current();
-          return true;
-        }
-        if (hasActiveNode(view.state, ['codeBlock'])) return false;
-        if (hasActiveNode(view.state, ['listItem'])) {
-          if (isEmptyListItem(view.state)) {
-            if (editor && exitEmptyListItem(editor)) { event.preventDefault(); return true; }
-          } else if (editor?.commands.splitListItem('listItem')) {
-            event.preventDefault();
-            return true;
-          }
-          return false;
-        }
-        if (event.shiftKey || !canSendRef.current) return false;
-
-        if (hasActiveNode(view.state, ['heading', 'blockquote'])) return false;
-
-        event.preventDefault();
-        sendRef.current();
-        return true;
-      },
+      }
+      return false;
     },
-    onUpdate: ({editor}) => {
+    handleKeyDown: (_view, event) => {
+      if (referenceOpenRef.current && !event.isComposing) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          setReferenceIndex(index => referenceResults.length ? (index + (event.key === 'ArrowDown' ? 1 : -1) + referenceResults.length) % referenceResults.length : 0);
+          return true;
+        }
+        if (event.key === 'Enter' && referenceResults.length) {
+          event.preventDefault();
+          chooseReference(referenceResults[referenceIndex]);
+          return true;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          return true;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeReferencePicker();
+          return true;
+        }
+      }
+      return false;
+    },
+    onSend: () => {
+      if (!canSendRef.current) return false;
+      sendRef.current();
+      return true;
+    },
+    onUpdate: editor => {
       const next = editorMarkdown(editor);
       promptRef.current = next;
       setPrompt(next);
@@ -1355,37 +1065,10 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   canSendRef.current = canSend;
 
   const {entries} = useMemo(() => {
-    type Entry = {kind: 'message'; item: AgentMessage; stats?: AgentRunStats} | {kind: 'run'; runId: string; stats: AgentRunStats; phase: 'live' | 'done'};
-    const timeline = conversationMessages(active?.messages ?? []);
-    const entries: Entry[] = timeline.map(item => ({kind: 'message', item,
-      stats: item.role === 'assistant' ? runStats.find(run => run.runId === item.runId) : undefined}));
-    for (const run of runStats) {
-      for (let i = entries.length - 1; i >= 0; i--) { const entry = entries[i]; if (entry.kind === 'message' && entry.item.role === 'assistant' && entry.item.runId === run.runId) entries.splice(i, 1); }
-      entries.push({kind: 'run', runId: run.runId, stats: run,
-        phase: runPhase(run) === 'working' ? 'live' : 'done'});
-    }
-    const time = (entry: Entry) => entry.kind === 'message' ? entry.item.createdAt : entry.stats.startedAt;
-    entries.sort((a, b) => time(a).localeCompare(time(b)) || (a.kind === 'message' && a.item.role === 'user' ? -1 : 1));
-    return {entries};
-  }, [active?.messages, runStats]);
+    return {entries: conversationEntries(active)};
+  }, [active]);
   const {avatarOwners} = useMemo(() => {
-    const owners = new Set<number>();
-    let response: number | undefined;
-    const finishTurn = () => {
-      const owner = response;
-      if (owner !== undefined) owners.add(owner);
-      return owner === undefined;
-    };
-    entries.forEach((entry, index) => {
-      if (entry.kind === 'message' && entry.item.role === 'user') {
-        finishTurn();
-        response = undefined;
-      } else if (entry.kind === 'message' && entry.item.role === 'assistant') {
-        response ??= index;
-      }
-    });
-    finishTurn();
-    return {avatarOwners: owners};
+    return {avatarOwners: avatarOwnersForEntries(entries)};
   }, [entries]);
   const workingIndicator = <div className="agent-working-row" role="status"><div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working"><span><strong>正在思考</strong><small>准备下一步…</small></span></div></div>;
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
@@ -1543,7 +1226,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
               <button type="button" aria-label={`移除图片 ${index + 1}`} title="移除图片" onClick={() => setComposerImages(current => current.filter(item => item.id !== image.id))}><X aria-hidden="true"/></button>
             </div>)}
           </div>}
-          <EditorContent editor={editor} className="agent-editor"/>
+          <ChatEditor editor={editor}/>
           {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
         </ChatComposer>
         <div className="agent-hint">

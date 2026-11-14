@@ -35,10 +35,10 @@ test('office expansion adds only occupied desks and preserves other seats when r
   assert.equal(desks.furniture.children.length, 1);
 });
 
-function createMotion(person) {
+function createMotion(person, random = () => .3) {
   const actor = mesh();
   const rig = [{thigh: mesh(), shin: mesh(), arm: mesh()}, {thigh: mesh(), shin: mesh(), arm: mesh()}];
-  const motion = new OfficeMotion({actor, rig}, person, {x: .78, z: 2.45}, 0);
+  const motion = new OfficeMotion({actor, rig}, person, {x: .78, z: 2.45}, 0, random);
   const home = actor.position.clone();
   const tick = (start, end) => {for (let i = start; i < end; i++) motion.step(i * .025, .025, true);};
   return {actor, rig, home, motion, tick};
@@ -46,10 +46,10 @@ function createMotion(person) {
 
 test('idle member walks away, gets back to the same desk and bends their knees to sit', () => {
   const {actor, rig, home, motion, tick} = createMotion(member('employee'));
-  tick(240, 316);
+  tick(0, 248);
   assert.ok(actor.position.distanceTo(home) > .4);
   assert.ok(Math.abs(rig[0].thigh.rotation.x) < .5);
-  tick(316, 565);
+  tick(248, 560);
   assert.equal(motion.roaming, false);
   assert.ok(actor.position.distanceTo(home) < .001);
   assert.ok(rig[0].thigh.rotation.x > 1 && rig[0].shin.rotation.x < -1);
@@ -91,4 +91,22 @@ test('work interrupts a walk, and coordinator and queued executor stay at their 
     seated.tick(0, 960);
     assert.ok(seated.actor.position.equals(seated.home));
   }
+});
+
+test('different draws vary the start time and send the same member to different parts of the aisle', () => {
+  const short = createMotion(member('employee'), () => .15);
+  const long = createMotion(member('employee'), () => .85);
+  assert.ok(short.motion.walkDue + 3 < long.motion.walkDue);
+  const bounds = ({actor, motion}) => {
+    let min = actor.position.z, max = min;
+    for (let i = 0; i < 900; i++) {
+      motion.step(i * .025, .025, true);
+      min = Math.min(min, actor.position.z);
+      max = Math.max(max, actor.position.z);
+    }
+    return {min, max};
+  };
+  const back = bounds(short), front = bounds(long);
+  assert.ok(back.min < short.home.z - 1 && back.max === short.home.z);
+  assert.ok(front.max > long.home.z + 1 && front.min === long.home.z);
 });

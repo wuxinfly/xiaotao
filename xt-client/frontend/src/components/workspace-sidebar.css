@@ -71,11 +71,6 @@
   min-height: 32px;
 }
 
-.workspace-dock .workspace-nav button:first-child {
-  color: var(--ocean-text);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
 .workspace-page-view {
   flex: 1;
   min-width: 0;

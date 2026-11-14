@@ -146,7 +146,6 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
     await page.locator('.office-page').waitFor();
 
-    await page.getByRole('heading', {name: '办公室', exact: true}).waitFor();
     await page.getByRole('button', {name: '切换项目'}).waitFor();
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
@@ -186,17 +185,22 @@ test('office page shows real task state, transcript, artifacts and queued messag
       const back = page.locator('.workspace-back');
       if (await back.isVisible()) await back.click();
     };
+    const taskDrawerWidth = (await memberPanel.boundingBox()).width;
     await openMember('设计师');
+    assert.ok((await memberPanel.boundingBox()).width > taskDrawerWidth, 'member chat has more room than the task drawer');
     await memberPanel.getByLabel('模型').waitFor();
     await memberPanel.getByText('128,000 tokens').waitFor();
-    await page.getByLabel('给设计师发消息').fill('我想调整搜索页面');
-    await page.locator('.member-chat .agent-composer').getByRole('button', {name: '发送消息', exact: true}).click();
+    const memberEditor = memberPanel.getByRole('textbox', {name: '给设计师发消息'});
+    await memberEditor.fill('我想调整');
+    await memberEditor.press('End');
+    await memberEditor.press('Control+b');
+    await memberEditor.pressSequentially('搜索页面');
+    await memberEditor.locator('strong').getByText('搜索页面').waitFor();
+    await memberEditor.press('Enter');
     await page.locator('.member-chat .agent-message.role-assistant').getByText('我们先把想法整理成一份交接。').waitFor();
-    assert.equal(chats[roleId], '我想调整搜索页面');
-    await page.getByRole('button', {name: '查看交接并安排'}).click();
-    assert.equal(await page.locator('.office-create-modal textarea').inputValue(), '我们先把想法整理成一份交接。');
-    await page.keyboard.press('Escape');
-    await page.getByRole('heading', {name: '交给小涛一个任务'}).waitFor({state: 'detached'});
+    assert.equal(chats[roleId], '我想调整**搜索页面**');
+    assert.equal(await memberEditor.textContent(), '');
+    assert.equal(await memberPanel.getByRole('button', {name: /整理交接|查看交接并安排/}).count(), 0);
     await closeDetail();
     await openMember('开发成员');
     assert.equal(await memberPanel.locator('.member-chat-history').getByText('我们先把想法整理成一份交接。').count(), 0, 'employee histories must stay separate');
@@ -258,7 +262,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     artifacts.length = 0;
     await page.locator('.workspace-heading-right .app-select-trigger').click();
     await page.getByRole('option', {name: '另一个项目'}).click();
-    await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await page.getByRole('button', {name: '切换项目'}).getByText('另一个项目').waitFor();
     await page.locator('[data-entry-phase="ready"] canvas[data-office-renderer="three"]').waitFor();
     await taskTrigger.click();
     await page.getByRole('tab', {name: /团队/}).click();
@@ -267,11 +271,11 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.getByRole('option', {name: '演示项目'}).waitFor({state: 'detached'});
     await page.getByRole('button', {name: '切换项目'}).click();
     await page.getByRole('option', {name: '演示项目'}).click();
-    await page.locator('.room-project').getByText('演示项目').waitFor();
+    await page.getByRole('button', {name: '切换项目'}).getByText('演示项目').waitFor();
     await shelf.getByText('0', {exact: true}).waitFor();
     await page.getByRole('button', {name: '切换项目'}).click();
     await page.getByRole('option', {name: '另一个项目'}).click();
-    await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await page.getByRole('button', {name: '切换项目'}).getByText('另一个项目').waitFor();
     await taskTrigger.click();
     await page.getByText('现在没有进行中的任务').waitFor();
 
@@ -284,10 +288,11 @@ test('office page shows real task state, transcript, artifacts and queued messag
 
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
     await page.locator('.office-page').waitFor();
+    const taskButtonColor = () => taskTrigger.evaluate(element => getComputedStyle(element).color);
+    const darkColor = await taskButtonColor();
     await page.getByRole('button', {name: '更多', exact: true}).click();
     await page.getByRole('menuitem', {name: '切换到浅海主题'}).click();
-    const heading = await page.getByRole('heading', {name: '办公室', exact: true}).evaluate(element => getComputedStyle(element).color);
-    assert.notEqual(heading, 'rgb(232, 247, 250)', 'office heading must follow the light theme');
+    assert.notEqual(await taskButtonColor(), darkColor, 'office controls follow the light theme');
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office.png')});
     await page.setViewportSize({width: 380, height: 600});
     assert.equal(await page.locator('.office-page').evaluate(node => node.scrollWidth <= node.clientWidth), true);

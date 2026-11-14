@@ -41,6 +41,15 @@ func (f *fakeExecutor) CreateSession(options agent.Options) (*agent.Session, err
 	return session, nil
 }
 
+func (f *fakeExecutor) SetMember(sessionID string, member *agent.MemberIdentity) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if session := f.sessions[sessionID]; session != nil {
+		session.Member = member
+	}
+	return nil
+}
+
 func (f *fakeExecutor) RunTurn(ctx context.Context, sessionID, text, model string, _ *agent.ModelSettings, emit func(agent.Event)) error {
 	f.mu.Lock()
 	run := f.run

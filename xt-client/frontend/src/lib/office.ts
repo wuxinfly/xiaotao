@@ -59,6 +59,9 @@ export interface OfficeTask {
   approval?: OfficeApproval;
   executor: OfficeExecutor;
   sessionId?: string;
+  memberId?: string;
+  chatSessionId?: string;
+  discussion?: string;
   runId?: string;
   stats: OfficeStats;
   latestActivity?: OfficeActivity;
@@ -160,6 +163,8 @@ export interface CreateOfficeTaskInput {
   goal: string;
   model: string;
   modelSettings?: {contextWindow?: number; maxOutputTokens?: number; reasoningEffort?: string};
+  memberId?: string;
+  chatSessionId?: string;
 }
 
 function projectQuery(projectPath: string) {

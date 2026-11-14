@@ -180,10 +180,10 @@ func (s *TeamService) Invite(projectPath, roleID string, expected ProjectRegistr
 }
 
 func (s *TeamService) Remove(projectPath, roleID string, expected ProjectRegistries) (TeamSnapshot, error) {
-	if s.active != nil && s.active(projectPath, roleID) {
-		return TeamSnapshot{}, ErrMemberActive
-	}
 	result, err := s.store.Update(projectPath, expected, func(value *ProjectRegistries) error {
+		if s.active != nil && s.active(projectPath, roleID) {
+			return ErrMemberActive
+		}
 		for index, member := range value.Team.Members {
 			if member.RoleID == roleID {
 				value.Team.Members = append(value.Team.Members[:index], value.Team.Members[index+1:]...)

@@ -73,7 +73,7 @@ func (s *Service) saveChatLocked(path string, chat *Chat) error {
 	return err
 }
 func chatProject(path, id string) (string, error) {
-	if !roleIDPattern.MatchString(id) && id != "xiaotao" && id != "designer" && id != "developer" {
+	if !roleIDPattern.MatchString(id) && id != coordinatorID && id != "designer" && id != "developer" {
 		return "", fmt.Errorf("员工不存在")
 	}
 	path, _, err := resolveProject(path, "")
@@ -111,23 +111,19 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 	if text == "" || len([]rune(text)) > maxMessageText {
 		return nil, fmt.Errorf("消息不能为空且最多 %d 个字符", maxMessageText)
 	}
-	member, err := s.teams.Snapshot(path)
+	preference, err := s.chatModelPreference(path, id)
 	if err != nil {
 		return nil, err
 	}
-	role, err := member.Member(id)
-	if err != nil || role.Lifecycle != RoleActive {
-		return nil, ErrMemberNotFound
-	}
 	model := strings.TrimSpace(input.Model)
 	if model == "" {
-		model = role.Model.ModelID
+		model = preference.ModelID
 	}
 	if model == "" || !s.modelAvailable(model) {
 		return nil, fmt.Errorf("角色模型 %q 当前不可用，请编辑角色或选择可用模型", model)
 	}
 	if input.ModelSettings == nil {
-		input.ModelSettings = modelSettingsFromPreference(role.Model)
+		input.ModelSettings = modelSettingsFromPreference(preference)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -149,6 +145,19 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 		}
 		chat.SessionID = session.ID
 	}
+	if id != coordinatorID {
+		team, teamErr := s.teams.Snapshot(path)
+		if teamErr != nil {
+			return nil, teamErr
+		}
+		member, memberErr := team.Member(id)
+		if memberErr != nil {
+			return nil, memberErr
+		}
+		if updateErr := s.exec.SetMember(chat.SessionID, &agent.MemberIdentity{ID: member.ID, Name: member.Name, Responsibility: member.Responsibility}); updateErr != nil {
+			return nil, updateErr
+		}
+	}
 	chat.Status = StatusRunning
 	chat.Error = ""
 	chat.Approval = nil
@@ -159,8 +168,24 @@ func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, erro
 	s.runs[key] = cancel
 	s.wg.Add(1)
 	snapshot := *chat
-	go s.runChat(ctx, cancel, path, id, chat.SessionID, text, input.Model, input.ModelSettings)
+	go s.runChat(ctx, cancel, path, id, chat.SessionID, text, model, input.ModelSettings)
 	return &snapshot, nil
+}
+
+func (s *Service) chatModelPreference(path, id string) (ModelPreference, error) {
+	// The built-in coordinator is always present and has no team registry entry.
+	if id == coordinatorID {
+		return ModelPreference{}, nil
+	}
+	team, err := s.teams.Snapshot(path)
+	if err != nil {
+		return ModelPreference{}, err
+	}
+	role, err := team.Member(id)
+	if err != nil || role.Lifecycle != RoleActive {
+		return ModelPreference{}, ErrMemberNotFound
+	}
+	return role.Model, nil
 }
 
 func modelSettingsFromPreference(preference ModelPreference) *agent.ModelSettings {

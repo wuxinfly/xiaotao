@@ -123,7 +123,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
       const [scene, panel] = element.children;
       const room = scene.getBoundingClientRect();
       const drawer = panel.getBoundingClientRect();
-      return Math.abs(room.right - drawer.right) <= 2 && drawer.width < room.width;
+      return drawer.right <= room.right && room.right - drawer.right <= 28 && drawer.width < room.width;
     }), 'narrow office keeps the drawer over the right side of the full-width room');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow office must not overflow horizontally');
     await page.evaluate(() => {document.querySelector('.office-live-page').scrollTop = 0;});

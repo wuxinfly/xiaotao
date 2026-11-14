@@ -20,6 +20,10 @@ func (e *AgentExecutor) CreateSession(options agent.Options) (*agent.Session, er
 	return e.svc.Create(options)
 }
 
+func (e *AgentExecutor) SetMember(sessionID string, member *agent.MemberIdentity) error {
+	return e.svc.SetMember(sessionID, member)
+}
+
 func (e *AgentExecutor) RunTurn(ctx context.Context, sessionID, text, model string, settings *agent.ModelSettings, emit func(agent.Event)) error {
 	if model == "" && settings == nil {
 		return e.svc.Send(ctx, sessionID, text, emit)

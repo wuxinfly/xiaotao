@@ -23,6 +23,8 @@ func (f *officeFakeExecutor) CreateSession(options agent.Options) (*agent.Sessio
 	return &agent.Session{ID: "run_office", Project: agent.Project{Path: options.ProjectPath, Name: options.ProjectName}, Role: options.Role, Model: options.Model}, nil
 }
 
+func (f *officeFakeExecutor) SetMember(string, *agent.MemberIdentity) error { return nil }
+
 func (f *officeFakeExecutor) RunTurn(ctx context.Context, sessionID, text, model string, _ *agent.ModelSettings, emit func(agent.Event)) error {
 	emit(agent.Event{Type: "session", SessionID: sessionID, RunID: "turn_1"})
 	emit(agent.Event{Type: "activity", SessionID: sessionID, Activity: &agent.Activity{ID: "act_1", RunID: "turn_1", Kind: "write_file", Title: "更新文件", Input: `{"path":"result.md"}`, Status: "completed", StartedAt: time.Now()}})
