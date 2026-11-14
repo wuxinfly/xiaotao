@@ -41,8 +41,10 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.theme-toggle').count(), 0, 'theme control must leave the title bar');
     const footer = await page.locator('.workspace-dock').boundingBox();
     assert.ok(footer.x < 20 && footer.y + footer.height > 800, 'workspace navigation must sit at the lower-left edge');
-    assert.equal(await page.locator('.workspace-dock').evaluate(element => getComputedStyle(element).position), 'fixed');
-    assert.ok(parseFloat(await page.locator('.agent-session-list').evaluate(element => getComputedStyle(element).paddingBottom)) >= footer.height, 'session history must reserve space above the dock');
+    const sidebar = await page.locator('.agent-sidebar').boundingBox();
+    const history = await page.locator('.agent-session-list').boundingBox();
+    assert.ok(footer.x >= sidebar.x && footer.x + footer.width <= sidebar.x + sidebar.width, 'navigation stays inside the Agent sidebar');
+    assert.ok(history.y + history.height <= footer.y, 'navigation must not cover scrollable session history');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
     assert.deepEqual(await footerButtons.allTextContents(), ['办公室', '仪表盘', '模型接口']);
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');

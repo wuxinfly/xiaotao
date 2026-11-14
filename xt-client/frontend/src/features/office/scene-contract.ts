@@ -7,6 +7,6 @@ export function sceneMembers(members: OfficeMember[]): SceneMember[] {
   return members.map(member => ({id: member.id, name: member.name, role: member.role, status: member.status, responsibility: member.responsibility, appearance: member.appearance || defaultAppearance}));
 }
 export function sceneLayout(members: SceneMember[]): SceneLayout[] {
-  const slots = [[-4, 1.5], [-.7, 1.5], [2.7, 2.6], [-4, -1.3], [-.7, -1.3], [2.7, -1.3], [-4, -3.4], [-.7, -3.4], [2.7, -3.4]];
-  return members.map((member, index) => ({id: member.id, x: slots[index % slots.length][0], z: slots[index % slots.length][1], rotation: 0}));
+  const slots = [[-.74, 1.78], [-4.19, 1.78], [2.71, 1.78], [3.99, -.8], [.36, -.8], [-2.38, -.8], [4.21, -3.25], [1.26, -3.25], [-1.74, -3.25]];
+  return members.slice(0, slots.length).map((member, index) => ({id: member.id, x: slots[index][0], z: slots[index][1], rotation: -.20}));
 }

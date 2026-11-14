@@ -1,29 +1,51 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef} from 'react';
 import type {SceneMember} from './scene-contract';
-import type {OfficeAssets} from './scene-models';
-import type {SceneRuntime} from './runtime-contract';
+import {loadOfficeAssets} from './scene-models';
+import {OfficeEngine} from './OfficeEngine';
 
-export function useOfficeRuntime(active: boolean, members: SceneMember[], load: () => Promise<OfficeAssets>, create: (element: HTMLElement, assets: OfficeAssets) => SceneRuntime, onReady: () => void, onError: (message: string) => void) {
+type Options = {
+  active: boolean;
+  members: SceneMember[];
+  onSelect: (id: string) => void;
+  onShelf: () => void;
+  onReady: () => void;
+  onError: (message: string) => void;
+};
+
+export function useOfficeRuntime(options: Options) {
   const host = useRef<HTMLDivElement>(null);
-  const runtime = useRef<SceneRuntime | null>(null);
-  const generation = useRef(0);
-  const [ready, setReady] = useState(false);
-  const callbacks = useRef({onReady, onError}); callbacks.current = {onReady, onError};
-  const initial = useRef({members, active, create, load});
+  const runtime = useRef<OfficeEngine | null>(null);
+  const latest = useRef(options);
+  latest.current = options;
   useEffect(() => {
     const element = host.current;
     if (!element) return;
-    const id = ++generation.current;
-    let disposed = false;
-    setReady(false);
-    initial.current.load().then(assets => {
-      if (disposed || generation.current !== id) return;
-      try {runtime.current = initial.current.create(element, assets); runtime.current.update(initial.current.members); runtime.current.setActive(initial.current.active); runtime.current.render(); setReady(true); callbacks.current.onReady();}
-      catch (reason) {callbacks.current.onError(reason instanceof Error ? reason.message : String(reason));}
-    }).catch(reason => {if (!disposed && generation.current === id) callbacks.current.onError(reason instanceof Error ? reason.message : String(reason));});
-    return () => {disposed = true; if (generation.current === id) generation.current = id + 1; runtime.current?.destroy(); runtime.current = null;};
+    const controller = new AbortController();
+    let failed = false;
+    const onError = (message: string) => {failed = true; latest.current.onError(message);};
+    loadOfficeAssets(controller.signal).then(assets => {
+      if (controller.signal.aborted) {assets.dispose(); return;}
+      try {
+        const engine = new OfficeEngine(element, {
+          onSelect: id => latest.current.onSelect(id),
+          onShelf: () => latest.current.onShelf(),
+          onError,
+        }, assets);
+        runtime.current = engine;
+        engine.setActive(latest.current.active);
+        engine.update(latest.current.members);
+        if (!failed) latest.current.onReady();
+      } catch (reason) {
+        if (runtime.current) {runtime.current.destroy(); runtime.current = null;}
+        else assets.dispose();
+        onError(reason instanceof Error ? reason.message : String(reason));
+      }
+    }).catch(reason => {
+      if (!controller.signal.aborted) onError(reason instanceof Error ? reason.message : String(reason));
+    });
+    return () => {controller.abort(); runtime.current?.destroy(); runtime.current = null;};
   }, []);
-  useEffect(() => {runtime.current?.update(members);}, [members]);
-  useEffect(() => {runtime.current?.setActive(active); if (active) runtime.current?.render();}, [active]);
-  return {host, runtime, ready};
+  useEffect(() => {runtime.current?.update(options.members);}, [options.members]);
+  useEffect(() => {runtime.current?.setActive(options.active);}, [options.active]);
+  return {host, runtime};
 }

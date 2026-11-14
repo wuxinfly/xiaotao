@@ -43,6 +43,8 @@ export function OfficePage({visible}: Props) {
   const artifactRequest = useRef(0);
   const artifactReturn = useRef<'library' | null>(null);
   const entry = useRef<OfficeEntryHandle>(null);
+  const currentProject = useRef(selectedPath);
+  currentProject.current = selectedPath;
 
   const project = useMemo(() => projects.find(item => projectKey(item.path) === projectKey(selectedPath)), [projects, selectedPath]);
   const projectName = project?.name || '';
@@ -94,8 +96,11 @@ export function OfficePage({visible}: Props) {
   }
 
   function selectProject(path: string) {
+    if (path === selectedPath) return;
     clearTask();
     showPanel(null);
+    setActiveMemberId('');
+    setHandoffGoal('');
     setWorkspaceView('tasks');
     setSelectedPath(path);
   }
@@ -198,6 +203,8 @@ export function OfficePage({visible}: Props) {
   }
 
   function selectMember(id: string) {
+    const taskId = snapshot?.members.find(member => member.id === id)?.taskId;
+    if (taskId) {selectTask(taskId); return;}
     setActiveMemberId(id);
     showPanel(null);
     setWorkspaceView('member');
@@ -222,18 +229,23 @@ export function OfficePage({visible}: Props) {
       models={models} modelConfigs={modelConfigs} preferredModel={preferredModel}
       onProject={selectProject} onView={next => {setWorkspaceView(next); clearTask();}}
       onRefresh={() => void refresh()}
-      onCreate={() => showPanel('create')} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
+      onCreate={() => {setHandoffGoal(''); showPanel('create');}} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
       onCloseDetail={() => {clearTask(); setWorkspaceView(workspaceView === 'member' ? 'team' : 'tasks');}}
       onRefreshDetail={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onCancelTask={() => void cancelTask()}
       onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}
       onOpenArtifact={item => void openArtifact(item)} onHandoff={goal => {setHandoffGoal(goal); showPanel('create');}}
       onOpenLibrary={() => showPanel('library')}>
-      {selectedPath ? <OfficeEntryFlow ref={entry} key={selectedPath} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
+      {selectedPath ? <OfficeEntryFlow key={selectedPath} ref={entry} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
+        onTeamChanged={() => void refresh()} onShowTeam={() => {clearTask(); setWorkspaceView('team');}}
         onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
         : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请选择项目后重试。'}</div>}
     </OfficeWorkspace>
     <ModalPresence>
-      {panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {entry.current?.setTeam(team); await refresh();}} onClose={close}/>
+      {panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {
+        if (currentProject.current !== selectedPath) return;
+        entry.current?.setTeam(team);
+        await refresh();
+      }} onClose={close}/>
       : panel === 'create' ? <CreateTaskModal projectPath={selectedPath} projectName={projectName} models={models}
         modelConfigs={modelConfigs} preferredModel={preferredModel} initialGoal={handoffGoal}
         onCreated={(created: OfficeTask) => {toast.success('任务已安排，执行者开始工作'); void refresh(); selectTask(created.id);}}

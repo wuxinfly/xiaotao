@@ -70,7 +70,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
       new Promise(resolve => server.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})),
       once(server, 'exit').then(() => {throw Error('Vite exited before ready');}),
     ]);
-    browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true});
+    browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true, args: ['--enable-unsafe-swiftshader']});
     const context = await browser.newContext({viewport: {width: 1280, height: 900}, reducedMotion: 'reduce'});
     const requests = [];
     const posts = [];
@@ -94,10 +94,13 @@ test('office page shows real task state, transcript, artifacts and queued messag
         {path: projectPath, name: '演示项目', saved: true}, {path: secondProjectPath, name: '另一个项目', saved: true},
       ]}});
       if (path === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test/model', label: '测试模型', sourceLabel: '本地', contextWindow: 128000}]}});
-      if (path === '/api/office/team') return route.fulfill({json: {members: snapshot([]).members.slice(0, 2), globalRoles: [], projectRoles: [], onboarding: 'completed', globalRevision: 0, projectRevision: 0, teamRevision: 0}});
+      if (path === '/api/office/team') {
+        const other = url.searchParams.get('projectPath') === secondProjectPath;
+        return route.fulfill({json: {members: other ? [] : snapshot([]).members, globalRoles: [], projectRoles: [], onboarding: other ? 'skipped' : 'completed', globalRevision: 0, projectRevision: 0, teamRevision: 0}});
+      }
       if (path === '/api/office/snapshot') {
         const board = url.searchParams.get('projectPath') === secondProjectPath
-          ? {...snapshot([]), project: {path: secondProjectPath, name: '另一个项目'}}
+          ? {...snapshot([]), members: [{id: 'coordinator', name: '小涛', role: 'coordinator', status: 'idle'}], project: {path: secondProjectPath, name: '另一个项目'}}
           : snapshot(tasks, artifacts);
         return route.fulfill({json: board});
       }
@@ -148,7 +151,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     assert.equal(await page.getByText('上次更新').count(), 0);
     assert.equal(await page.getByRole('region', {name: '任务', exact: true}).count(), 0);
     assert.equal(await page.getByRole('dialog').count(), 0);
-    await page.getByRole('heading', {name: '任务区'}).waitFor();
+    await page.getByRole('heading', {name: '项目任务'}).waitFor();
     await page.getByRole('tab', {name: /任务/}).click();
     await page.locator('.workspace-task-list .office-task-card').first().waitFor();
     assert.equal(await page.getByRole('button', {name: '办公室菜单', exact: true}).count(), 0);
@@ -230,11 +233,15 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.locator('.workspace-heading-right .app-select-trigger').click();
     await page.getByRole('option', {name: '另一个项目'}).click();
     await page.locator('.room-project').getByText('另一个项目').waitFor();
+    await page.locator('[data-entry-phase="ready"] canvas[data-office-renderer="three"]').waitFor();
+    await page.getByRole('tab', {name: /团队/}).click();
+    await page.locator('.workspace-member-list [data-member-id="coordinator"]').waitFor();
+    assert.equal(await page.locator('.workspace-member-list [data-member-id]').count(), 1);
     await page.getByRole('option', {name: '演示项目'}).waitFor({state: 'detached'});
     await page.getByRole('button', {name: '切换项目'}).click();
     await page.getByRole('option', {name: '演示项目'}).click();
     await page.locator('.room-project').getByText('演示项目').waitFor();
-    await shelf.getByText('0 份资料').waitFor();
+    await shelf.getByText('0', {exact: true}).waitFor();
     await page.getByRole('button', {name: '切换项目'}).click();
     await page.getByRole('option', {name: '另一个项目'}).click();
     await page.locator('.room-project').getByText('另一个项目').waitFor();

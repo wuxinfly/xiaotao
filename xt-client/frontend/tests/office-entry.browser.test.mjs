@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
-import {mkdtemp, readFile} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
@@ -19,7 +19,7 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in'))resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
     browser=await chromium.launch({channel:process.env.XIAOTAO_TEST_BROWSER||'msedge',headless:true,args:['--enable-unsafe-swiftshader']});
     const context=await browser.newContext({viewport:{width:1440,height:1000}});
-    let current=team(0,'pending'), modelRequests=0, failModel=true;
+    let current=team(0,'pending'), modelRequests=0, failModel=false;
     await context.route('**/api/**',route=>{
       const url=new URL(route.request().url()), pathname=url.pathname, method=route.request().method();
       if(pathname==='/api/agent/projects')return route.fulfill({json:{projects:[{path,name:'新项目',saved:true}]}});
@@ -28,33 +28,43 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
       if(pathname==='/api/office/team/templates')return route.fulfill({json:[{id:'product',name:'产品实现小队',description:'清晰分工，自由讨论',roles:[{name:'设计师',responsibility:'需求与界面',capabilities:['设计'],model:{modelId:'',contextWindow:0,maxOutputTokens:0},appearance}]}]});
       if(pathname==='/api/office/team/bootstrap')return route.fulfill({json:current=team()});
       if(pathname==='/api/office/team/skip-onboarding')return route.fulfill({json:current=team(0,'skipped')});
-      if(pathname==='/api/office/snapshot')return route.fulfill({json:snapshot(current.members)});
+      if(pathname==='/api/office/snapshot')return route.fulfill({json:snapshot([{id:'coordinator',name:'小涛',role:'coordinator',status:'idle'},...current.members.map(member=>({...member,status:'idle',role:'project'}))])});
       return route.fulfill({json:{sessions:[],projects:[],accounts:[],models:[]}});
     });
     await context.route('**/models/office.glb',route=>{modelRequests++; return failModel?route.abort('failed'):route.continue();});
     const page=await context.newPage();
     await page.goto('http://127.0.0.1:5234');
-    await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
+    const dock=page.locator('.agent-sidebar .workspace-dock');
+    const office=dock.getByRole('button',{name:'办公室',exact:true});
+    const bounds=await office.boundingBox();
+    const sidebar=await page.locator('.agent-sidebar').boundingBox();
+    assert.ok(bounds.x>=sidebar.x && bounds.x+bounds.width<=sidebar.x+sidebar.width);
+    await office.click();
+    await page.locator('[data-entry-phase=ready]').waitFor();
+    await page.getByRole('button',{name:'组建小队',exact:true}).click();
     await page.getByRole('heading',{name:'为你的项目，组建一支小队。'}).waitFor();
     await page.setViewportSize({width: 800, height: 500});
-    const scrollArea = page.locator('.office-onboarding-overlay');
+    const scrollArea = page.locator('.office-onboarding-modal .app-modal-body');
     await scrollArea.evaluate(element => {element.scrollTop = element.scrollHeight;});
     assert.ok(await scrollArea.evaluate(element => element.scrollTop > 0));
     await page.getByRole('button',{name:'稍后设置'}).click();
     await page.setViewportSize({width: 1440, height: 1000});
-    await page.getByRole('heading',{name:'项目团队'}).waitFor();
-    assert.equal(await page.locator('canvas').count(),0);
+    await page.locator('[data-entry-phase=ready]').waitFor();
+    await page.getByRole('button',{name:'组建小队',exact:true}).waitFor({state:'detached'});
+    assert.equal(await page.locator('canvas[data-office-renderer="three"]').count(),1);
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
-    await page.getByRole('heading',{name:'项目团队'}).waitFor();
+    await page.locator('[data-entry-phase=ready]').waitFor();
     await page.getByRole('tab',{name:/团队/}).click();
     await page.locator('.workspace-team').getByRole('button',{name:'管理团队',exact:true}).first().click();
     await page.keyboard.press('Escape');
     current=team(0,'pending');
+    failModel=true;
     await page.reload();
     await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
-    await page.getByRole('button',{name:'创建我的小队'}).click();
     await page.getByText('办公室场景暂时未能准备完成').waitFor();
+    await page.getByRole('button',{name:'组建小队',exact:true}).click();
+    await page.getByRole('button',{name:'创建我的小队'}).click();
     assert.equal(current.onboarding,'completed');
     await page.getByRole('heading',{name:'项目团队'}).waitFor();
     failModel=false;
@@ -73,10 +83,16 @@ test('published local GLB has self-contained nodes and valid local indices',asyn
   const gltf=JSON.parse(buffer.subarray(20,20+length).toString());
   assert.ok(gltf.nodes.some(node=>node.name==='OfficeRoom'));
   assert.ok(gltf.nodes.some(node=>node.name==='QCharacter'));
-  for(const accessor of gltf.accessors.filter(item=>item.type==='SCALAR')) {
-    const view=gltf.bufferViews[accessor.bufferView], start=20+length+8+(view.byteOffset||0)+(accessor.byteOffset||0);
-    const positionAccessor=gltf.accessors[gltf.meshes[0].primitives[0].attributes.POSITION];
-    for(let i=0;i<accessor.count;i++) assert.ok(buffer.readUInt32LE(start+i*4)<positionAccessor.count);
+  assert.ok(gltf.nodes.some(node=>node.name==='OfficeArchive'));
+  for(const shape of ['square','triangle','hexagon']) assert.ok(gltf.nodes.some(node=>node.name===`QCharacter-${shape}`));
+  for(const mesh of gltf.meshes) {
+    for(const primitive of mesh.primitives) {
+      const accessor=gltf.accessors[primitive.indices], view=gltf.bufferViews[accessor.bufferView];
+      const start=20+length+8+(view.byteOffset||0);
+      const positions=gltf.accessors[primitive.attributes.POSITION].count;
+      for(let i=0;i<accessor.count;i++) assert.ok(buffer.readUInt32LE(start+i*4)<positions);
+    }
   }
-  assert.match(gltf.buffers[0].uri,/^data:application\/octet-stream;base64,/);
+  assert.equal(gltf.buffers[0].uri,undefined);
+  assert.equal(buffer.length, buffer.readUInt32LE(8));
 });

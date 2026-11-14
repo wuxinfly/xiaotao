@@ -20,9 +20,11 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
   const sequence = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const controller = useRef<AbortController | null>(null);
+  const currentProject = useRef(projectPath);
+  currentProject.current = projectPath;
 
   const load = useCallback(async (showLoading: boolean) => {
-    if (!projectPath) return;
+    if (!projectPath || currentProject.current !== projectPath) return;
     const id = ++sequence.current;
     controller.current?.abort();
     const next = new AbortController();

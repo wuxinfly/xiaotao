@@ -8,7 +8,7 @@ export function draftWithModel<T extends RoleDraft>(draft: T, models: AgentModel
   const model = models.find(item => item.model === draft.model.modelId && !item.unavailable) || models.find(item => !item.unavailable);
   return {...draft, model: {...draft.model, modelId: model?.model || '', contextWindow: draft.model.contextWindow || model?.contextWindow || 0, maxOutputTokens: draft.model.maxOutputTokens || model?.maxOutputTokens || 0}};
 }
-const labels: Record<keyof Appearance, string> = {shape: '人物造型', primaryColor: '上衣主色', secondaryColor: '下装配色'};
+const labels: Record<keyof Appearance, string> = {shape: '人物造型', primaryColor: '机器人主色', secondaryColor: '组件配色'};
 const shapes: {value: Appearance['shape']; label: string}[] = [{value: 'round', label: '圆润'}, {value: 'square', label: '方形'}, {value: 'triangle', label: '三角形'}, {value: 'hexagon', label: '六边形'}];
 
 export function RoleEditor({draft: initial, models, onChange, onSave, onCancel, saving = false, roleId}: {draft: RoleDraft; models: AgentModelOption[]; onChange?: (draft: RoleDraft) => void; onSave?: (draft: RoleDraft) => Promise<void>; onCancel?: () => void; saving?: boolean; roleId?: string}) {

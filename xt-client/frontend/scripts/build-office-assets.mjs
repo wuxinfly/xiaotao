@@ -1,53 +1,221 @@
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {mkdir, writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import * as THREE from 'three';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {mergeGeometries, mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 
-const positions = [], normals = [], indices = [], primitives = [];
-const materialNames = ['clay', 'cream', 'wood', 'woodLight', 'mint', 'sage', 'terracotta', 'navy', 'gold', 'glass', 'hair', 'ink', 'paper', 'rug', 'leaf', 'darkWood'];
-const materials = Object.fromEntries(materialNames.map((name, index) => [name, index]));
-const palette = {clay: '#d69a7b', cream: '#f1e9d9', wood: '#94694b', woodLight: '#c5a27c', mint: '#76a69b', sage: '#aac4a5', terracotta: '#bf7255', navy: '#344a5a', gold: '#dfb86d', glass: '#bcd4d1', hair: '#473c36', ink: '#3c4549', paper: '#f5eddc', rug: '#c8d0be', leaf: '#698971', darkWood: '#614b3d'};
-function primitive(name) {const primitive = {name, start: indices.length, count: 0, material: materials[name]}; primitives.push(primitive); return primitive;}
-function vertex(point, normal) {positions.push(...point); normals.push(...normal); return positions.length / 3 - 1;}
-function transform(point, center, rotation = 0) {const c = Math.cos(rotation), s = Math.sin(rotation); return [center[0] + point[0] * c + point[2] * s, center[1] + point[1], center[2] - point[0] * s + point[2] * c];}
-function quad(a, b, c, d, color, center, rotation) {const p = primitive(color), n = normal(a, b, c), base = vertex(transform(a, center, rotation), n); vertex(transform(b, center, rotation), n); vertex(transform(c, center, rotation), n); vertex(transform(d, center, rotation), n); indices.push(base, base + 1, base + 2, base, base + 2, base + 3); p.count += 6;}
-function normal(a, b, c) {const u = b.map((n, i) => n - a[i]), v = c.map((n, i) => n - a[i]); const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; const length = Math.hypot(...n) || 1; return n.map(x => x / length);}
-function box(center, size, color, rotation = 0) {const [x, y, z] = size.map(n => n / 2); quad([-x,-y,-z],[-x,-y,z],[-x,y,z],[-x,y,-z],color,center,rotation); quad([x,-y,z],[x,-y,-z],[x,y,-z],[x,y,z],color,center,rotation); quad([-x,y,-z],[-x,y,z],[x,y,z],[x,y,-z],color,center,rotation); quad([-x,-y,z],[-x,-y,-z],[x,-y,-z],[x,-y,z],color,center,rotation); quad([x,-y,-z],[-x,-y,-z],[-x,y,-z],[x,y,-z],color,center,rotation); quad([-x,-y,z],[x,-y,z],[x,y,z],[-x,y,z],color,center,rotation);}
-function sphere(center, scale, color, segments = 16, rings = 10, rotation = 0) {const p = primitive(color); for (let y = 0; y < rings; y++) for (let x = 0; x < segments; x++) {const points = []; for (const [dx,dy] of [[0,0],[1,0],[1,1],[0,1]]) {const phi = (y + dy) / rings * Math.PI, theta = (x + dx) / segments * Math.PI * 2; points.push([Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)]);} const base = positions.length / 3; for (const point of points) {vertex(transform(point.map((n, i) => n * scale[i]), center, rotation), transform(point, [0,0,0], rotation));} indices.push(base,base+2,base+1,base,base+3,base+2); p.count += 6;}}
-function cylinder(center, radius, height, color, segments = 16, radiusTop = radius, rotation = 0) {const p = primitive(color); for (let i = 0; i < segments; i++) {const a = i / segments * Math.PI * 2, b = (i + 1) / segments * Math.PI * 2; const points = [[radius*Math.cos(a),-height/2,radius*Math.sin(a)],[radiusTop*Math.cos(a),height/2,radiusTop*Math.sin(a)],[radiusTop*Math.cos(b),height/2,radiusTop*Math.sin(b)],[radius*Math.cos(b),-height/2,radius*Math.sin(b)]]; const n = normal(points[0],points[1],points[2]), base = positions.length / 3; for (const point of points) vertex(transform(point,center,rotation),n); indices.push(base,base+1,base+2,base,base+2,base+3); p.count += 6; for (const top of [false,true]) {const n = [0,top?1:-1,0], base = positions.length / 3; vertex(transform([0,top?height/2:-height/2,0],center,rotation),n); for (const angle of top?[b,a]:[a,b]) vertex(transform([(top?radiusTop:radius)*Math.cos(angle),top?height/2:-height/2,(top?radiusTop:radius)*Math.sin(angle)],center,rotation),n); indices.push(base,base+1,base+2); p.count += 3;}}}
-function capsule(a, b, radius, color) {const middle = a.map((n,i) => (n+b[i])/2), length = Math.hypot(...b.map((n,i) => n-a[i])); cylinder(middle, radius, length, color, 12); sphere(a,[radius,radius,radius],color,12,8); sphere(b,[radius,radius,radius],color,12,8);}
-function plant(x,z,scale=1) {cylinder([x,.32*scale,z],.38*scale,.55*scale,'terracotta',20,.47*scale); cylinder([x,.59*scale,z],.41*scale,.04*scale,'darkWood'); capsule([x,.55*scale,z],[x,1.35*scale,z],.045*scale,'wood'); for (let i=0;i<8;i++) {const angle=i*Math.PI/4, y=(.8+i%3*.24)*scale; const a=[x,y,z], b=[x+Math.cos(angle)*.55*scale,y+.35*scale,z+Math.sin(angle)*.55*scale]; capsule(a,b,.14*scale,i%2?'leaf':'sage'); sphere(b,[.2*scale,.28*scale,.15*scale],'leaf',12,8);}}
-function desk(x,z,rotation=0) {box([x,1.15,z],[2.55,.16,1.18],'woodLight',rotation); for(const dx of [-1,1]) for(const dz of [-.42,.42]) box(transform([dx,.55,dz],[x,0,z],rotation),[.12,1.1,.12],'wood',rotation); box(transform([0,1.55,.15],[x,0,z],rotation),[1.02,.64,.07],'navy',rotation); box(transform([0,1.55,.1],[x,0,z],rotation),[.89,.5,.02],'glass',rotation); box(transform([0,1.28,.15],[x,0,z],rotation),[.09,.28,.08],'navy',rotation); box(transform([0,1.25,-.3],[x,0,z],rotation),[.8,.035,.25],'cream',rotation); box(transform([.83,1.26,-.1],[x,0,z],rotation),[.17,.18,.17],'terracotta',rotation); box(transform([0,.5,1],[x,0,z],rotation),[.8,.12,.8],'mint',rotation); box(transform([0,.85,1.34],[x,0,z],rotation),[.8,.72,.12],'mint',rotation); cylinder(transform([0,.25,1],[x,0,z],rotation),.06,.5,'navy');}
-function shelf() {const x=5.3,z=4.4; box([x,1.6,z],[2,.15,.7],'wood'); box([x,3.2,z],[2,.15,.7],'wood'); for(const dx of [-.93,.93]) box([x+dx,1.7,z],[.14,3.3,.7],'wood'); box([x,1.7,z+.3],[1.85,3,.1],'woodLight'); for(const y of [.55,1.5,2.45]) box([x,y,z],[1.9,.12,.65],'woodLight'); for(let row=0;row<3;row++) for(let i=0;i<6;i++) {const color=['terracotta','mint','cream','gold','navy','sage'][(i+row)%6]; box([x-.7+i*.27,.73+row*.95,z-.12],[.18,.47+(i%2)*.13,.4],color,-.06+(i%3)*.04);}}
-function sofa() {const x=3.6,z=2.2; box([x,.42,z],[2.65,.45,1.05],'mint'); box([x,.95,z+.43],[2.65,.95,.2],'mint'); for(const dx of [-1.22,1.22]) box([x+dx,.66,z],[.25,.64,1.1],'mint'); for(const dx of [-.57,.57]) box([x+dx,.68,z-.05],[1.02,.18,.83],'sage'); for(const dx of [-1,1]) for(const dz of [-.35,.35]) cylinder([x+dx,.12,z+dz],.06,.25,'wood');}
-function createRoom() {box([0,-.14,0],[15,.28,11.5],'cream'); box([0,2.65,5.65],[15,5.5,.22],'cream'); box([-7.4,2.65,0],[.22,5.5,11.5],'sage'); box([0,2.65,5.49],[15,.14,.12],'woodLight'); box([-7.25,2.65,0],[.12,.14,11.5],'woodLight'); box([0,.012,.15],[8.6,.035,6.5],'rug'); for(const x of [-4.2,-.7]) {box([x,3.15,5.47],[2.65,2.5,.09],'woodLight'); box([x,3.15,5.4],[2.38,2.22,.05],'glass'); box([x,3.15,5.35],[.08,2.25,.05],'cream'); box([x,3.15,5.35],[2.42,.08,.05],'cream');} for(const [x,z] of [[-4,2.8],[-.7,2.8],[2.7,3.9]]) desk(x,z); shelf(); sofa(); plant(-6,4.4,1.4); plant(6.25,3.9,.85); plant(-5.8,-3.5,.75); box([.7,.48,.3],[2.3,.12,1.35],'woodLight'); cylinder([.7,.2,.3],.13,.48,'wood'); for(let i=0;i<4;i++) box([-4.2+i*.55,1.25,5.23],[.43,.34,.06],i%2?'gold':'paper');}
-function createCharacter() {for(const x of [-.21,.21]) {capsule([x,.33,0],[x,.91,0],.17,'navy'); sphere([x,.16,-.1],[.23,.14,.34],'cream');} sphere([0,1.26,0],[.51,.58,.32],'clay'); sphere([0,2.04,0],[.43,.44,.4],'clay'); for(const side of [-1,1]) {capsule([side*.46,1.48,0],[side*.62,1.05,-.03],.12,'clay'); sphere([side*.62,.98,-.03],[.13,.15,.13],'clay'); sphere([side*.15,2.06,-.37],[.035,.047,.024],'ink',12,8); sphere([side*.43,2.03,0],[.085,.12,.075],'clay');} sphere([0,2.34,.04],[.43,.22,.4],'hair'); sphere([-.31,2.23,-.12],[.14,.23,.23],'hair'); sphere([.3,2.26,-.08],[.13,.2,.2],'hair'); sphere([0,1.94,-.397],[.07,.027,.015],'terracotta',12,8);}
-createRoom(); const roomPrimitives = primitives.splice(0); const roomPositionCount = positions.length / 3, roomIndexStart = 0, characterIndexStart = indices.length; createCharacter(); const characterPrimitives = primitives.splice(0);
-const accessors = [{bufferView:0,componentType:5126,count:roomPositionCount,type:'VEC3'},{bufferView:1,componentType:5126,count:roomPositionCount,type:'VEC3'},{bufferView:2,componentType:5125,count:roomIndexStart,type:'SCALAR'}];
-const gltf = {asset:{version:'2.0',generator:'XiaoTao original procedural office; no third-party meshes',copyright:'XiaoTao contributors; project license'},scene:0,scenes:[{nodes:[0,1]}],nodes:[{name:'OfficeRoom',mesh:0},{name:'QCharacter',mesh:1}],meshes:[{name:'OfficeRoom',primitives:roomPrimitives.map(part => ({attributes:{POSITION:0,NORMAL:1},indices:2,material:part.material}))},{name:'QCharacter',primitives:characterPrimitives.map(part => {const base=accessors.length; accessors.push({bufferView:0,byteOffset:roomPositionCount*12,componentType:5126,count:positions.length/3-roomPositionCount,type:'VEC3'},{bufferView:1,byteOffset:roomPositionCount*12,componentType:5126,count:positions.length/3-roomPositionCount,type:'VEC3'},{bufferView:2,byteOffset:roomIndexStart*4,componentType:5125,count:part.count,type:'SCALAR'}); return {attributes:{POSITION:base,NORMAL:base+1},indices:base+2,material:part.material,extras:{indexOffset:part.start}};})}],materials:materialNames.map(name => ({name,pbrMetallicRoughness:{baseColorFactor:[...palette[name].match(/[a-f0-9]{2}/gi).map(value=>parseInt(value,16)/255),1],roughness:.84,metallicFactor:0}})),accessors,bufferViews:[{buffer:0,byteOffset:0,byteLength:positions.length*4},{buffer:0,byteOffset:positions.length*4,byteLength:normals.length*4},{buffer:0,byteOffset:positions.length*8,byteLength:indices.length*4}],buffers:[{byteLength:positions.length*8+indices.length*4}]};
-for (const [meshIndex, parts] of [roomPrimitives, characterPrimitives].entries()) {
-  const ordered = [...parts].sort((a,b) => a.material - b.material);
-  const reordered = ordered.flatMap(part => indices.slice(part.start,part.start+part.count));
-  const offset = meshIndex === 0 ? 0 : characterIndexStart;
-  const vertexOffset = meshIndex === 0 ? 0 : roomPositionCount;
-  let start = offset;
-  gltf.meshes[meshIndex].primitives = ordered.map(part => {
-    const accessor = gltf.accessors.length;
-    gltf.accessors.push({bufferView:2,byteOffset:start*4,componentType:5125,count:part.count,type:'SCALAR'});
-    const primitive = {attributes:{POSITION:meshIndex === 0 ? 0 : 3,NORMAL:meshIndex === 0 ? 1 : 4},indices:accessor,material:part.material};
-    start += part.count;
-    return primitive;
-  });
-  for (let i=0;i<reordered.length;i++) indices[offset+i] = reordered[i] - vertexOffset;
+const palette = {
+  plinth: '#264454', floor: '#c8d8db', tile: '#b4cbd1', wall: '#55858d', trim: '#254e5c',
+  wood: '#dbb68a', shell: '#e9f0ed', sofa: '#34837f', cushion: '#65aca0', rug: '#487b8a',
+  ink: '#142b3d', ocean: '#237e9f', deep: '#195774', glow: '#94e9dd', coral: '#f0a780',
+  leaf: '#428e76', stem: '#285d54', primary: '#56baa9', secondary: '#305176', face: '#bcfaee',
+};
+const surfaces = {ocean: '#124457', deep: '#103146', glow: '#437d73', face: '#578d81'};
+const materialNames = Object.keys(palette);
+const paint = name => {
+  const color = new THREE.Color(palette[name]);
+  return {name, pbrMetallicRoughness: {baseColorFactor: [...color.toArray(), 1], roughness: .72, metallicFactor: 0}, ...(surfaces[name] && {emissiveFactor: new THREE.Color(surfaces[name]).toArray()})};
+};
+
+class Model {
+  parts = new Map();
+  add(color, geometry, at, rotation = [0, 0, 0]) {
+    geometry.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rotation)).setPosition(...at));
+    geometry.deleteAttribute('uv');
+    const batch = this.parts.get(color) || [];
+    batch.push(geometry.index ? geometry.toNonIndexed() : geometry);
+    this.parts.set(color, batch);
+  }
+  box(color, at, size, radius = .07, rotation) {
+    const r = Math.min(radius, ...size.map(n => n * .48));
+    this.add(color, new RoundedBoxGeometry(...size, 1, r), at, rotation);
+  }
+  oval(color, at, size, rotation) {
+    this.add(color, new THREE.SphereGeometry(1, 14, 10).scale(...size), at, rotation);
+  }
+  tube(color, at, bottom, top, height) {
+    this.add(color, new THREE.CylinderGeometry(top, bottom, height, 16), at);
+  }
 }
-const buffer = Buffer.alloc(gltf.buffers[0].byteLength); positions.forEach((n,i)=>buffer.writeFloatLE(n,i*4)); normals.forEach((n,i)=>buffer.writeFloatLE(n,positions.length*4+i*4)); indices.forEach((n,i)=>buffer.writeUInt32LE(n,positions.length*8+i*4)); gltf.buffers[0].uri='data:application/octet-stream;base64,'+buffer.toString('base64');
-const output = resolve('public/models'); await mkdir(output,{recursive:true});
-const json = Buffer.from(JSON.stringify(gltf));
-const jsonChunk = Buffer.alloc(Math.ceil(json.length/4)*4,0x20); json.copy(jsonChunk);
-const binaryChunk = Buffer.alloc(Math.ceil(buffer.length/4)*4); buffer.copy(binaryChunk);
-const header = Buffer.alloc(12); header.writeUInt32LE(0x46546c67,0); header.writeUInt32LE(2,4); header.writeUInt32LE(28+jsonChunk.length+binaryChunk.length,8);
-const jsonHeader = Buffer.alloc(8); jsonHeader.writeUInt32LE(jsonChunk.length,0); jsonHeader.writeUInt32LE(0x4e4f534a,4);
-const binaryHeader = Buffer.alloc(8); binaryHeader.writeUInt32LE(binaryChunk.length,0); binaryHeader.writeUInt32LE(0x004e4942,4);
-await writeFile(resolve(output,'office.glb'),Buffer.concat([header,jsonHeader,jsonChunk,binaryHeader,binaryChunk]));
-const body = await readFile(new URL('../src/features/office/assets/office-assets.css',import.meta.url),'utf8').catch(() => '');
-if (body) await writeFile(resolve(output,'office-assets.css'),body);
-await writeFile(resolve(output,'LICENSE.txt'),'Original procedural geometry and artwork created for XiaoTao. No third-party meshes, textures, fonts, or external downloads. Distributed under the repository license.\n');
-console.log(`Office assets: ${indices.length/3} triangles, ${roomPrimitives.length + characterPrimitives.length} material groups`);
+
+function buildWalls(m) {
+  m.box('plinth', [0, -.25, 0], [14.2, .50, 10.6], .20);
+  m.box('floor', [0, -.05, 0], [13.98, .17, 10.4], .07);
+  m.box('wood', [0, -.135, -5.25], [12.95, .045, .08], .02);
+  for (const x of [-4.6, -2.3, 0, 2.3, 4.6]) m.box('tile', [x, .037, -.3], [.018, .009, 9.6], .003);
+  m.box('wall', [0, 1.91, 5.09], [14, 3.9, .27], .10);
+  m.box('wall', [-6.87, 1.21, 1.44], [.27, 2.5, 7.55], .10);
+  m.box('trim', [0, .24, 4.94], [13.78, .39, .11]);
+  m.box('trim', [-6.71, .24, 1.45], [.10, .39, 7.37]);
+  m.box('trim', [-6.86, 2.47, 1.42], [.36, .14, 7.60]);
+  m.box('trim', [-1.30, 2.56, 4.91], [8.95, 2.07, .22], .2);
+  for (const x of [-4.19, -1.30, 1.59]) {
+    m.box('ocean', [x, 2.56, 4.77], [2.73, 1.78, .12], .18);
+    m.box('deep', [x, 2.10, 4.70], [2.57, .67, .06], .15);
+    m.box('glow', [x, 3.1, 4.70], [2.18, .027, .035], .012);
+    for (const [dx, y, scale] of [[-.69, 2.66, 1], [.09, 2.51, .64], [.59, 2.75, .46]]) {
+      m.oval('glow', [x + dx, y, 4.66], [.14 * scale, .035 * scale, .021]);
+      m.box('glow', [x + dx + .14 * scale, y, 4.66], [.05 * scale, .06 * scale, .03], .014, [0, 0, .6]);
+    }
+  }
+  m.box('glow', [-6.69, 1.87, 1.52], [.06, .055, 6.25]);
+  m.box('trim', [-6.66, 1.27, .92], [.17, .86, 1.28], .13);
+  for (const z of [.58, .92, 1.26]) m.oval('glow', [-6.55, 1.25, z], [.03, .058, .058]);
+}
+
+function desk(m, x) {
+  const z = 3.11;
+  m.box('wood', [x, .96, z], [2.72, .16, 1.16], .10);
+  for (const dx of [-1.05, 1.05]) m.box('trim', [x + dx, .49, z], [.13, .89, .88]);
+  m.box('ink', [x, 1.42, z + .14], [1.18, .62, .14], .10);
+  m.box('ocean', [x, 1.42, z + .052], [1.02, .46, .044], .055);
+  for (let i = 0; i < 3; i++) m.box('glow', [x - .18 + (i % 2) * .06, 1.53 - i * .09, z + .024], [.47 - i * .085, .025, .021], .007);
+  m.box('ink', [x, 1.07, z + .14], [.36, .15, .26]);
+  m.box('shell', [x, 1.06, z - .29], [.69, .045, .24], .026);
+  m.tube('coral', [x + .93, 1.15, z - .12], .09, .10, .22);
+  m.box('cushion', [x - .87, 1.06, z + .03], [.38, .06, .32], .03);
+}
+
+function plant(m, x, z, scale = 1) {
+  m.tube('shell', [x, .27 * scale, z], .23 * scale, .33 * scale, .47 * scale);
+  m.tube('trim', [x, .51 * scale, z], .32 * scale, .32 * scale, .08 * scale);
+  for (let i = 0; i < 7; i++) {
+    const a = i * 2.4;
+    m.oval(i % 2 ? 'leaf' : 'cushion',
+      [x + Math.sin(a) * .27 * scale, (.77 + (i % 3) * .15) * scale, z + Math.cos(a) * .27 * scale],
+      [.14 * scale, .39 * scale, .08 * scale], [.58, a, .18]);
+  }
+}
+
+function lounge(m) {
+  m.box('rug', [-4.77, .055, -1.68], [3.91, .045, 4.16], .022);
+  m.box('sofa', [-5.88, .39, -1.4], [1.14, .42, 2.54], .17);
+  m.box('sofa', [-6.33, .74, -1.4], [.32, .77, 2.54], .15);
+  for (const z of [-2.54, -.26]) m.box('sofa', [-5.85, .64, z], [1.12, .47, .25], .11);
+  for (const z of [-1.92, -.88]) m.box('cushion', [-5.81, .65, z], [.72, .18, .93], .085);
+  m.box('coral', [-6.08, .89, -.85], [.17, .40, .46], .075, [.16, 0, .22]);
+  m.tube('trim', [-4.47, .23, -1.61], .27, .16, .42);
+  m.tube('wood', [-4.47, .45, -1.61], .59, .59, .10);
+  m.box('shell', [-4.58, .53, -1.54], [.33, .06, .26], .03, [0, .25, 0]);
+  m.tube('coral', [-4.22, .57, -1.79], .073, .077, .15);
+}
+
+function room() {
+  const m = new Model();
+  buildWalls(m);
+  for (const x of [-4.19, -.74, 2.71]) desk(m, x);
+  lounge(m);
+  m.box('tile', [2.1, .053, -.70], [6.50, .04, 4.36], .018);
+  for (const x of [-.91, 5.11]) m.box('shell', [x, .079, -.70], [.042, .02, 3.91], .009);
+  plant(m, -5.68, 3.65, 1.25); plant(m, 6.18, 4.16, 1.17); plant(m, -6.11, -3.88, .92);
+  return m;
+}
+
+function archive() {
+  const m = new Model();
+  const x = 5.06, z = 4.37;
+  m.box('trim', [x, 1.25, z], [1.65, 2.50, .73], .13);
+  m.box('ocean', [x, 1.4, z - .35], [1.34, 1.8, .1], .045);
+  for (const height of [.64, 1.31, 1.98]) {
+    m.box('wood', [x, height, z - .24], [1.42, .09, .47]);
+    for (const [i, color] of ['shell', 'coral', 'cushion', 'glow'].entries()) {
+      m.box(color, [x - .48 + i * .26, height + .23, z - .28], [.19, .37 + (i % 2) * .08, .28], .03);
+    }
+  }
+  m.box('glow', [x, 2.34, z - .38], [.65, .043, .032], .015);
+  return m;
+}
+
+function character(shape) {
+  const m = new Model();
+  for (const side of [-1, 1]) {
+    m.oval('secondary', [side * .219, .32, .01], [.147, .29, .151]);
+    m.box('shell', [side * .225, .132, -.09], [.35, .25, .53], .11);
+    m.oval('primary', [side * .46, .76, -.035], [.137, .28, .151], [0, 0, side * .25]);
+    m.oval('secondary', [side * .514, .57, -.06], [.126, .123, .141]);
+  }
+  m.box('primary', [0, .75, 0], [.82, .72, .58], .25);
+  m.box('secondary', [0, .86, -.304], [.36, .19, .04], .019);
+  m.oval('face', [-.10, .86, -.332], [.037, .035, .019]);
+  m.box('shell', [.077, .858, -.333], [.116, .025, .021], .01);
+  if (shape === 'square') m.box('primary', [0, 1.45, 0], [1.08, .79, .84], .23);
+  else if (shape === 'hexagon') m.add('primary', new THREE.CylinderGeometry(.57, .57, .73, 6).scale(1, 1, .76), [0, 1.45, 0], [0, Math.PI / 6, 0]);
+  else if (shape === 'triangle') {
+    const cap = new THREE.Shape();
+    cap.moveTo(-.52, -.29); cap.quadraticCurveTo(-.57, -.36, -.41, -.36);
+    cap.lineTo(.41, -.36); cap.quadraticCurveTo(.57, -.36, .52, -.29);
+    cap.lineTo(.12, .43); cap.quadraticCurveTo(0, .62, -.12, .43); cap.lineTo(-.52, -.29);
+    m.add('primary', new THREE.ExtrudeGeometry(cap, {depth: .51, curveSegments: 4, bevelEnabled: true, bevelThickness: .13, bevelSize: .075, bevelSegments: 2}), [0, 1.50, -.255]);
+  }
+  else m.oval('primary', [0, 1.45, 0], [.55, .43, .44]);
+  m.box('ink', [0, 1.45, -.35], [.83, .46, .29], .14);
+  for (const side of [-1, 1]) {
+    m.oval('face', [side * .155, 1.47, -.503], [.060, .088, .020]);
+    m.oval('secondary', [side * .515, 1.44, .021], [.082, .155, .17]);
+  }
+  m.box('face', [0, 1.355, -.496], [.071, .025, .026], .011);
+  if (shape === 'triangle') {
+    m.add('secondary', new THREE.ConeGeometry(.21, .38, 3), [-.21, 1.89, 0], [0, .3, -.3]);
+    m.oval('face', [-.27, 2.06, 0], [.057, .057, .057]);
+  } else {
+    m.oval('secondary', [-.32, 1.79, .015], [.059, .18, .059], [0, 0, .35]);
+    m.oval('face', [-.38, 1.95, .015], [.066, .066, .066]);
+  }
+  return m;
+}
+
+const gltf = {
+  asset: {version: '2.0', generator: 'XiaoTao procedural office'},
+  scene: 0, scenes: [{nodes: [0, 1, 2, 3, 4, 5]}],
+  nodes: [], meshes: [], materials: materialNames.map(paint), accessors: [], bufferViews: [], buffers: [],
+};
+const chunks = [];
+let byteLength = 0;
+function accessor(attribute, type, boundsRequired = false) {
+  const data = Buffer.from(attribute.array.buffer, attribute.array.byteOffset, attribute.array.byteLength);
+  const index = type === 'SCALAR';
+  const bufferView = gltf.bufferViews.push({buffer: 0, byteOffset: byteLength, byteLength: data.length, target: index ? 34963 : 34962}) - 1;
+  chunks.push(data);
+  byteLength += data.length;
+  const item = {bufferView, componentType: index ? 5125 : 5126, count: attribute.count, type};
+  if (boundsRequired) {
+    const bounds = new THREE.Box3().setFromBufferAttribute(attribute);
+    item.min = bounds.min.toArray(); item.max = bounds.max.toArray();
+  }
+  return gltf.accessors.push(item) - 1;
+}
+function addModel(name, model) {
+  const primitives = [...model.parts].map(([color, batch]) => {
+    const geometry = mergeVertices(mergeGeometries(batch));
+    return {
+      attributes: {POSITION: accessor(geometry.attributes.position, 'VEC3', true), NORMAL: accessor(geometry.attributes.normal, 'VEC3')},
+      indices: accessor({array: Uint32Array.from(geometry.index.array), count: geometry.index.count}, 'SCALAR'),
+      material: materialNames.indexOf(color),
+    };
+  });
+  gltf.nodes.push({name, mesh: gltf.meshes.push({primitives}) - 1});
+}
+
+addModel('OfficeRoom', room());
+addModel('OfficeArchive', archive());
+for (const shape of ['round', 'square', 'hexagon', 'triangle']) addModel(shape === 'round' ? 'QCharacter' : `QCharacter-${shape}`, character(shape));
+gltf.buffers.push({byteLength});
+function chunk(data, tag, padding) {
+  const payload = Buffer.alloc(Math.ceil(data.length / 4) * 4, padding);
+  data.copy(payload);
+  const header = Buffer.alloc(8);
+  header.writeUInt32LE(payload.length, 0);
+  header.writeUInt32LE(tag, 4);
+  return Buffer.concat([header, payload]);
+}
+const json = chunk(Buffer.from(JSON.stringify(gltf)), 0x4e4f534a, 0x20);
+const bin = chunk(Buffer.concat(chunks), 0x004e4942, 0);
+const header = Buffer.alloc(12);
+header.writeUInt32LE(0x46546c67, 0);
+header.writeUInt32LE(2, 4);
+header.writeUInt32LE(12 + json.length + bin.length, 8);
+const output = resolve('public/models');
+await mkdir(output, {recursive: true});
+await writeFile(resolve(output, 'office.glb'), Buffer.concat([header, json, bin]));
+await writeFile(resolve(output, 'LICENSE.txt'), 'Original procedural geometry and artwork created for XiaoTao. No third-party meshes, textures, fonts, or external downloads. Distributed under the repository license.\n');
+console.log(`Office assets: ${Math.round(bin.length / 1024)} KiB, ${gltf.meshes.reduce((count, mesh) => count + mesh.primitives.length, 0)} material batches`);

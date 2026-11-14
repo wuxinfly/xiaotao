@@ -68,46 +68,11 @@
 @keyframes office-breathe { 50% { transform: translateY(-4px); opacity: .75; } }
 @media (prefers-reduced-motion: reduce) { .office-loading-mark { animation: none; } }
 @media (max-width: 640px) { .onboarding-workspace { padding: 16px; } .onboarding-footer { flex-wrap: wrap; } .onboarding-footer > span { order: 3; flex-basis: 100%; } .onboarding-footer button { flex: 1; } .office-scene-error { align-items: start; flex-wrap: wrap; } .team-fallback { padding: 20px; } }
-/* Keep the 3D scene clipped, but let setup and recovery pages scroll. */
-.office-live-page:has(.office-entry-flow:not([data-entry-phase='ready']):not([data-entry-phase='preparing'])) { overflow-y: auto; overflow-x: hidden; }
-.office-live-page:has(.team-onboarding) { background: #081f2c; }
-.office-live-page .team-onboarding { box-sizing: border-box; max-width: 940px; padding: 55px 24px 120px; color: #e8f4f3; }
-.office-live-page .onboarding-heading { max-width: none; margin: 0 0 28px; padding: 12px 0 0; text-align: left; }
-.office-live-page .onboarding-icon { float: left; width: 48px; height: 48px; margin: 0 16px 0 0; border-radius: 14px; background: #164653; }
-.office-live-page .onboarding-heading h1 { margin: 8px 0; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.025em; }
-.office-live-page .onboarding-heading p { clear: both; max-width: 640px; margin: 12px 0 0; color: #a8c6c9; font-size: 14px; line-height: 1.7; }
-.office-live-page .onboarding-workspace { padding: 24px; border: 1px solid #2b5360; border-radius: 18px; background: #102f3b; box-shadow: 0 18px 50px #00131d55; }
-.office-live-page .onboarding-tabs { width: fit-content; padding: 4px; margin: 0 0 26px; border: 1px solid #315763; border-radius: 11px; background: #0b2531; }
-.office-live-page .onboarding-tabs button { border: 0; border-radius: 7px; padding: 9px 13px; color: #aac4c6; background: transparent; }
-.office-live-page .onboarding-tabs button.selected { color: #eafff9; background: #24535a; }
-.office-live-page .onboarding-template h2 { margin: 7px 0; color: #f2faf8; font-size: 22px; }
-.office-live-page .onboarding-template p { color: #a8c6c9; line-height: 1.6; }
-.office-live-page .onboarding-role { margin: 8px 0; border: 1px solid #31535b; border-radius: 10px; background: #153b46; }
-.office-live-page .onboarding-role summary { padding: 12px 14px; color: #e9f7f4; }
-.office-live-page .onboarding-role summary:hover { background: #1b4b55; border-radius: 10px; }
-.office-live-page .onboarding-role summary small, .office-live-page .role-edit-label { color: #adc8c6; }
-.office-live-page .onboarding-role summary:focus-visible, .office-live-page .onboarding-tabs button:focus-visible { outline: 2px solid #83e4cb; outline-offset: 2px; }
-.office-live-page .onboarding-footer { margin-top: 18px; }
-.office-live-page .onboarding-footer > span { color: #9dbbbd; }
-[data-theme='light'] .office-live-page:has(.team-onboarding) { background: #e9f2f1; }
-[data-theme='light'] .office-live-page .team-onboarding { color: #183e49; }
-[data-theme='light'] .office-live-page .onboarding-heading p, [data-theme='light'] .office-live-page .onboarding-footer > span { color: #526f76; }
-[data-theme='light'] .office-live-page .onboarding-workspace { background: #fff; border-color: #c6dcd9; }
-[data-theme='light'] .office-live-page .onboarding-template h2 { color: #183e49; }
-[data-theme='light'] .office-live-page .onboarding-template p { color: #526f76; }
-[data-theme='light'] .office-live-page .onboarding-role { background: #f1f8f5; border-color: #c9dfd8; }
-[data-theme='light'] .office-live-page .onboarding-role summary { color: #183e49; }
-[data-theme='light'] .office-live-page .onboarding-role summary:hover { background: #e4f2eb; }
-[data-theme='light'] .office-live-page .onboarding-role summary small, [data-theme='light'] .office-live-page .role-edit-label { color: #526f76; }
-@media (max-width: 640px) { .office-live-page .team-onboarding { padding: 90px 16px 110px; } .office-live-page .onboarding-workspace { padding: 16px; } .office-live-page .onboarding-tabs { width: 100%; box-sizing: border-box; } .office-live-page .onboarding-tabs button { flex: 1; justify-content: center; } }
-.office-onboarding-overlay .team-onboarding { box-sizing: border-box; max-width: 940px; padding: 75px 24px 55px; color: #3c5034; }
-.office-onboarding-overlay .onboarding-heading { max-width: none; margin: 0 0 28px; padding: 12px 0 0; text-align: left; }
-.office-onboarding-overlay .onboarding-heading h1 { margin: 8px 0; font-size: clamp(25px, 3vw, 34px); letter-spacing: -.025em; }
-.office-onboarding-overlay .onboarding-heading p { max-width: 640px; color: #819176; }
-.office-onboarding-overlay .onboarding-workspace { border-color: #d5dec9; background: #fafbf6; }
-.office-onboarding-overlay .onboarding-tabs { border-color: #d6e0ca; background: #eef3e6; }
-.office-onboarding-overlay .onboarding-tabs button { color: #829372; }
-.office-onboarding-overlay .onboarding-tabs button.selected { border-color: #6e9360; color: #4e703e; }
-.office-onboarding-overlay .onboarding-role { border-color: #dce4d2; background: #f0f5e9; }
-.office-onboarding-overlay :is(.onboarding-footer > span, .onboarding-role summary small, .onboarding-template p, .role-editor label) { color: #7d8e70; }
-@media (max-width: 640px) { .office-onboarding-overlay .team-onboarding { padding: 65px 16px 35px; } }
+.office-onboarding-modal { width: min(820px, 100%); }
+.office-onboarding-modal .app-modal-footer:empty { display: none; }
+.office-onboarding-modal .team-onboarding { padding: 8px 0; }
+.office-onboarding-modal .onboarding-heading { margin: 0 0 20px; text-align: left; }
+.office-onboarding-modal .onboarding-heading h1 { font-size: clamp(22px, 4vw, 30px); }
+.office-onboarding-modal .onboarding-icon { float: left; margin: 0 14px 0 0; }
+.office-onboarding-modal .onboarding-heading p { clear: both; margin-bottom: 0; }
+.office-onboarding-modal .onboarding-workspace { border-radius: 12px; }

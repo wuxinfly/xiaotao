@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
+import {once} from 'node:events';
 import {mkdtemp, readFile, mkdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
@@ -16,22 +17,21 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
   const output = resolve('test-results');
   await mkdir(output, {recursive: true});
   let server;
+  let preview;
   let browser;
   let page;
   let base = '';
   let log = '';
   try {
-    await new Promise((resolve, reject) => {
-      const build = spawn('npm', ['run', 'build'], {shell: true, stdio: 'inherit'});
-      build.once('exit', code => code === 0 ? resolve() : reject(new Error(`frontend build failed: ${code}`)));
-      build.once('error', reject);
-    });
     server = spawn('go', ['run', '../cmd/xiaotao', '--data-dir', data, '--service'], {stdio: ['ignore', 'pipe', 'pipe']});
     server.stderr.on('data', chunk => {log += chunk;});
     for (let attempt = 0; attempt < 100; attempt++) {
       try {base = JSON.parse(await readFile(join(data, 'runtime.json'), 'utf8')).URL; break;} catch {await new Promise(done => setTimeout(done, 100));}
     }
     assert.ok(base, `service did not start: ${log}`);
+    preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5239', '--strictPort'],
+      {env: {...process.env, XIAOTAO_DEV_API: base}, stdio: ['ignore', 'pipe', 'pipe']});
+    await Promise.race([new Promise(resolve => preview.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})), once(preview, 'exit').then(() => {throw Error('Vite exited before ready');})]);
     const response = await fetch(base + '/api/agent/projects', {method: 'POST', headers: {'Content-Type': 'application/json', Origin: base}, body: JSON.stringify({path: project, name: '真实验收项目'})});
     assert.equal(response.status, 200);
     browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true, args: ['--enable-unsafe-swiftshader']});
@@ -40,8 +40,10 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
-    await page.goto(base);
+    await page.goto('http://127.0.0.1:5239');
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    await page.locator('[data-entry-phase=ready]').waitFor();
+    await page.getByRole('button', {name: '组建小队', exact: true}).click();
     await page.getByRole('button', {name: '稍后设置', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-team').getByRole('button', {name: '管理团队', exact: true}).click();
@@ -66,11 +68,11 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
       const body = (await page.locator('body').innerText()).slice(0, 1200);
       throw new Error(`3D load failed: entry=${phase}; text=${body}; ${errors.join(' | ')}; ${reason.message}`);
     });
-    await page.locator('.room-project').getByText('实时同步').waitFor();
-    await page.waitForTimeout(500);
+    await page.locator('.room-tool').filter({hasText: '成员4'}).waitFor();
     await page.screenshot({path: join(output, 'office-team-real.png')});
     const bounds = await page.locator('canvas[data-office-renderer="three"]').boundingBox();
-    const point = projectMember(sceneLayout(team.members)[0], bounds.width, bounds.height);
+    const board = await (await fetch(`${base}/api/office/snapshot?projectPath=${encodeURIComponent(project)}`)).json();
+    const point = projectMember(sceneLayout(board.members).find(item => item.id === originalId), bounds.width, bounds.height);
     await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
     await page.getByRole('heading', {name: /与.*对话/}).waitFor();
     await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
@@ -114,7 +116,10 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.getByRole('heading', {name: /与.*对话/}).waitFor();
     await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
     await page.setViewportSize({width: 800, height: 900});
-    assert.equal(await page.locator('.workspace-grid').evaluate(element => getComputedStyle(element).display), 'flex');
+    assert.ok(await page.locator('.workspace-grid').evaluate(element => {
+      const [scene, panel] = element.children;
+      return scene.getBoundingClientRect().bottom <= panel.getBoundingClientRect().top;
+    }), 'narrow office stacks the room above the collaboration panel');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'narrow office must not overflow horizontally');
     await page.evaluate(() => {document.querySelector('.office-live-page').scrollTop = 0;});
     const sidebar = await page.locator('.workspace-sidebar').boundingBox();
@@ -129,6 +134,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
   } finally {
     await page?.screenshot({path: join(output, 'office-team-real-failure.png')}).catch(() => {});
     await browser?.close();
+    preview?.kill();
     if (base) await fetch(base + '/api/shutdown', {method: 'POST', headers: {Authorization: `Bearer ${JSON.parse(await readFile(join(data, 'runtime.json'), 'utf8')).Token}`}}).catch(() => {});
     server?.kill();
   }

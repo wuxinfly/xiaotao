@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "office-scene-independent-of-team",
+  "created_at": "2026-11-14T00:00:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.office-scene-independent-of-team",
+  "text": "xt-client 办公室的 3D 场景不依赖团队角色数量或组队引导状态；没有配置角色的项目也显示 3D 和快照中的真实成员。只有 WebGL 或模型资源加载失败才降级到二维团队列表。",
+  "rationale": "用户报告切换项目后 3D 消失；原前端把没有注册团队成员的项目直接降级为二维列表，漏掉快照返回的内置小涛。",
+  "observations": 1,
+  "source_refs": [
+    "docs/plans/2026-11-14-office-workspace-refresh.md",
+    "xt-client/frontend/src/features/office/OfficeEntryFlow.tsx",
+    "xt-client/frontend/tests/office.browser.test.mjs",
+    "xt-client/frontend/tests/office-entry.browser.test.mjs"
+  ]
+}

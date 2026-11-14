@@ -1,5 +1,7 @@
 # Agent 办公室：团队与 3D 第一阶段设计
 
+进场、模型和工作台布局以后续 [办公室工作台改版](2026-11-14-office-workspace-refresh.md) 为准。
+
 日期：2026-11-13。
 
 状态：已确认方向，尚未实现。本规格描述下一轮客户端交付和共享协议草案；不代表现有客户端、XiaoTao Skill 或 Worker 已具备这些能力。现有能力仍以[阶段一实现](2026-11-12-agent-office-implementation.md)为准。

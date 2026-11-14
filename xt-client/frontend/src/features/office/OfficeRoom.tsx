@@ -1,9 +1,8 @@
-import {Archive, Maximize2, Minus, Plus} from 'lucide-react';
+import {Archive, Box, Maximize2, Minus, Plus, UsersRound} from 'lucide-react';
 import type {OfficeMember, OfficeTask} from '../../lib/office';
 import {taskStatusLabel, taskStatusTone} from '../../lib/office';
-import './office-scene.css';
 import './office-3d.css';
-import {useRef, useState} from 'react';
+import {useMemo, useRef, type ReactNode} from 'react';
 import {OfficeScene3D, type SceneControls} from './OfficeScene3D';
 import {sceneMembers} from './scene-contract';
 
@@ -15,25 +14,28 @@ type Props = {
   projectName: string;
   onSelectMember: (memberId: string) => void;
   onOpenLibrary: () => void;
+  onShowTeam: () => void;
+  ready: boolean;
+  setup?: ReactNode;
   active: boolean;
 };
 
-export function OfficeRoom({projectName, members, artifactCount, onSelectMember, onOpenLibrary, active, onError, onReady}: Props) {
-  const [sceneStatus, setSceneStatus] = useState('连接中');
+export function OfficeRoom({projectName, members, artifactCount, onSelectMember, onOpenLibrary, onShowTeam, active, ready, setup, onError, onReady}: Props) {
   const controls = useRef<SceneControls>(null);
-  const team = sceneMembers(members);
-  const choose = (id: string) => onSelectMember(id);
-  const openLibrary = () => onOpenLibrary();
-  return <section className="office-room sea-office office-3d-room" aria-label="办公室">
-    <div className="office-3d-stage"><OfficeScene3D ref={controls} active={active} members={team} onSelect={choose} onShelf={openLibrary} onReady={() => {setSceneStatus('实时同步'); onReady();}} onError={message => {setSceneStatus('场景需重载'); onError(message);}}/>
-      <header className="room-toolbar"><div className="room-project"><span className="room-project-icon"><Archive size={17}/></span><div><strong>{projectName || '项目办公室'}</strong><small><i className={active ? 'is-online' : ''}/>{sceneStatus}</small></div></div><span className="room-scene-label">3D 工作空间</span></header>
-      <div className="room-caption"><span>{team.length} 位成员 · 随时可以聊聊</span></div>
-      {!active && <div className="office-3d-status" role="status">正在准备工作空间…</div>}
-      <button className="office-3d-library" onClick={openLibrary} aria-label="打开项目资料馆"><Archive size={16}/><span>项目资料馆</span><small>{artifactCount} 份资料</small></button>
+  const team = useMemo(() => sceneMembers(members), [members]);
+  return <section className="office-room office-3d-room" aria-label="办公室">
+    <header className="room-toolbar">
+      <div className="room-project"><span className="room-project-icon"><Box size={18}/></span><div><strong title={projectName}>{projectName || '项目办公室'}</strong><small>3D 工作空间</small></div></div>
+      <div className="room-toolbar-actions">{setup}<button type="button" className="room-tool" onClick={onShowTeam}><UsersRound size={16}/><span>成员</span><b>{team.length}</b></button></div>
+    </header>
+    <div className="office-3d-stage">
+      <OfficeScene3D ref={controls} active={active} members={team} onSelect={onSelectMember} onShelf={onOpenLibrary} onReady={onReady} onError={onError}/>
+      {!ready && <div className="office-3d-status" role="status">正在加载 3D 场景…</div>}
     </div>
     <footer className="room-bottom-bar">
-      <span className="room-explore-hint">自由探索你的工作空间</span>
-      <div className="office-camera-controls" aria-label="办公室视角"><button onClick={() => controls.current?.zoomOut()} aria-label="缩小视角" title="缩小"><Minus size={14}/></button><button onClick={() => controls.current?.reset()} aria-label="复位视角" title="复位视角"><Maximize2 size={13}/></button><button onClick={() => controls.current?.zoomIn()} aria-label="放大视角" title="放大"><Plus size={14}/></button></div>
+      <button type="button" className="room-tool office-3d-library" onClick={onOpenLibrary} aria-label="打开项目资料馆" aria-description={`${artifactCount} 份资料`}><Archive size={16}/><span>资料馆</span><b>{artifactCount}</b></button>
+      <span className="room-explore-hint">拖动平移 · 滚轮缩放 · 点击成员互动</span>
+      <div className="office-camera-controls" role="group" aria-label="办公室视角"><button disabled={!ready} onClick={() => controls.current?.zoomOut()} aria-label="缩小视角" title="缩小视角"><Minus size={15}/></button><button disabled={!ready} onClick={() => controls.current?.reset()} aria-label="复位视角" title="复位视角"><Maximize2 size={14}/></button><button disabled={!ready} onClick={() => controls.current?.zoomIn()} aria-label="放大视角" title="放大视角"><Plus size={15}/></button></div>
     </footer>
   </section>;
 }

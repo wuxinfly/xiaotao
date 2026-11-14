@@ -15,7 +15,7 @@ function WorkspaceNav({page, onSelect, ...props}: Props & {'aria-label'?: string
     {items.map(({page: target, label, Icon}) => <button type="button" key={target}
       className={page === target ? 'is-active' : undefined}
       aria-current={page === target ? 'page' : undefined}
-      title={label} onClick={() => onSelect(target)}>
+      aria-label={label} title={label} onClick={() => onSelect(target)}>
       <Icon aria-hidden="true"/><span>{label}</span>
     </button>)}
   </nav>;

@@ -64,7 +64,7 @@ function App(){
   </header>
   <main aria-label={page} className={page==='agent'?'agent-main':undefined}>
    <div className="page-view" style={{display: page === 'agent' ? undefined : 'none'}}>
-    <AgentPage visible={page === 'agent'} />
+    <AgentPage visible={page === 'agent'} navigation={page === 'agent' && <WorkspaceDock page="agent" onSelect={select}/>}/>
    </div>
   {page !== 'agent' && <div className="workspace-page-layout">
     <div key={page} className="page-view workspace-page-view">
@@ -76,7 +76,6 @@ function App(){
     </div>
    </div>}
   </main>
-  {page === 'agent' && <WorkspaceDock page={page} onSelect={select}/>}
   </div>
   <ToastContainer />
  </div>

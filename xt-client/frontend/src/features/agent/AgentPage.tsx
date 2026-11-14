@@ -547,7 +547,7 @@ function exitEmptyListItem(editor: Editor): boolean {
   return true;
 }
 
-export function AgentPage({visible}: {visible: boolean}) {
+export function AgentPage({visible, navigation}: {visible: boolean; navigation?: React.ReactNode}) {
   const confirm = useConfirm();
   const [accessMode, setAccessMode] = useState<'safe' | 'full'>('safe');
   const [accessReady, setAccessReady] = useState(false);
@@ -1408,10 +1408,7 @@ export function AgentPage({visible}: {visible: boolean}) {
         </Popover>
       </div>
       <SessionList runningIds={runningIds} sessions={sessions} savedProjects={savedProjects} activeId={active?.id} view={view} loading={loading} busy={pending} deleting={deleting} exitingId={exitingSession} menuId={sidebarProjectMenu?.key || sessionMenu?.item.id} onNewProjectChat={newProjectChat} onProjectMenu={openSidebarProjectMenu} onDeleteProject={item => void deleteProject(item)} onSelect={selectSession} onMenu={openSessionMenu}/>
-      <div className="agent-sidebar-foot">
-        <span className="agent-status-dot"/>
-        <span>本地工作区</span>
-      </div>
+      {navigation}
     </aside>
 
     <div className={'agent-main-panel ' + (active ? 'has-session' : 'is-empty')} role="main">

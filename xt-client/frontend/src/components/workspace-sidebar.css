@@ -55,17 +55,11 @@
 }
 
 .workspace-dock {
-  position: fixed;
-  z-index: 20;
-  bottom: 14px;
-  left: 12px;
-  width: 220px;
-  padding: 5px;
-  border: 1px solid rgba(119, 186, 214, .16);
-  border-radius: 9px;
-  background: linear-gradient(180deg, rgba(6, 27, 42, .94), rgba(4, 21, 34, .96));
-  box-shadow: 0 14px 34px rgba(0, 8, 18, .3);
-  backdrop-filter: blur(16px);
+  flex: none;
+  min-width: 0;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
 }
 
 .workspace-dock .workspace-nav {
@@ -73,7 +67,13 @@
 }
 
 .workspace-dock .workspace-nav button {
-  padding: 7px 8px;
+  padding: 8px 9px;
+  min-height: 32px;
+}
+
+.workspace-dock .workspace-nav button:first-child {
+  color: var(--ocean-text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .workspace-page-view {
@@ -168,12 +168,6 @@
   color: #155969;
 }
 
-[data-theme='light'] .workspace-dock {
-  border-color: var(--line);
-  background: linear-gradient(180deg, #fbfefffa, #edf5f7fa);
-  box-shadow: 0 14px 34px #244d6320;
-}
-
 [data-theme='light'] .titlebar .titlebar-back {
   border-color: #c8dfe5;
   background: #edf5f7;
@@ -188,11 +182,6 @@
 }
 
 @media (max-width: 540px) {
-  .workspace-dock {
-    width: 42px;
-    left: 7px;
-  }
-
   .workspace-dock .workspace-nav button {
     justify-content: center;
     padding-inline: 0;

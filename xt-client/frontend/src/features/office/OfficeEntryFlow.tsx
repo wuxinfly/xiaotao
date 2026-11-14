@@ -1,4 +1,5 @@
-import {RefreshCw, TriangleAlert} from 'lucide-react';
+import {Archive, ArrowRight, RefreshCw, TriangleAlert, UsersRound} from 'lucide-react';
+import {ModalFrame} from '../../components/modal/ModalFrame';
 import type {AgentModelOption, AgentProject} from '../../lib/api';
 import type {OfficeMember} from '../../lib/office';
 import {useProjectTeam} from './useProjectTeam';
@@ -8,23 +9,38 @@ import {OfficeRoom} from './OfficeRoom';
 import {forwardRef, useImperativeHandle, useState} from 'react';
 import type {TeamSnapshot} from '../../lib/team';
 
-type Props = {projectPath: string; project?: AgentProject; visible: boolean; members: OfficeMember[]; models: AgentModelOption[]; artifactCount: number; onSelectMember: (id: string) => void; onOpenLibrary: () => void; onManage: () => void; children?: React.ReactNode};
+type Props = {projectPath: string; project?: AgentProject; visible: boolean; members: OfficeMember[]; models: AgentModelOption[]; artifactCount: number; onSelectMember: (id: string) => void; onOpenLibrary: () => void; onManage: () => void; onTeamChanged: () => void; onShowTeam: () => void};
 export type OfficeEntryHandle = {setTeam: (team: TeamSnapshot) => void};
 
-export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function OfficeEntryFlow({projectPath, project, visible, members, models, artifactCount, onSelectMember, onOpenLibrary, onManage, children}, ref) {
-  const entry = useProjectTeam(projectPath, visible);
+export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function OfficeEntryFlow({projectPath, project, visible, members, models, artifactCount, onSelectMember, onOpenLibrary, onManage, onTeamChanged, onShowTeam}, ref) {
+  const entry = useProjectTeam(projectPath);
+  const [scene, setScene] = useState<'preparing' | 'ready' | 'error'>('preparing');
+  const [sceneError, setSceneError] = useState('');
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const showSetup = entry.team?.onboarding === 'pending' && !entry.team.members.length;
   useImperativeHandle(ref, () => ({setTeam: entry.setTeam}));
-  return <div className="office-entry-flow" data-entry-phase={entry.phase} data-project-path={projectPath}>
-    {entry.phase === 'loading' && <section className="office-loading" role="status"><span className="office-loading-mark"/><span className="office-eyebrow">正在打开 {project?.name || '项目办公室'}</span><h1>准备你的工作空间</h1><p>正在读取项目团队与引导设置…</p></section>}
-    {entry.phase === 'onboarding' && entry.team && <div className="office-onboarding-overlay"><TeamOnboarding key={projectPath} projectPath={projectPath} projectName={project?.name || ''} team={entry.team} models={models} onCreated={entry.setTeam} onSkip={team => {entry.setTeam(team); entry.setPhase('empty');}}/></div>}
-    {entry.phase === 'preparing' && <section className="office-loading" role="status"><span className="office-loading-mark"/><span className="office-eyebrow">团队已就绪</span><h1>正在准备办公室</h1><p>正在加载本地模型并绘制第一帧，不使用模拟进度。</p></section>}
-    {(entry.phase === 'ready' || entry.phase === 'preparing' || entry.phase === 'error') && entry.team && <OfficeRoom key={attempt} projectName={project?.name || ''} members={members} artifactCount={artifactCount} active={visible && entry.phase === 'ready'} onSelectMember={onSelectMember} onOpenLibrary={onOpenLibrary} onReady={() => entry.setPhase('ready')} onError={message => entry.setPhase('error', message)}/>} 
-    {(entry.phase === 'error' || entry.phase === 'empty' || entry.phase === 'preparing') && <div className="office-fallback-wrap">
-      {entry.phase === 'error' && <div className="office-scene-error" role="alert"><TriangleAlert size={22}/><div><strong>{entry.team ? '办公室场景暂时未能准备完成' : '暂时无法读取项目团队'}</strong><p>{entry.error || '请重试。已保存的团队不会丢失，核心操作仍可继续使用。'}</p></div><button className="office-ghost" onClick={() => {setAttempt(value => value + 1); void entry.prepare();}}><RefreshCw size={15}/>重新加载</button></div>}
-      {entry.phase === 'preparing' && <p className="office-loading-note">已保存的团队仍可在下方管理。</p>}
+  function finishSetup(team: TeamSnapshot) {
+    entry.setTeam(team);
+    setOnboardingOpen(false);
+    onTeamChanged();
+  }
+  const setup = showSetup && <button type="button" className="room-setup" onClick={() => setOnboardingOpen(true)}><UsersRound size={15}/>组建小队<ArrowRight size={14}/></button>;
+  const teamError = entry.error && <div className="room-team-error" role="alert">无法读取组队设置 <button type="button" onClick={entry.retry} title={entry.error}>重试</button></div>;
+  return <div className="office-entry-flow" data-entry-phase={scene} data-project-path={projectPath}>
+    {scene !== 'error' ? <OfficeRoom key={attempt} projectName={project?.name || ''} members={members} artifactCount={artifactCount}
+      active={visible && !onboardingOpen} ready={scene === 'ready'} onSelectMember={onSelectMember} onOpenLibrary={onOpenLibrary}
+      onShowTeam={onShowTeam} setup={setup || teamError} onReady={() => setScene('ready')} onError={message => {setSceneError(message); setScene('error');}}/>
+    : <div className="office-fallback-wrap">
+      <div className="office-scene-error" role="alert"><TriangleAlert size={20}/><div><strong>办公室场景暂时未能准备完成</strong><p>{sceneError}</p></div><button type="button" className="office-ghost" onClick={() => {setAttempt(value => value + 1); setScene('preparing');}}><RefreshCw size={15}/>重新加载</button></div>
       <TeamList members={members} onSelect={onSelectMember} onManage={onManage}/>
+      <div className="room-fallback-actions">
+        <button type="button" className="room-tool" onClick={onOpenLibrary}><Archive size={16}/>项目资料馆</button>
+        {setup}{teamError}
+      </div>
     </div>}
-    {children}
+    {onboardingOpen && entry.team && <ModalFrame title="组建项目小队" className="office-onboarding-modal" onClose={() => setOnboardingOpen(false)} footer={null}>
+      <TeamOnboarding projectPath={projectPath} projectName={project?.name || ''} team={entry.team} models={models} onCreated={finishSetup} onSkip={finishSetup}/>
+    </ModalFrame>}
   </div>;
 });
