@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, Settings, X } from 'lucide-react';
-import type { Account, RequestSummary } from '../../lib/api';
+import type { RequestSummary } from '../../lib/api';
 import { useDashboardData } from './DashboardData';
 import './request-hud.css';
 
@@ -22,14 +22,6 @@ function formatCompactNumber(value: number): string {
   return `${(value / 100_000_000).toFixed(1)}亿`;
 }
 
-function accountName(accountId: string, accounts: Account[]): string {
-  if (!accountId) return '未指定账号';
-  const account = accounts.find((item) => item.id === accountId);
-  if (account) return account.alias || account.nickname || account.uid || account.id;
-  const suffix = accountId.split(':').filter(Boolean).pop();
-  return suffix ? `账号 ${suffix.slice(0, 10)}` : accountId;
-}
-
 function requestStatus(request: RequestSummary, nowMs: number): string {
   const elapsedSec = Math.max(0, (nowMs - request.startedAt) / 1000);
   if (request.status === 'pending') return `等待响应 · ${elapsedSec.toFixed(0)}s`;
@@ -44,7 +36,7 @@ function speedText(request: RequestSummary): string {
 }
 
 export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose }: RequestHudProps) {
-  const { snap, accounts, connected, loading, error, nowMs } = useDashboardData();
+  const { snap, connected, loading, error, nowMs } = useDashboardData();
   const restoreRef = useRef<HTMLButtonElement>(null);
   const requests = snap ? [...new Map(
     [...snap.activeRequests, ...snap.recentRequests].map(request => [request.id, request]),
@@ -124,14 +116,14 @@ export function RequestHud({ enabled, agentPage, dashboardPage, onOpen, onClose 
           ) : requests.length > 0 ? (
             <div className="hud-request-list" role="list" aria-label="最近三条请求">
               {requests.map((request, index) => {
-                const account = accountName(request.accountId, accounts);
+                const sourceLabel = request.sourceLabel?.trim() || '未知来源';
                 const speed = request.speedTokPerSec;
                 const tier = speed == null || speed <= 0 ? 'idle' : speed < 10 ? 'slow' : speed < 50 ? 'normal' : 'fast';
                 const elapsed = Math.max(0, ((request.endedAt || nowMs) - request.startedAt) / 1000);
-                const details = `${account} · ${request.model} · ${requestStatus(request, nowMs)} · ${elapsed.toFixed(1)}s`;
+                const details = `${sourceLabel} · ${request.model} · ${requestStatus(request, nowMs)} · ${elapsed.toFixed(1)}s`;
                 return <div className="hud-request-item" role="listitem" key={request.id} title={details}>
                   <span className="hud-request-index">{index + 1}</span>
-                  <span className="hud-request-name"><span className="hud-request-account">{account} · </span>{request.model}</span>
+                  <span className="hud-request-name"><span className="hud-request-account">{sourceLabel} · </span>{request.model}</span>
                   <span className={`hud-request-speed is-${tier}`} title="输出速率">{speedText(request)}</span>
                   <span className="hud-request-tokens" title="Token 总数">{request.tokens.total == null ? '—' : formatCompactNumber(request.tokens.total)}</span>
                 </div>;

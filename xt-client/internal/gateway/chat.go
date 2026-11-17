@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"xiaotao/xt-client/internal/modelsource"
+	"xiaotao/xt-client/internal/requestaction"
 	"xiaotao/xt-client/internal/usage"
 )
 
@@ -41,9 +42,11 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	u := s.usage
 	s.mu.RUnlock()
+	tag, title := requestaction.DetectBody(body)
 	var tracker *usage.ActiveRequest
 	if u != nil {
-		tracker = u.StartRequest(id, src.Kind, modelID, src.ID, "用户", "模型请求")
+		tracker = u.StartRequest(id, src.Kind, modelID, src.ID, tag, title)
+		tracker.SetSourceLabel(src.Label)
 	}
 	if err != nil {
 		if tracker != nil {

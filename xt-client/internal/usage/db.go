@@ -66,6 +66,7 @@ func initSchema(db *sql.DB) error {
 			channel TEXT NOT NULL DEFAULT 'trae',
 			model TEXT NOT NULL,
 			account_id TEXT NOT NULL,
+			source_label TEXT DEFAULT '',
 			action_tag TEXT DEFAULT '',
 			action_title TEXT DEFAULT '',
 			created_at INTEGER NOT NULL,
@@ -107,6 +108,7 @@ func initSchema(db *sql.DB) error {
 	}
 
 	// Ensure migration columns exist for previously created databases
+	_, _ = db.Exec(`ALTER TABLE request_records ADD COLUMN source_label TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE request_records ADD COLUMN channel TEXT NOT NULL DEFAULT 'trae'`)
 	_, _ = db.Exec(`ALTER TABLE request_records ADD COLUMN action_tag TEXT DEFAULT ''`)
 	_, _ = db.Exec(`ALTER TABLE request_records ADD COLUMN action_title TEXT DEFAULT ''`)
@@ -296,13 +298,14 @@ func (d *DB) CommitRequestAndUsage(
 
 	_, err = tx.Exec(`
 		INSERT INTO request_records (
-			request_id, batch_id, channel, model, account_id,
+			request_id, batch_id, channel, model, account_id, source_label,
 			action_tag, action_title, created_at,
 			first_token_at, ended_at, status, prompt_tokens, completion_tokens,
 			cached_tokens, error_summary, is_finalized
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(request_id) DO UPDATE SET
 			channel = excluded.channel,
+			source_label = CASE WHEN excluded.source_label != '' THEN excluded.source_label ELSE request_records.source_label END,
 			action_tag = CASE WHEN excluded.action_tag != '' THEN excluded.action_tag ELSE request_records.action_tag END,
 			action_title = CASE WHEN excluded.action_title != '' THEN excluded.action_title ELSE request_records.action_title END,
 			first_token_at = COALESCE(excluded.first_token_at, request_records.first_token_at),
@@ -314,7 +317,7 @@ func (d *DB) CommitRequestAndUsage(
 			error_summary = excluded.error_summary,
 			is_finalized = MAX(request_records.is_finalized, excluded.is_finalized)
 	`,
-		rec.RequestID, rec.BatchID, channelVal, rec.Model, rec.AccountID,
+		rec.RequestID, rec.BatchID, channelVal, rec.Model, rec.AccountID, rec.SourceLabel,
 		rec.ActionTag, rec.ActionTitle, rec.CreatedAt.UnixMilli(),
 		firstTokenMs, endedMs, rec.Status, promptVal, completionVal,
 		cachedVal, rec.ErrorSummary, finalizedInt,
@@ -467,7 +470,7 @@ func (d *DB) LoadRecentRecords(limit int) ([]*Record, error) {
 	defer d.mu.Unlock()
 
 	rows, err := d.db.Query(`
-		SELECT request_id, batch_id, COALESCE(channel, 'trae'), model, account_id,
+		SELECT request_id, batch_id, COALESCE(channel, 'trae'), model, account_id, COALESCE(source_label, ''),
 		       COALESCE(action_tag, ''), COALESCE(action_title, ''), created_at,
 		       first_token_at, ended_at, status, prompt_tokens,
 		       completion_tokens, cached_tokens, error_summary
@@ -487,7 +490,7 @@ func (d *DB) LoadRecentRecords(limit int) ([]*Record, error) {
 		var firstMs, endMs, prompt, completion, cached sql.NullInt64
 		var errSummary sql.NullString
 		if err := rows.Scan(
-			&r.RequestID, &r.BatchID, &r.Channel, &r.Model, &r.AccountID,
+			&r.RequestID, &r.BatchID, &r.Channel, &r.Model, &r.AccountID, &r.SourceLabel,
 			&r.ActionTag, &r.ActionTitle, &createdMs,
 			&firstMs, &endMs, &r.Status, &prompt,
 			&completion, &cached, &errSummary,

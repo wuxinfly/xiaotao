@@ -378,3 +378,35 @@ func TestUpstreamErrorsAndTestEndpointAreSafe(t *testing.T) {
 		})
 	}
 }
+
+func TestChatTracksRequestActionAndSourceLabel(t *testing.T) {
+	cases := []struct {
+		name, messages, tag, keyword string
+	}{
+		{"user", `[{"role":"user","content":"帮我优化项目结构"}]`, "用户", "优化项目结构"},
+		{"read", `[{"role":"assistant","tool_calls":[{"id":"read-1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"src/config.json\"}"}}]},{"role":"tool","tool_call_id":"read-1","content":"{}"}]`, "读", "config.json"},
+		{"write", `[{"role":"assistant","tool_calls":[{"id":"write-1","type":"function","function":{"name":"apply_patch","arguments":"{\"path\":\"README.md\"}"}}]},{"role":"tool","tool_call_id":"write-1","content":"ok"}]`, "写", "README.md"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, src, u := setupGateway(t, func(w http.ResponseWriter, r *http.Request) {
+				completion(w)
+			})
+			body := fmt.Sprintf(`{"model":%q,"messages":%s}`, src.Models[0].ID, tc.messages)
+			r := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			r.Header.Set("Authorization", "Bearer local-key")
+			w := httptest.NewRecorder()
+			svc.HandleChat(w, r)
+			if w.Code != http.StatusOK {
+				t.Fatalf("chat failed: %d %s", w.Code, w.Body.String())
+			}
+			rec := summary(t, u)
+			if rec.ActionTag != tc.tag || !strings.Contains(rec.ActionTitle, tc.keyword) {
+				t.Fatalf("wrong action: %+v", rec)
+			}
+			if rec.SourceLabel != src.Label || rec.SourceLabel != "Test" || rec.AccountID != src.ID {
+				t.Fatalf("wrong source identity: %+v", rec)
+			}
+		})
+	}
+}

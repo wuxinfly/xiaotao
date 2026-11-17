@@ -227,13 +227,13 @@ export interface TokenMetrics {
   cached?: number | null;
   total?: number | null;
 }
-
 export interface RequestSummary {
   id: string;
   channel: string;
   channelLabel: string;
   model: string;
   accountId: string;
+  sourceLabel?: string;
   actionTag: string;
   actionTitle: string;
   status: string;

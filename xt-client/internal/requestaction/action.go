@@ -1,4 +1,4 @@
-package proxy
+package requestaction
 
 import (
 	"encoding/json"
@@ -6,7 +6,8 @@ import (
 	"strings"
 )
 
-func detectAction(msgs []map[string]any, tools []map[string]any) (string, string) {
+// Detect classifies the latest request action and its short display title.
+func Detect(msgs []map[string]any, tools []map[string]any) (string, string) {
 	if len(msgs) == 0 {
 		return "用户", "对话交互"
 	}
@@ -23,7 +24,7 @@ func detectAction(msgs []map[string]any, tools []map[string]any) (string, string
 			name, args = findToolByCallID(msgs, callID)
 		}
 		if name != "" {
-			return classifyTool(name, args)
+			return ClassifyTool(name, args)
 		}
 	}
 
@@ -31,7 +32,7 @@ func detectAction(msgs []map[string]any, tools []map[string]any) (string, string
 	if callID := extractToolResultCallID(last["content"]); callID != "" {
 		name, args := findToolByCallID(msgs, callID)
 		if name != "" {
-			return classifyTool(name, args)
+			return ClassifyTool(name, args)
 		}
 	}
 
@@ -54,7 +55,7 @@ func detectAction(msgs []map[string]any, tools []map[string]any) (string, string
 					if fn, ok := tc["function"].(map[string]any); ok {
 						name, _ := fn["name"].(string)
 						args, _ := fn["arguments"].(string)
-						return classifyTool(name, args)
+						return ClassifyTool(name, args)
 					}
 				}
 			}
@@ -67,7 +68,7 @@ func detectAction(msgs []map[string]any, tools []map[string]any) (string, string
 				name, args = findToolByCallID(msgs, callID)
 			}
 			if name != "" {
-				return classifyTool(name, args)
+				return ClassifyTool(name, args)
 			}
 		}
 		if r == "user" {
@@ -87,7 +88,8 @@ func detectAction(msgs []map[string]any, tools []map[string]any) (string, string
 	return "用户", "对话交互"
 }
 
-func classifyTool(name, args string) (string, string) {
+// ClassifyTool describes a tool action without executing it.
+func ClassifyTool(name, args string) (string, string) {
 	cleanName := name
 	if idx := strings.LastIndex(name, "__"); idx >= 0 && idx < len(name)-2 {
 		cleanName = name[idx+2:]
@@ -254,4 +256,23 @@ func cleanSummary(s string) string {
 		return string(runes[:30]) + "..."
 	}
 	return found
+}
+
+// DetectBody classifies messages and tools from a decoded JSON request.
+func DetectBody(body map[string]any) (string, string) {
+	return Detect(messageMaps(body["messages"]), messageMaps(body["tools"]))
+}
+
+func messageMaps(v any) []map[string]any {
+	list, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }

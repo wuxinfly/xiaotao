@@ -5,7 +5,7 @@ import { UsageHeatmap } from './UsageHeatmap';
 import './dashboard.css';
 
 export function DashboardPage() {
-  const { snap, accounts, connected, loading, error, nowMs, reload } = useDashboardData();
+  const { snap, connected, loading, error, nowMs, reload } = useDashboardData();
 
   if (loading) {
     return (
@@ -36,9 +36,6 @@ export function DashboardPage() {
   if (!snap) return null;
 
   const isStorageError = snap.storage.status !== 'healthy';
-  const accountNames = new Map(
-    accounts.map((account) => [account.id, account.alias || account.nickname || account.uid])
-  );
 
   return (
     <div className="dashboard-page">
@@ -96,7 +93,6 @@ export function DashboardPage() {
         activeRequests={snap.activeRequests}
         activeCount={snap.activeCount}
         nowMs={nowMs}
-        accountNames={accountNames}
       />
 
       {/* 3. Usage Heatmap */}

@@ -19,6 +19,7 @@ import (
 	"xiaotao/xt-client/internal/providers/codex"
 	"xiaotao/xt-client/internal/providers/trae"
 	"xiaotao/xt-client/internal/providers/workbuddy"
+	"xiaotao/xt-client/internal/requestaction"
 	"xiaotao/xt-client/internal/storage"
 	"xiaotao/xt-client/internal/usage"
 )
@@ -229,7 +230,6 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	providerID, _ := splitModelID(body.Model)
 	created := time.Now().Unix()
-
 	var reqTracker *usage.ActiveRequest
 	if s.usage != nil {
 		acctID := ""
@@ -238,7 +238,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 			channel = acct.Provider
 		}
 		acctID = acct.ID
-		tag, title := detectAction(msgs, tools)
+		tag, title := requestaction.Detect(msgs, tools)
 		reqTracker = s.usage.StartRequest(id, channel, body.Model, acctID, tag, title)
 	}
 
@@ -587,7 +587,7 @@ func (s *Service) streamLive(ctx context.Context, reqTracker *usage.ActiveReques
 					if tc, ok := tcList[0].(map[string]any); ok {
 						if fn, ok := tc["function"].(map[string]any); ok {
 							if name, _ := fn["name"].(string); name != "" {
-								tag, title := classifyTool(name, "")
+								tag, title := requestaction.ClassifyTool(name, "")
 								reqTracker.SetAction(tag, title)
 							}
 						}

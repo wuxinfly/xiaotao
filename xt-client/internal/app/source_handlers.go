@@ -68,7 +68,7 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 	mux.HandleFunc("POST /api/agent/models/refresh", protect(func(w http.ResponseWriter, r *http.Request) {
 		send(w, map[string]any{"models": agentModelsForSources(append(store.List(), plugins.Sources()...)), "errors": []string{}})
 	}))
-	// Compatibility view for dashboard/HUD account labels; it contains manual
+	// Compatibility view; request lists no longer use it. It contains manual
 	// sources only and never reads or refreshes legacy platform accounts.
 	mux.HandleFunc("GET /api/accounts", protect(func(w http.ResponseWriter, r *http.Request) {
 		send(w, map[string]any{"accounts": sourceAccountLabels(store.List())})

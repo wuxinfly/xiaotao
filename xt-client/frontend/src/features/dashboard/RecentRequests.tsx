@@ -1,4 +1,4 @@
-import { UserRound } from 'lucide-react';
+import { Server } from 'lucide-react';
 import { useState } from 'react';
 import type { RequestSummary } from '../../lib/api';
 import { formatNumber } from './UsageOverview';
@@ -8,7 +8,6 @@ interface Props {
   activeRequests: RequestSummary[];
   activeCount: number;
   nowMs: number;
-  accountNames: Map<string, string>;
 }
 
 function SpeedometerIcon() {
@@ -54,7 +53,7 @@ function getTagClass(tag: string): string {
   }
 }
 
-export function RecentRequests({ recentRequests, activeRequests, activeCount, nowMs, accountNames }: Props) {
+export function RecentRequests({ recentRequests, activeRequests, activeCount, nowMs }: Props) {
   const [expandedActive, setExpandedActive] = useState(false);
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
 
@@ -143,7 +142,7 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
               : '— tok/s';
 
           const displayTitle =
-            req.actionTitle && req.actionTitle !== '模型请求'
+            req.actionTitle
               ? req.actionTitle
               : req.actionTag === '写'
               ? '代码修改'
@@ -155,9 +154,7 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
               ? '工具调用'
               : '对话交互';
 
-          const accountName = req.accountId
-            ? accountNames.get(req.accountId) || `账号 ${req.accountId.split(':').pop()?.slice(0, 8)}`
-            : '未指定账号';
+          const sourceLabel = req.sourceLabel?.trim() || '未知来源';
 
           return (
             <div
@@ -200,9 +197,9 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
                       {req.model}
                     </span>
 
-                    <span className="req-account-name" title={`使用账号: ${accountName}`}>
-                      <UserRound aria-hidden="true" />
-                      <span>{accountName}</span>
+                    <span className="req-account-name" title={`模型来源: ${sourceLabel}`}>
+                      <Server aria-hidden="true" />
+                      <span>{sourceLabel}</span>
                     </span>
                   </div>
 

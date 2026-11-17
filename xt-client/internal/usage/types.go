@@ -18,6 +18,7 @@ type Record struct {
 	Channel          string     `json:"channel"`
 	Model            string     `json:"model"`
 	AccountID        string     `json:"accountId"`
+	SourceLabel      string     `json:"sourceLabel"`
 	ActionTag        string     `json:"actionTag"`
 	ActionTitle      string     `json:"actionTitle"`
 	CreatedAt        time.Time  `json:"createdAt"`
@@ -62,6 +63,7 @@ type RequestSummary struct {
 	ChannelLabel         string       `json:"channelLabel"`
 	Model                string       `json:"model"`
 	AccountID            string       `json:"accountId"`
+	SourceLabel          string       `json:"sourceLabel"`
 	ActionTag            string       `json:"actionTag"`
 	ActionTitle          string       `json:"actionTitle"`
 	Status               string       `json:"status"` // pending, streaming, completed, failed, interrupted, canceled

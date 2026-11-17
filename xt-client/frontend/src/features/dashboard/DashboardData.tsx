@@ -7,11 +7,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { api, type Account, type DashboardSnapshot } from '../../lib/api';
+import { api, type DashboardSnapshot } from '../../lib/api';
 
 interface DashboardDataValue {
   snap: DashboardSnapshot | null;
-  accounts: Account[];
   connected: boolean;
   loading: boolean;
   error: string | null;
@@ -29,7 +28,6 @@ export function DashboardDataProvider({
   children: ReactNode;
 }) {
   const [snap, setSnap] = useState<DashboardSnapshot | null>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +45,8 @@ export function DashboardDataProvider({
   const reload = useCallback(async () => {
     if (!snapRef.current) setLoading(true);
     try {
-      const [next, accountResult] = await Promise.all([
-        api.dashboard(),
-        api.accounts().catch(() => null),
-      ]);
+      const next = await api.dashboard();
       applySnapshot(next);
-      if (accountResult) setAccounts(accountResult.accounts ?? []);
       setError(null);
       setLoading(false);
     } catch (reason) {
@@ -91,30 +85,13 @@ export function DashboardDataProvider({
 
   useEffect(() => {
     if (!enabled) return;
-    const refreshAccounts = () => {
-      api.accounts()
-        .then((result) => setAccounts(result.accounts ?? []))
-        .catch(() => {
-          // Account aliases are decorative. Requests still show their IDs.
-        });
-    };
-    const timer = window.setInterval(refreshAccounts, 30_000);
-    window.addEventListener('focus', refreshAccounts);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refreshAccounts);
-    };
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [enabled]);
 
   return (
     <DashboardDataContext.Provider
-      value={{ snap, accounts, connected, loading, error, nowMs, reload }}
+      value={{ snap, connected, loading, error, nowMs, reload }}
     >
       {children}
     </DashboardDataContext.Provider>
