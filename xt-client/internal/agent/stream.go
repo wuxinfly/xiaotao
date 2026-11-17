@@ -12,45 +12,19 @@ import (
 // readModelStream forwards visible text as it arrives and assembles complete
 // tool calls before they can be executed. A truncated stream is never replayed.
 func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
-	type toolPart struct {
-		ID       string `json:"id"`
-		Index    *int   `json:"index"`
-		Function struct {
-			Name      string `json:"name"`
-			Arguments string `json:"arguments"`
-		} `json:"function"`
-	}
-	type chunk struct {
-		Choices []struct {
-			Delta struct {
-				Content          string     `json:"content"`
-				ReasoningContent string     `json:"reasoning_content"`
-				ToolCalls        []toolPart `json:"tool_calls"`
-			} `json:"delta"`
-			FinishReason *string `json:"finish_reason"`
-		} `json:"choices"`
-		Error *struct {
-			Message string `json:"message"`
-		} `json:"error"`
-		Usage struct {
-			CompletionTokens    int64  `json:"completion_tokens"`
-			PromptTokens        *int64 `json:"prompt_tokens"`
-			CachedTokens        *int64 `json:"cached_tokens"`
-			PromptTokensDetails *struct {
-				CachedTokens *int64 `json:"cached_tokens"`
-			} `json:"prompt_tokens_details"`
-		} `json:"usage"`
-	}
-	type assembled struct{ id, name, args string }
+	return readModelStreamWithProgress(r, onDelta, nil)
+}
+
+func readModelStreamWithProgress(r io.Reader, onDelta func(string), onProgress func(int, time.Time)) (*completion, error) {
 	var text strings.Builder
 	var reasoning strings.Builder
-	var calls []*assembled
+	var calls []*modelStreamCall
 	var firstOutputAt *time.Time
 	var outputTokens int64
 	var inputTokens *int64
 	var cachedTokens *int64
-	byIndex := map[int]*assembled{}
-	byID := map[string]*assembled{}
+	byIndex := map[int]*modelStreamCall{}
+	byID := map[string]*modelStreamCall{}
 	done, finished := false, false
 	scanner := bufio.NewScanner(io.LimitReader(r, 16<<20))
 	scanner.Buffer(make([]byte, 4096), 16<<20)
@@ -65,7 +39,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 			done = true
 			return nil
 		}
-		var frame chunk
+		var frame modelStreamChunk
 		if err := json.Unmarshal([]byte(data), &frame); err != nil {
 			return fmt.Errorf("解析模型事件失败: %w", err)
 		}
@@ -76,21 +50,27 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 			if choice.FinishReason != nil {
 				finished = true
 			}
+			chars, hasOutput := choice.Delta.outputProgress()
+			if hasOutput {
+				now := time.Now()
+				if firstOutputAt == nil {
+					firstOutputAt = &now
+				}
+				if onProgress != nil {
+					onProgress(chars, now)
+				}
+			}
 			if choice.Delta.ReasoningContent != "" {
 				reasoning.WriteString(choice.Delta.ReasoningContent)
 			}
 			if choice.Delta.Content != "" {
-				if firstOutputAt == nil {
-					now := time.Now()
-					firstOutputAt = &now
-				}
 				text.WriteString(choice.Delta.Content)
 				if onDelta != nil {
 					onDelta(choice.Delta.Content)
 				}
 			}
 			for _, part := range choice.Delta.ToolCalls {
-				var call *assembled
+				var call *modelStreamCall
 				if part.Index != nil {
 					call = byIndex[*part.Index]
 				}
@@ -98,7 +78,7 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 					call = byID[part.ID]
 				}
 				if call == nil {
-					call = &assembled{}
+					call = &modelStreamCall{}
 					calls = append(calls, call)
 				}
 				if part.Index != nil {
@@ -162,17 +142,5 @@ func readModelStream(r io.Reader, onDelta func(string)) (*completion, error) {
 		CachedTokens:  cachedTokens,
 		FirstOutputAt: firstOutputAt,
 	}
-	ids := map[string]bool{}
-	for _, call := range calls {
-		args := strings.TrimSpace(call.args)
-		if args == "" {
-			args = "{}"
-		}
-		if call.id == "" || call.name == "" || !json.Valid([]byte(args)) || ids[call.id] {
-			return nil, fmt.Errorf("模型工具调用不完整或无效")
-		}
-		ids[call.id] = true
-		result.ToolCalls = append(result.ToolCalls, toolCall{ID: call.id, Name: call.name, Arguments: json.RawMessage(args)})
-	}
-	return result, nil
+	return finishModelStream(result, calls)
 }

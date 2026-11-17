@@ -42,9 +42,10 @@ type modelClient interface {
 }
 
 type httpModelClient struct {
-	endpoint string
-	key      func() string
-	client   *http.Client
+	endpoint   string
+	key        func() string
+	client     *http.Client
+	onProgress func(int, time.Time)
 }
 
 type completion struct {
@@ -557,26 +558,15 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		turnStart := time.Now()
 		logTurnRequestStart(history.ID, runID, turnAttempt, stats.ContextTokens, len(tools))
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
-		var requestChars int
-		var requestFirstOutputAt time.Time
-		var lastEmit time.Time
-		var emittedSpeed bool
-		result, err := client.Complete(ctx, history.Model, requestMessages, tools, derefModelSettings(settings), func(delta string) {
-			now := time.Now()
-			if stats.FirstTokenMs == 0 {
-				stats.FirstTokenMs = max(int64(1), now.Sub(stats.firstRequestAt).Milliseconds())
-				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
-			}
+		progress := newRequestProgress(stats, completedTokens, history.ID, emit)
+		requestClient, tracksProgress := withModelProgress(client, progress)
+		result, err := requestClient.Complete(ctx, history.Model, requestMessages, tools, derefModelSettings(settings), func(delta string) {
 			if delta == "" {
 				return
 			}
-			if requestFirstOutputAt.IsZero() {
-				requestFirstOutputAt = now
+			if !tracksProgress {
+				progress(len(delta), time.Now())
 			}
-			if stats.FirstTokenMs == 0 && !stats.firstRequestAt.IsZero() {
-				stats.FirstTokenMs = now.Sub(stats.firstRequestAt).Milliseconds()
-			}
-			requestChars += len(delta)
 			if streamed == nil {
 				message := Message{ID: "msg_" + randomID(6), Role: "assistant", RunID: runID, CreatedAt: time.Now()}
 				streamed = &message
@@ -585,12 +575,6 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			piece := *streamed
 			piece.Content = delta
 			emit(Event{Type: "message_delta", SessionID: history.ID, Message: &piece})
-			updateLiveOutput(stats, completedTokens, requestChars, requestFirstOutputAt, now)
-			if now.Sub(lastEmit) >= liveStatsInterval || (!emittedSpeed && stats.LiveSpeed > 0) {
-				lastEmit = now
-				emittedSpeed = stats.LiveSpeed > 0
-				emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
-			}
 		})
 		turnDur := time.Since(turnStart).Milliseconds()
 		var outTokens int64
@@ -602,8 +586,6 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		logTurnRequestEnd(history.ID, runID, turnDur, stats.FirstTokenMs, outTokens, hasTools)
 		recordCompletionStats(stats, result, outputSeconds)
 		completedTokens = stats.OutputTokens
-		requestChars = 0
-		requestFirstOutputAt = time.Time{}
 		updateLiveOutput(stats, completedTokens, 0, time.Time{}, time.Now())
 		emit(Event{Type: "run_stats", SessionID: history.ID, RunStats: stats})
 		if err != nil {
@@ -873,7 +855,7 @@ func readableThought(value string) string {
 
 func (c *httpModelClient) Complete(ctx context.Context, model string, messages []map[string]any, tools []map[string]any, settings ModelSettings, onDelta func(string)) (*completion, error) {
 	startedAt := time.Now()
-	payload := map[string]any{"model": model, "messages": messages, "stream": true}
+	payload := map[string]any{"model": model, "messages": messages, "stream": true, "stream_options": map[string]any{"include_usage": true}}
 	if settings.MaxOutputTokens > 0 {
 		payload["max_tokens"] = settings.MaxOutputTokens
 	}
@@ -908,7 +890,7 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 400 && strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
-		result, err := readModelStream(resp.Body, onDelta)
+		result, err := readModelStreamWithProgress(resp.Body, onDelta, c.onProgress)
 		if result != nil {
 			result.RequestStartedAt = startedAt
 			result.RequestEndedAt = time.Now()
