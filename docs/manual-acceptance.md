@@ -87,8 +87,8 @@ Prompt：`帮我分析一下首页为什么启动慢，先不要改代码。`
 
 Prompt：`小涛，当前项目有哪些记忆？只给我总览，不展开详情。`
 
-通过条件：打开 `references/memory.md`；读取 `.xiaotao/memory/manifest.md`；不打开单个
-Long-term、Temporary 或 Task 详情；不创建或修改 XiaoTao 状态。
+通过条件：打开 `references/memory.md`；运行 `overview`；正文读取限于总览，待审样本只核对指针和归档任务元数据。
+使用当前 Catalog 时无需修改 XiaoTao 状态。
 
 失败条件：加载全部 memory 详情，或预先加载 `contract.md`、`coordination.md`、`workers.md`、
 `storage.md`、`handoffs.md`、`playbooks.md`。

@@ -39,6 +39,8 @@ LONG_TERM_MIGRATION_LOCK = Path(".xiaotao/locks/memory-long-term-migration.lock"
 FOLLOWUPS_ROOT = Path(".xiaotao/memory/followups")
 FOLLOWUPS_PENDING_PATH = FOLLOWUPS_ROOT / "pending"
 FOLLOWUPS_RESOLVED_PATH = FOLLOWUPS_ROOT / "resolved"
+TASK_REVIEW_QUEUE = Path(".xiaotao/memory/pending/tasks")
+TASK_ARCHIVE = Path(".xiaotao/tasks/archive")
 CONFIG_PATH = Path(".xiaotao/config.yaml")
 DEFAULT_TEMPORARY_STALE_DAYS = 7
 CURRENT_POINTER_BODY = """# Long-term Memory
@@ -1554,6 +1556,55 @@ def find_recoverable_checkpoint(project_root: Path) -> dict[str, Any] | None:
     }
 
 
+def task_review_sample(project_root: Path, pointer: Path) -> dict[str, Any]:
+    task_id = pointer.stem
+    sample = {"task_id": task_id, "status": "unverified"}
+    completion = TASK_ARCHIVE / task_id / "completion.md"
+    metadata = completion.with_name("task.yaml")
+    try:
+        reference = pointer.relative_to(project_root)
+        for path in (reference, completion, metadata):
+            if (project_root / path).resolve() != project_root / path:
+                raise CatalogError("task review paths must not use links")
+        if not pointer.is_file():
+            raise CatalogError("task review pointer is not a regular file")
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("task_id") != task_id:
+            raise CatalogError("task review pointer has an invalid task_id")
+        if data.get("completion_path") != completion.as_posix():
+            raise CatalogError("task review pointer has an unexpected completion_path")
+        if not (project_root / completion).is_file():
+            raise CatalogError("archived completion.md is missing")
+        if not (project_root / metadata).is_file():
+            raise CatalogError("archived task.yaml is missing")
+        task = parse_simple_yaml(project_root / metadata)
+        pending = task.get("memory_pending")
+        if task.get("id") != task_id or task.get("status") != "completed" or not isinstance(pending, bool):
+            raise CatalogError("archived task review state is invalid")
+        sample["status"] = "pending" if pending else "reviewed_pointer_remaining"
+    except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+        sample["diagnostic"] = str(error)
+    return sample
+
+
+def task_review_overview(project_root: Path, limit: int) -> dict[str, Any]:
+    queue = project_root / TASK_REVIEW_QUEUE
+    try:
+        if queue.resolve() != queue:
+            raise CatalogError("task review queue path must not use links")
+        pointers = sorted(path for path in queue.iterdir() if path.suffix == ".json")
+    except FileNotFoundError:
+        pointers = []
+    except (OSError, ValueError, RuntimeError) as error:
+        return {"status": "unverified", "pointer_count": None, "diagnostic": str(error)}
+    return {
+        "status": "listed",
+        "pointer_count": len(pointers),
+        "samples": [task_review_sample(project_root, pointer) for pointer in pointers[:limit]],
+        "more_pointers": max(0, len(pointers) - limit),
+    }
+
+
 def catalog_overview_summary(
     project_root: Path,
     index: dict[str, Any],
@@ -1629,6 +1680,10 @@ def catalog_overview_summary(
         "pending_followup_count": len(all_followups),
         "pending_followups": bounded_followups,
         "more_followups": max(0, len(all_followups) - limit),
+        "task_review_queue": (
+            {"status": "not_checked", "pointer_count": None}
+            if cached else task_review_overview(project_root, limit)
+        ),
         "timeline_entry": ".xiaotao/memory/timeline/summary.md",
         "bounded_limit": limit,
     }
@@ -1688,6 +1743,24 @@ def bounded_runtime_context_text(summary: dict[str, Any]) -> str:
             lines.append(f"- `{f['followup_id']}`: {f['title']}")
         if summary.get("more_followups", 0) > 0:
             lines.append(f"  *(另外 {summary['more_followups']} 项待跟进已省略，详情请使用 show)*")
+        lines.append("")
+    elif not summary["catalog_cached"]:
+        lines.extend(("## Pending Follow-ups (0)", "- 无待跟进决策。", ""))
+
+    review = summary["task_review_queue"]
+    if review["status"] == "unverified":
+        lines.extend(("## Task Memory Review", "- 待审目录未核实。", ""))
+    if review["status"] == "listed":
+        labels = {
+            "pending": "待审",
+            "reviewed_pointer_remaining": "审查状态已更新，指针仍存在",
+            "unverified": "未核实",
+        }
+        lines.append(f"## Task Memory Review ({review['pointer_count']} 条指针)")
+        for sample in review["samples"]:
+            lines.append(f"- `{sample['task_id']}`: {labels[sample['status']]}")
+        if review["more_pointers"]:
+            lines.append(f"- 另有 {review['more_pointers']} 条指针未展开。")
         lines.append("")
 
     lt_count = summary["long_term_count"]
@@ -2301,6 +2374,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "overview":
             if args.limit < 1 or args.limit > 5:
                 raise CatalogError("--limit must be between 1 and 5")
+            if args.full and args.format != "json":
+                manifest_path = project_root / MANIFEST_PATH
+                if manifest_path.is_file():
+                    print(manifest_path.read_text(encoding="utf-8").strip())
+                else:
+                    print(manifest_text(index).strip())
+                return 0
             summary = catalog_overview_summary(
                 project_root,
                 index,
@@ -2310,13 +2390,6 @@ def main(argv: list[str] | None = None) -> int:
             )
             if args.format == "json":
                 print(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True))
-                return 0
-            if getattr(args, "full", False):
-                manifest_path = project_root / MANIFEST_PATH
-                if manifest_path.is_file():
-                    print(manifest_path.read_text(encoding="utf-8").strip())
-                else:
-                    print(manifest_text(index).strip())
                 return 0
             print(bounded_runtime_context_text(summary))
             return 0

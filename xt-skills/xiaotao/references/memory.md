@@ -374,7 +374,7 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 
 | 用户意图 | 路由路径 | 接口与约束 |
 | --- | --- | --- |
-| 有什么记忆 / 当前记忆总览 | 轻量概览 | 读取 `.xiaotao/memory/manifest.md` 或运行 `overview` |
+| 有什么记忆 / 当前记忆总览 | 轻量概览 | 运行 `overview`，仅需查看 Catalog 快照时可读取 `.xiaotao/memory/manifest.md` |
 | 最新记忆 / 最近记了什么 / 最近几条 | 有界最新 | `recent --limit N`（默认 5 条有界元数据） |
 | 之前有没有讨论过 X / 关于 X 的记忆 | 渐进检索 | `search "<query>"`（最多 5 条相关候选） |
 | 看看这条记忆的详情 | 精确下钻 | `show <memory-id>`（单条完整当前内容） |
@@ -388,16 +388,16 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-root> overview --format json
 ```
 
-`overview` 默认检查 Catalog freshness，缺失或陈旧时自动重建，因此不用于 Session 启动。默认以 Markdown 文本形式返回
-`manifest.md` 内容；传入 `--format json` 时返回结构化摘要（包含活跃 Temporary、活跃 Task、各层
-计数与 `has_active_work` 标记）。启动阶段只使用已有快照形成初始 Runtime Context；快照缺失或不可用时如实说明，不将其解释为没有项目记忆。
+`overview` 默认检查 Catalog freshness，缺失或陈旧时自动重建，因此不用于 Session 启动。默认返回有界 Markdown 摘要，
+也可通过 `--format json` 获取结构化摘要。需要原始 manifest 时使用 `--full`。
+启动阶段只使用已有快照形成初始 Runtime Context；快照缺失或不可用时如实说明，不将其解释为没有项目记忆。
 
 用户明确要求查看记忆时，按以下规则核实并汇报：
 
-- 汇报遗留事项前，分别核对活跃 Task、manifest 的决策跟进项（`Pending follow-ups`）和
-  `.xiaotao/memory/pending/tasks/` 的待审指针。待审指针对应已归档的业务任务。需要确认单条指针是否仍待审时，
-  读取该归档任务 `task.yaml` 的 `memory_pending`。若为 `false`，说明审查状态已更新、指针仍存在。
-  枚举或读取失败时，明确标注对应状态未核实。查看时只汇报状态，待审处理遵循下文的审查流程。
+- 汇报遗留事项时，分别使用总览中的活跃 Task、决策跟进项和 `task_review_queue`。待审队列给出指针总数与
+  至多 `--limit` 条样本（默认 3）。样本依据归档任务的 `memory_pending` 标记为待审、审查状态已更新但指针仍存在，
+  或未核实。队列枚举失败时总数为 `null`，启动用的 `--cached` 标记为未检查。样本之外的记录可按需核对。
+  查看时只汇报状态，待审处理遵循下文的审查流程。
 - 仅在用户明确要求核查旧 SQLite 记忆库时，用只读方式查询。查询失败后可修正命令并重试，仍失败则说明数据量未核实。
   数据量以成功查询的结果为准，主库和 WAL 文件的大小只作诊断线索。
 - 手工读取记忆文本时显式使用 UTF-8。若出现乱码，先用正确编码重读，再引用内容。

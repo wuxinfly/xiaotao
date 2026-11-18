@@ -1063,6 +1063,51 @@ revision: 1
   assert.doesNotMatch(fullOutput, /已省略/);
 });
 
+test('overview reports bounded task review pointers separately from decision follow-ups', async (t) => {
+  const projectRoot = await createMemoryProject(t);
+  const queue = '.xiaotao/memory/pending/tasks';
+  const overview = async (...args) => JSON.parse(
+    (await runCatalog(projectRoot, ['overview', '--format', 'json', ...args])).stdout,
+  );
+  assert.deepEqual((await overview()).task_review_queue, {
+    status: 'listed', pointer_count: 0, samples: [], more_pointers: 0,
+  });
+
+  for (const [id, pending] of [['task-a', true], ['task-b', false]]) {
+    const archive = `.xiaotao/tasks/archive/${id}`;
+    await writeProjectFile(projectRoot, `${archive}/task.yaml`,
+      `id: ${id}\nstatus: completed\nmemory_pending: ${pending}\n`);
+    await writeProjectFile(projectRoot, `${archive}/completion.md`, '# 完成\n');
+    await writeProjectFile(projectRoot, `${queue}/${id}.json`, JSON.stringify({
+      task_id: id, completion_path: `${archive}/completion.md`,
+    }));
+  }
+  await writeProjectFile(projectRoot, `${queue}/task-c.json`, '{invalid');
+
+  const result = await overview();
+  assert.equal(result.pending_followup_count, 0);
+  assert.equal(result.active_task_count, 1);
+  assert.equal(result.task_review_queue.pointer_count, 3);
+  assert.deepEqual(result.task_review_queue.samples.map(({ task_id, status }) => [task_id, status]), [
+    ['task-a', 'pending'],
+    ['task-b', 'reviewed_pointer_remaining'],
+    ['task-c', 'unverified'],
+  ]);
+  assert.match((await runCatalog(projectRoot, ['overview'])).stdout, /Task Memory Review \(3 条指针\)/);
+  const bounded = (await overview('--limit', '1')).task_review_queue;
+  assert.equal(bounded.samples.length, 1);
+  assert.equal(bounded.more_pointers, 2);
+
+  await rm(path.join(projectRoot, queue), { recursive: true });
+  await writeProjectFile(projectRoot, queue, 'not a directory');
+  assert.deepEqual((await overview('--cached')).task_review_queue, {
+    status: 'not_checked', pointer_count: null,
+  });
+  const unavailable = (await overview()).task_review_queue;
+  assert.equal(unavailable.status, 'unverified');
+  assert.equal(unavailable.pointer_count, null);
+});
+
 test('overview discovers recoverable checkpoints and marks has_active_work even without active tasks', async (t) => {
   const projectRoot = await createMemoryProject(t);
 
