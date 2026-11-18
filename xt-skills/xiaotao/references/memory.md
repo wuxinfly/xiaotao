@@ -392,6 +392,16 @@ python <xiaotao-skill-root>/scripts/memory_catalog.py --project-root <project-ro
 `manifest.md` 内容；传入 `--format json` 时返回结构化摘要（包含活跃 Temporary、活跃 Task、各层
 计数与 `has_active_work` 标记）。启动阶段只使用已有快照形成初始 Runtime Context；快照缺失或不可用时如实说明，不将其解释为没有项目记忆。
 
+用户明确要求查看记忆时，按以下规则核实并汇报：
+
+- 汇报遗留事项前，分别核对活跃 Task、manifest 的决策跟进项（`Pending follow-ups`）和
+  `.xiaotao/memory/pending/tasks/` 的待审指针。待审指针对应已归档的业务任务。需要确认单条指针是否仍待审时，
+  读取该归档任务 `task.yaml` 的 `memory_pending`。若为 `false`，说明审查状态已更新、指针仍存在。
+  枚举或读取失败时，明确标注对应状态未核实。查看时只汇报状态，待审处理遵循下文的审查流程。
+- 仅在用户明确要求核查旧 SQLite 记忆库时，用只读方式查询。查询失败后可修正命令并重试，仍失败则说明数据量未核实。
+  数据量以成功查询的结果为准，主库和 WAL 文件的大小只作诊断线索。
+- 手工读取记忆文本时显式使用 UTF-8。若出现乱码，先用正确编码重读，再引用内容。
+
 ### 最新记忆（recent）
 
 查询最近更新的 Memory 条目元数据：

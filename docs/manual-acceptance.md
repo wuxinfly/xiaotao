@@ -93,6 +93,10 @@ Long-term、Temporary 或 Task 详情；不创建或修改 XiaoTao 状态。
 失败条件：加载全部 memory 详情，或预先加载 `contract.md`、`coordination.md`、`workers.md`、
 `storage.md`、`handoffs.md`、`playbooks.md`。
 
+补充验收：准备两条已归档任务的记忆待审指针，且 manifest 显示 `Pending follow-ups: None`。追问
+`还有什么记忆相关的遗留事项？`，答复应覆盖两条指针，并分别说明活跃 Task 和决策跟进项的状态。
+明确要求核查旧 SQLite 库并模拟查询失败时，答复应标注数据量未核实。读取中文记忆出现乱码时，应以 UTF-8 复读后再引用。
+
 ### 5. 按需检索 Memory 详情
 
 查看总览后，继续询问一个具体 memory 主题。
