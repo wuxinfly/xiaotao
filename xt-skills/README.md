@@ -55,7 +55,7 @@ npx @wxfly/xiaotao@latest codex
 npx @wxfly/xiaotao@latest claude
 ```
 
-`update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活。
+`update` 会更新电脑上共享的 XiaoTao 安装。如果当前仓库版本比已安装版本新，会先提示你确认。`doctor` 会检查 Skill 文件、管理标记，以及 DSH 插件是否已激活；还会用 `XIAOTAO_PYTHON`（未设置时使用当前平台的 `python` 或 `python3`）对已安装 Core 只读执行一次 `timeline_catalog.py context`。成功项为 `memory_runtime_ready`，缺 Python、脚本缺失或运行失败会分别报告原因。它不搜索、不重建记忆，也不证明宿主插件或 Hooks 已经启用。
 
 `codex` 会安装通用 Codex Skill、准备独立 marketplace，并在本机找到 Codex CLI 时执行 `codex plugin add xiaotao-codex@xiaotao`。如果 CLI 不可用，可加 `--prepare` 只准备来源，再到桌面端 Plugins 中安装。安装或启用插件不会自动信任 Hooks，首次使用前仍需在 Codex 中审查。
 

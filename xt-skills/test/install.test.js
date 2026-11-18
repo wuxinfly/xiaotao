@@ -8,9 +8,13 @@ import { doctorInstallation, globalUpdateNotice, installCodex, installScenes, re
 async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'xiaotao-install-test-'));
   const packageRoot = path.join(root, 'package'); const projectRoot = path.join(root, 'project'); const home = path.join(root, 'home');
-  await mkdir(path.join(packageRoot, 'xiaotao'), { recursive: true }); await mkdir(projectRoot, { recursive: true });
+  await mkdir(path.join(packageRoot, 'xiaotao', 'scripts'), { recursive: true }); await mkdir(projectRoot, { recursive: true });
   await writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@wxfly/xiaotao', version: '0.3.0' }));
   await writeFile(path.join(packageRoot, 'xiaotao', 'SKILL.md'), '# XiaoTao\n');
+  await writeFile(path.join(packageRoot, 'xiaotao', 'scripts', 'timeline_catalog.py'), [
+    'import json',
+    "print(json.dumps({'timezone': 'UTC', 'occurred_at': '2026-11-14T00:00:00Z', 'date': '2026-11-14'}))",
+  ].join('\n') + '\n');
   return { root, packageRoot, projectRoot, environment: { XIAOTAO_HOME: home } };
 }
 
@@ -20,7 +24,7 @@ test('installs once at user level and writes project metadata', async (t) => {
   const target = path.join(context.environment.XIAOTAO_HOME, '.agents/skills/xiaotao');
   assert.equal(await readFile(path.join(target, 'SKILL.md'), 'utf8'), '# XiaoTao\n');
   assert.deepEqual((await readInstallation(context.projectRoot)).scenes, ['skills']);
-  assert.equal(result.checks.every((check) => check.ok), true);
+  assert.equal(result.checks.every((check) => check.ok), true, JSON.stringify(result.checks));
 });
 
 test('a second project reuses the same global installation', async (t) => {
@@ -58,6 +62,37 @@ test('doctor reports a deleted global skill and version changes', async (t) => {
   assert.equal((await doctorInstallation(context.projectRoot, context.environment)).ok, false);
 });
 
+test('doctor runs the installed memory command read-only and reports failures', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  await installScenes({ ...context, sceneIds: ['skills'] });
+  const diagnosis = await doctorInstallation(context.projectRoot, context.environment);
+  assert.equal(diagnosis.checks.find((check) => check.code === 'memory_runtime_ready').ok, true);
+
+  const target = path.join(context.environment.XIAOTAO_HOME, '.agents/skills/xiaotao');
+  await writeFile(path.join(target, 'scripts', 'timeline_catalog.py'), "raise SystemExit('broken memory command')\n");
+  const broken = await doctorInstallation(context.projectRoot, context.environment);
+  const failure = broken.checks.find((check) => check.code === 'memory_runtime_invalid');
+  assert.equal(broken.ok, false);
+  assert.match(failure.message, /broken memory command/);
+
+  await rm(path.join(target, 'scripts', 'timeline_catalog.py'));
+  const missing = await doctorInstallation(context.projectRoot, context.environment);
+  assert.match(missing.checks.find((check) => check.code === 'memory_runtime_invalid').message, /is missing/);
+});
+
+test('doctor explains a missing Python executable', async (t) => {
+  const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
+  const command = async () => {
+    const error = new Error('spawn python ENOENT');
+    error.code = 'ENOENT';
+    throw error;
+  };
+  const result = await installScenes({ ...context, sceneIds: ['skills'], command });
+  const failure = result.checks.find((check) => check.code === 'memory_runtime_invalid');
+  assert.equal(failure.ok, false);
+  assert.match(failure.message, /XIAOTAO_PYTHON/);
+});
+
 test('none does not erase a previous shared installation record', async (t) => {
   const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
   await installScenes({ ...context, sceneIds: ['skills'] });
@@ -79,11 +114,28 @@ test('reads BOM metadata and gives old metadata a migration message', async (t) 
 test('installs and verifies DSH through an injected command runner', async (t) => {
   const context = await fixture(); t.after(() => rm(context.root, { recursive: true, force: true }));
   const script = path.join(context.packageRoot, 'adapters/deepseek-harness/scripts'); await mkdir(script, { recursive: true }); await writeFile(path.join(script, 'install-local.mjs'), '');
+  const profile = path.join(context.environment.XIAOTAO_HOME, '.dsh', 'profiles', 'web');
+  const adapter = path.join(profile, 'node_modules', '@xiaotao-ai', 'dsh-adapter');
+  await mkdir(path.join(adapter, 'lib'), { recursive: true });
+  await mkdir(path.join(adapter, 'lib', 'core', 'scripts'), { recursive: true });
+  await writeFile(path.join(adapter, 'package.json'), JSON.stringify({ name: '@xiaotao-ai/dsh-adapter', main: 'lib/index.js' }));
+  await writeFile(path.join(adapter, 'lib', 'index.js'), 'export default {};\n');
+  await writeFile(path.join(adapter, 'lib', 'core', 'SKILL.md'), '# XiaoTao\n');
+  await writeFile(path.join(adapter, 'lib', 'core', 'scripts', 'timeline_catalog.py'), [
+    'import json',
+    "print(json.dumps({'timezone': 'UTC', 'occurred_at': '2026-11-14T00:00:00Z', 'date': '2026-11-14'}))",
+  ].join('\n') + '\n');
   const calls = [];
-  const command = async (name, args) => { calls.push([name, args]); return { stdout: name === 'dsh' ? '@xiaotao-ai/dsh-adapter' : '', stderr: '' }; };
+  const command = async (name, args) => {
+    calls.push([name, args]);
+    const stdout = args.includes('context')
+      ? JSON.stringify({ timezone: 'UTC', occurred_at: '2026-11-14T00:00:00Z', date: '2026-11-14' })
+      : name === 'dsh' ? '@xiaotao-ai/dsh-adapter' : '';
+    return { stdout, stderr: '' };
+  };
   const result = await installScenes({ ...context, sceneIds: ['dsh'], command });
-  assert.equal(result.checks.every((check) => check.ok), true);
-  assert.deepEqual(calls.map(([name]) => name), [process.execPath, 'dsh']);
+  assert.equal(result.checks.every((check) => check.ok), true, JSON.stringify(result.checks));
+  assert.deepEqual(calls.map(([name]) => name), [process.execPath, 'dsh', process.platform === 'win32' ? 'python' : 'python3']);
 });
 
 test('installs and verifies Antigravity plugin and skill', async (t) => {
@@ -143,13 +195,17 @@ test('codex install invokes the CLI marketplace and plugin add flow', async (t) 
   const calls = [];
   const command = async (name, args) => {
     calls.push([name, args]);
-    return { stdout: args[1] === 'add' ? JSON.stringify({ pluginId: 'xiaotao-codex@xiaotao' }) : '{}', stderr: '' };
+    const stdout = args.includes('context')
+      ? JSON.stringify({ timezone: 'UTC', occurred_at: '2026-11-14T00:00:00Z', date: '2026-11-14' })
+      : args[1] === 'add' ? JSON.stringify({ pluginId: 'xiaotao-codex@xiaotao' }) : '{}';
+    return { stdout, stderr: '' };
   };
   const result = await installCodex({ ...context, command });
   assert.equal(result.installed, true);
   assert.equal(result.ok, true);
-  assert.deepEqual(calls.map(([name]) => name), ['codex', 'codex']);
-  assert.deepEqual(calls[0][1].slice(0, 3), ['plugin', 'marketplace', 'add']);
-  assert.deepEqual(calls[1][1], ['plugin', 'add', 'xiaotao-codex@xiaotao', '--json']);
+  assert.deepEqual(calls.map(([name]) => name), [process.platform === 'win32' ? 'python' : 'python3', 'codex', 'codex']);
+  assert.equal(calls[0][1][0], '-B');
+  assert.deepEqual(calls[1][1].slice(0, 3), ['plugin', 'marketplace', 'add']);
+  assert.deepEqual(calls[2][1], ['plugin', 'add', 'xiaotao-codex@xiaotao', '--json']);
 });
 

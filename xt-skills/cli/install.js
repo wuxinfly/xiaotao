@@ -1,5 +1,6 @@
 import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -83,6 +84,50 @@ export async function verifyDsh(target, environment, command = execFileAsync) {
     return { ok, message: ok ? undefined : 'DSH config does not contain the XiaoTao adapter.' };
   } catch (error) {
     return { ok: false, message: error.code === 'ENOENT' ? 'dsh command was not found on PATH.' : `Could not inspect DSH: ${error.message}` };
+  }
+}
+
+async function memoryCoreDirectory(scene, target) {
+  if (scene === 'skills' || scene === 'claude') return { path: target.path };
+  if (scene === 'antigravity') return { path: path.join(target.path, 'skills', 'xiaotao') };
+  if (scene === 'zcode') return { path: path.join(target.path, 'plugins', 'xiaotao-zcode', 'skills', 'xiaotao') };
+  if (scene !== 'dsh') return { error: `No memory runtime mapping for scene ${scene}.` };
+  try {
+    const profileRoot = path.join(target.dsh_home, 'profiles', target.profile);
+    const requireFromProfile = createRequire(path.join(profileRoot, 'package.json'));
+    const entry = requireFromProfile.resolve('@xiaotao-ai/dsh-adapter');
+    return { path: path.join(path.dirname(entry), 'core') };
+  } catch (error) {
+    return { error: `Could not resolve the installed DSH Core: ${error.message}` };
+  }
+}
+
+async function verifyMemoryRuntime({ projectRoot, coreDirectory, environment, command }) {
+  const script = path.join(coreDirectory, 'scripts', 'timeline_catalog.py');
+  if (!(await pathExists(script))) {
+    return { ok: false, path: script, message: `Installed memory command is missing: ${script}` };
+  }
+  const runtimeEnvironment = { ...process.env, ...environment, PYTHONDONTWRITEBYTECODE: '1' };
+  const python = runtimeEnvironment.XIAOTAO_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  try {
+    const { stdout } = await command(python, ['-B', script, '--project-root', projectRoot, 'context'], {
+      cwd: projectRoot,
+      env: runtimeEnvironment,
+      windowsHide: true,
+    });
+    const context = JSON.parse(stdout);
+    const valid = typeof context.timezone === 'string' && context.timezone.length > 0
+      && typeof context.occurred_at === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/.test(context.occurred_at)
+      && typeof context.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(context.date);
+    return valid
+      ? { ok: true, path: script, message: `Memory command is runnable (${context.date}, ${context.timezone}).` }
+      : { ok: false, path: script, message: 'Installed memory command returned an invalid context.' };
+  } catch (error) {
+    const detail = String(error.stderr || error.message || error).trim().slice(0, 500);
+    const message = error.code === 'ENOENT'
+      ? `Python command "${python}" was not found. Set XIAOTAO_PYTHON to a Python 3 executable.`
+      : `Installed memory command failed: ${detail}`;
+    return { ok: false, path: script, message };
   }
 }
 
@@ -327,6 +372,30 @@ export async function doctorInstallation(projectRoot, environment = process.env,
     const skillOk = await pathExists(skill); const markerOk = await isManaged(target.path);
     checks.push({ code: skillOk ? 'skill_present' : 'skill_missing', ok: skillOk, scene: id, path: skill });
     checks.push({ code: markerOk ? 'marker_present' : 'marker_missing', ok: markerOk, scene: id, path: path.join(target.path, MARKER_NAME) });
+  }
+  const checkedMemoryCores = new Set();
+  for (const scene of metadata.scenes) {
+    const target = metadata.targets[scene];
+    if (!SCENES[scene] || !target) continue;
+    const resolved = await memoryCoreDirectory(scene, target);
+    if (resolved.error) {
+      checks.push({ code: 'memory_runtime_core_missing', ok: false, scene, message: resolved.error });
+      continue;
+    }
+    const coreKey = path.resolve(resolved.path);
+    if (checkedMemoryCores.has(coreKey)) continue;
+    checkedMemoryCores.add(coreKey);
+    const runtime = await verifyMemoryRuntime({
+      projectRoot,
+      coreDirectory: resolved.path,
+      environment,
+      command,
+    });
+    checks.push({
+      code: runtime.ok ? 'memory_runtime_ready' : 'memory_runtime_invalid',
+      scene,
+      ...runtime,
+    });
   }
   return { ok: checks.every((check) => check.ok), checks };
 }

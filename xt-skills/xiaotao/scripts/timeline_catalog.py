@@ -9,7 +9,7 @@ import re
 import posixpath
 from urllib.parse import quote
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from activity_catalog import derive_index, resolve_reference_time
@@ -350,7 +350,7 @@ def main(argv=None):
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         root = args.project_root.resolve(strict=True)
-        now = resolve_reference_time(args.now)
+        now = resolve_reference_time(args.now) or datetime.now(timezone.utc)
         if args.command == 'context':
             name = memory_timezone(root, now)
             print(json.dumps({'timezone': name, 'occurred_at': now.isoformat(timespec='seconds').replace('+00:00', 'Z'),

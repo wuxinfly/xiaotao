@@ -123,6 +123,8 @@ node .\bin\xiaotao.js init "D:\code\your-project" --tools codex
 node .\bin\xiaotao.js doctor "D:\code\your-project"
 ```
 
+`doctor` 还会对已安装 Core 只读执行一次记忆上下文命令；`memory_runtime_ready` 只证明脚本和 Python 能启动，不证明 Codex 插件、Hooks 已启用或得到信任。
+
 然后准备个人插件来源：
 
 ```powershell

@@ -28,6 +28,13 @@ Skill 的宿主）运行受影响场景；每次变更无需执行全部场景�
 
 ## Core 场景
 
+### 记忆命令默认时间与安装诊断（2026-11-14）
+
+1. 在不带 `--now` 的情况下运行 `timeline_catalog.py context` 和 `timeline_catalog.py search <query>`。通过条件：两条命令都返回 JSON，`context` 包含带时区的时间以及按项目 `memory_timezone` 计算的日期，`search` 默认查询截至该日期的最近 30 日。
+2. 运行 `xiaotao doctor`。通过条件：已安装 Core 能执行时出现 `memory_runtime_ready`；命令不创建 `__pycache__`、`.pyc` 或改写项目记忆。该项不能证明宿主插件或 Hooks 已启用。
+3. 破坏已安装的 `scripts/timeline_catalog.py` 后再次运行 `doctor`。通过条件：出现 `memory_runtime_invalid` 并包含实际失败原因，整体结果为失败。
+4. 使用不存在的 `XIAOTAO_PYTHON` 运行 `doctor`。通过条件：明确报告 Python 未找到并提示设置 `XIAOTAO_PYTHON`，不把它误报为 Skill 文件缺失。
+
 ### 客户端本地 Skills（2026-11-06）
 
 使用更新后的客户端和隔离测试技能目录，记录真实宿主、版本与工具调用证据；不要把合成 API/模型测试视为真实账号验收。

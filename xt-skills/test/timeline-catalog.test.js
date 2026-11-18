@@ -115,6 +115,18 @@ test('handles projects with no events gracefully', async (t) => {
   assert.match(rootSummary, /尚无已保存/);
 });
 
+test('context and search use the current time when --now is omitted', async (t) => {
+  const projectRoot = await createProject(t);
+  const context = JSON.parse((await runTimeline(projectRoot, ['context'])).stdout);
+  assert.equal(context.timezone, 'UTC');
+  assert.match(context.occurred_at, /Z$/);
+  assert.match(context.date, /^\d{4}-\d{2}-\d{2}$/);
+
+  const search = JSON.parse((await runTimeline(projectRoot, ['search', '任意关键词'])).stdout);
+  assert.equal(search.to, context.date);
+  assert.deepEqual(search.candidates, []);
+});
+
 test('enforces parameter constraints on drill-down queries', async (t) => {
   const projectRoot = await createProject(t);
   await runTimeline(projectRoot, ['build']);

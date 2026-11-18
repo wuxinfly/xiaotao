@@ -32,3 +32,8 @@
 1. `xiaotao/references/schemas/global-preference.schema.json`：定义了全局用户偏好格式，支持 `category`, `statement`, `confidence`, `source_refs` 等校验；
 2. `xiaotao/references/schemas/timeline-event.schema.json`：定义了项目记忆事件格式，支持确定性 `event_id`, `event_type`, `occurred_at`, `source_refs` 等校验；
 3. `test/three-tier-memory.test.js`：覆盖 Schema 结构、Fixtures、规范分层与存储绑定的自动化测试。
+
+## 回归补强（2026-11-14）
+
+- `test/timeline-catalog.test.js` 覆盖不传 `--now` 的 `context` 与 `search`，确保文档命令按当前项目和默认 30 日窗口运行。
+- `test/install.test.js` 覆盖 `doctor` 对已安装 Core 的只读运行检查、损坏脚本和缺失 Python 的明确失败；该检查不搜索或重建记忆，也不能代替宿主 Hook 激活验收。
