@@ -17,12 +17,12 @@ import (
 
 type incomingProtocolKey struct{}
 
-func conversationInput(r *http.Request, body map[string]any, window int64) usage.ConversationInput {
+func (s *Service) conversationInput(r *http.Request, body map[string]any, window int64) usage.ConversationInput {
 	messages := objects(body["messages"])
 	tools := objects(body["tools"])
 	parts := agent.EstimateRequestContext(messages, tools)
 	input := usage.ConversationInput{
-		Context: usage.RequestContext{Window: window, Estimated: parts.TotalTokens, Parts: usage.ContextParts{
+		Context: usage.RequestContext{Items: contextItems(messages, tools), Window: window, Estimated: parts.TotalTokens, Parts: usage.ContextParts{
 			System: parts.SystemTokens, Tools: parts.ToolsTokens, Messages: parts.MessagesTokens,
 			ToolCalls: parts.ToolResultsTokens, References: parts.ReferenceTokens, Images: parts.ImageTokens,
 		}},
@@ -40,20 +40,22 @@ func conversationInput(r *http.Request, body map[string]any, window int64) usage
 		}
 		return input
 	}
-	protocol, _ := r.Context().Value(incomingProtocolKey{}).(string)
+	incoming, _ := r.Context().Value(incomingProtocolKey{}).(incomingContext)
+	protocol := incoming.protocol
 	input.Source = "外部 API"
 	if id := identifier(r.Header.Get("X-Xiaotao-Session-Id")); id != "" {
 		input.ID = dashboardID("external", id)
 		return input
 	}
-	if protocol == wireprotocol.Responses {
-		for _, header := range []string{"thread-id", "session-id"} {
-			if id := identifier(r.Header.Get(header)); id != "" {
-				input.ID = dashboardID("responses", id)
-				input.Source = "Responses"
-				return input
-			}
+	if incoming.codexID != "" {
+		input.ID = dashboardID("responses", incoming.codexID)
+		input.Source = "Codex"
+		input.Auxiliary = incoming.auxiliary
+		input.TitleLookup = func() string { return s.codexTitles.lookup(incoming.codexID) }
+		if !incoming.auxiliary {
+			input.Title = firstUserTitle(messages)
 		}
+		return input
 	}
 	if protocol == wireprotocol.Messages {
 		metadata, _ := body["metadata"].(map[string]any)
@@ -75,8 +77,8 @@ func conversationInput(r *http.Request, body map[string]any, window int64) usage
 	return input
 }
 
-func withIncomingProtocol(r *http.Request, protocol string) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), incomingProtocolKey{}, protocol))
+func withIncomingContext(r *http.Request, incoming incomingContext) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), incomingProtocolKey{}, incoming))
 }
 
 func identifier(value string) string {

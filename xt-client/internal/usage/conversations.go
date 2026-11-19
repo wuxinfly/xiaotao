@@ -14,24 +14,34 @@ type ContextParts struct {
 	Images     int64 `json:"images"`
 }
 
+type ContextItem struct {
+	Label  string `json:"label"`
+	Tokens int64  `json:"tokens"`
+}
+
 type RequestContext struct {
-	Window    int64        `json:"window"`
-	Estimated int64        `json:"estimated"`
-	Parts     ContextParts `json:"parts"`
+	Items     map[string][]ContextItem `json:"items,omitempty"`
+	Window    int64                    `json:"window"`
+	Estimated int64                    `json:"estimated"`
+	Parts     ContextParts             `json:"parts"`
 }
 
 type ConversationInput struct {
+	TitleLookup                       func() string
+	Auxiliary                         bool
 	ID, Title, Source, InferenceScope string
 	Context                           RequestContext
 	Prefixes                          [][32]byte
 }
 
 type conversation struct {
+	titleLookup                       func() string
 	id, title, source, inferenceScope string
 	updated                           time.Time
 	fingerprint                       [32]byte
 	active                            int
 	totals                            TokenMetrics
+	lastMain                          *Record
 	finished                          []*Record
 }
 
@@ -74,7 +84,10 @@ func (s *Service) attachConversation(rec *Record, input ConversationInput) {
 		item = &conversation{id: id, title: title, source: input.Source, inferenceScope: input.InferenceScope}
 		s.conversations[id] = item
 	}
-	if input.Title != "" {
+	if input.TitleLookup != nil {
+		item.titleLookup = input.TitleLookup
+	}
+	if input.Title != "" && (input.TitleLookup == nil || item.lastMain == nil) {
 		item.title = input.Title
 	}
 	item.source = input.Source
@@ -83,6 +96,7 @@ func (s *Service) attachConversation(rec *Record, input ConversationInput) {
 	if len(input.Prefixes) > 0 {
 		item.fingerprint = input.Prefixes[len(input.Prefixes)-1]
 	}
+	rec.auxiliary = input.Auxiliary
 	rec.conversationID = id
 	rec.requestContext = input.Context
 }
@@ -116,6 +130,9 @@ func (s *Service) finishConversation(rec *Record) {
 	addTokens(&item.totals.Prompt, rec.PromptTokens)
 	addTokens(&item.totals.Completion, rec.CompletionTokens)
 	addTokens(&item.totals.Cached, rec.CachedTokens)
+	if !rec.auxiliary && (item.lastMain == nil || rec.CreatedAt.After(item.lastMain.CreatedAt)) {
+		item.lastMain = rec
+	}
 	item.finished = append(item.finished, rec)
 	sort.Slice(item.finished, func(i, j int) bool { return item.finished[i].CreatedAt.After(item.finished[j].CreatedAt) })
 	item.finished = item.finished[:min(3, len(item.finished))]
@@ -175,12 +192,16 @@ func summarizeConversations(items []conversation, active []*Record, now time.Tim
 		seen := make(map[string]bool)
 		var latest *Record
 		entry := ConversationSummary{ID: item.id, Title: item.title, Source: item.source, Totals: item.totals}
-		for _, rec := range append(running, item.finished...) {
+		records := append(running, item.finished...)
+		if item.lastMain != nil {
+			records = append(records, item.lastMain)
+		}
+		for _, rec := range records {
 			if seen[rec.RequestID] {
 				continue
 			}
 			seen[rec.RequestID] = true
-			if latest == nil || rec.CreatedAt.After(latest.CreatedAt) {
+			if latest == nil || (latest.auxiliary && !rec.auxiliary) || (latest.auxiliary == rec.auxiliary && rec.CreatedAt.After(latest.CreatedAt)) {
 				latest = rec
 			}
 			entry.Requests = append(entry.Requests, toSummary(rec, now))
@@ -190,6 +211,11 @@ func summarizeConversations(items []conversation, active []*Record, now time.Tim
 		}
 		if latest == nil {
 			continue
+		}
+		if item.titleLookup != nil {
+			if title := item.titleLookup(); title != "" {
+				entry.Title = title
+			}
 		}
 		entry.Context = latest.requestContext
 		entry.LatestRequestID = latest.RequestID

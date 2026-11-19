@@ -26,13 +26,14 @@ const idleTimeout = 300 * time.Second
 const totalTimeout = 30 * time.Minute
 
 type Service struct {
-	plugins *sourceplugin.Manager
-	mu      sync.RWMutex
-	store   *modelsource.Store
-	key     string
-	saveKey func(string) error
-	usage   *usage.Service
-	client  *http.Client
+	codexTitles codexTitles
+	plugins     *sourceplugin.Manager
+	mu          sync.RWMutex
+	store       *modelsource.Store
+	key         string
+	saveKey     func(string) error
+	usage       *usage.Service
+	client      *http.Client
 }
 
 func New(store *modelsource.Store, key string, saveKey func(string) error) *Service {

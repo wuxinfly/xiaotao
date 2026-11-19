@@ -15,6 +15,44 @@ const parts: Array<{key: keyof ContextParts; label: string; color: string}> = [
 
 const count = (value?: number | null) => value == null ? '—' : value.toLocaleString('zh-CN');
 
+const cellCount = 80;
+
+function ContextMap({context, filled}: {context: DashboardConversation['context']; filled: number}) {
+  const [selected, setSelected] = useState<keyof ContextParts | null>(null);
+  const sections = parts.filter(part => context.parts[part.key] > 0);
+  if (sections.length === 0) return null;
+  const current = sections.find(part => part.key === selected) ?? sections[0];
+  const total = sections.reduce((sum, part) => sum + context.parts[part.key], 0);
+  const cells = Math.max(1, Math.round(filled / 100 * cellCount));
+  let end = 0;
+  const ranges = sections.map(part => {
+    end += context.parts[part.key];
+    return {part, end: end / total * cells};
+  });
+  const detail = context.items?.[current.key] ?? [];
+  return <>
+    <div className="context-map" aria-label="上下文方格图">
+      {Array.from({length: cellCount}, (_, index) => {
+        const match = index < cells ? ranges.find(range => index + 0.5 <= range.end)?.part : undefined;
+        return match
+          ? <button type="button" key={index} tabIndex={-1} title={match.label} aria-label={match.label}
+              data-selected={match.key === current.key} style={{background: match.color}} onClick={() => setSelected(match.key)}/>
+          : <span key={index} aria-hidden="true"/>;
+      })}
+    </div>
+    <div className="context-legend" aria-label="上下文分块">
+      {sections.map(part => <button type="button" key={part.key} aria-pressed={current.key === part.key} onClick={() => setSelected(part.key)}>
+        <i aria-hidden="true" style={{background: part.color}}/>
+        <span>{part.label}</span><strong>{count(context.parts[part.key])}</strong>
+      </button>)}
+    </div>
+    <section className="context-part-detail" aria-label="分块明细">
+      <header><strong>{current.label}</strong><span>约 {count(context.parts[current.key])} tokens</span></header>
+      {detail.length > 0 && <ul>{detail.map((item, index) => <li key={index}><span>{item.label}</span><span>{count(item.tokens)}</span></li>)}</ul>}
+    </section>
+  </>;
+}
+
 function ContextDetails({session, nowMs}: {session: DashboardConversation; nowMs: number}) {
   const {context, requests, totals} = session;
   const latest = requests.find(request => request.id === session.latestRequestId) ?? requests[0];
@@ -22,7 +60,6 @@ function ContextDetails({session, nowMs}: {session: DashboardConversation; nowMs
   const used = measured ?? context.estimated;
   const window = context.window;
   const percent = window > 0 ? Math.round(used / window * 100) : null;
-  const sections = parts.filter(part => context.parts[part.key] > 0);
   const filled = Math.min(100, Math.max(0, percent ?? 100));
   return <>
     <div className="context-panel-heading">
@@ -33,17 +70,7 @@ function ContextDetails({session, nowMs}: {session: DashboardConversation; nowMs
       <span>{percent != null ? `${percent}%` : '窗口未知'}</span>
     </div>
     <div className="context-label">{measured == null ? '最新请求 · 估算输入' : '最新请求 · 上游输入用量'}</div>
-    {sections.length > 0 && <div className="context-meter" aria-label="估算上下文组成">
-      <div className="context-meter-fill" style={{width: `${filled}%`}}>
-        {sections.map(part => <span key={part.key} style={{flexGrow: context.parts[part.key], background: part.color}}/>)}
-      </div>
-    </div>}
-    {sections.length > 0 && <ul className="context-legend" aria-label="估算分项">
-      {sections.map(part => <li key={part.key}>
-        <i aria-hidden="true" style={{background: part.color}}/>
-        <span>{part.label}</span><strong>{count(context.parts[part.key])}</strong>
-      </li>)}
-    </ul>}
+    <ContextMap context={context} filled={filled}/>
     <details className="context-requests">
       <summary>最近请求 <span>已确认累计输入 {count(totals.prompt)} · 输出 {count(totals.completion)} tokens</span></summary>
       <RecentRequests requests={requests} nowMs={nowMs}/>

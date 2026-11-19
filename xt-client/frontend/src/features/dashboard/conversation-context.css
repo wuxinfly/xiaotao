@@ -47,13 +47,23 @@
 .context-panel-heading small {font-size: .6em; color: var(--muted); font-weight: 500;}
 .context-model {margin: 0; overflow-wrap: anywhere;}
 .context-label {color: var(--muted); font-size: 12px;}
-.context-meter {background: color-mix(in srgb, var(--muted) 24%, transparent); border-radius: 8px; overflow: hidden; height: 12px; margin-top: 16px;}
-.context-meter-fill {display: flex; height: 100%;}
-.context-meter-fill span {flex-basis: 0;}
-.context-legend {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px 16px; padding: 0; margin: 15px 0;}
-.context-legend li {list-style: none; display: flex; align-items: center; gap: 6px; font-size: 12px;}
+.context-map {display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 4px; margin-top: 16px;}
+.context-map > * {height: clamp(9px, 2vw, 17px); border: 0; border-radius: 3px; background: color-mix(in srgb, var(--muted) 18%, transparent);}
+.context-map button {cursor: pointer; opacity: .72;}
+.context-map button:hover, .context-map button[data-selected='true'] {opacity: 1;}
+.context-legend {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); gap: 7px; margin: 14px 0;}
+.context-legend button {
+  display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; color: var(--text);
+  padding: 7px; border-radius: 6px; border: 1px solid transparent; background: transparent; text-align: left;
+}
+.context-legend button:hover, .context-legend button[aria-pressed='true'] {border-color: color-mix(in srgb, var(--muted) 40%, transparent);}
 .context-legend strong {margin-left: auto; font-variant-numeric: tabular-nums;}
 .context-legend i {width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;}
+.context-part-detail {padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--muted) 10%, transparent);}
+.context-part-detail header, .context-part-detail li {display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere;}
+.context-part-detail header span, .context-part-detail li {color: var(--muted); font-size: 12px;}
+.context-part-detail ul {list-style: none; margin: 6px 0 0; padding: 0;}
+.context-part-detail li {padding: 4px 0;}
 .context-requests {margin-top: 16px;}
 .context-requests summary {cursor: pointer; padding: 8px 0; font-size: 13px;}
 .context-requests summary span {color: var(--muted); margin-left: 8px;}

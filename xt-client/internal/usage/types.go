@@ -13,6 +13,7 @@ const (
 
 // Record represents a single request log stored in SQLite.
 type Record struct {
+	auxiliary        bool
 	conversationID   string
 	requestContext   RequestContext
 	RequestID        string     `json:"requestId"`

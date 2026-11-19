@@ -14,7 +14,7 @@ export interface DashboardConversation {
   title: string;
   source: string;
   active: number;
-  context: {window: number; estimated: number; parts: ContextParts};
+  context: {window: number; estimated: number; parts: ContextParts; items?: Partial<Record<keyof ContextParts, Array<{label: string; tokens: number}>>>};
   totals: TokenMetrics;
   latestRequestId: string;
   requests: RequestSummary[];

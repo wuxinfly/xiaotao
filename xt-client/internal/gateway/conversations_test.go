@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -97,5 +99,45 @@ func TestDashboardGroupsExplicitAPIAndAnthropicSessions(t *testing.T) {
 		if len(session.Requests) != 2 {
 			t.Fatalf("incorrectly grouped: %+v", session)
 		}
+	}
+}
+
+func TestCodexDashboardKeepsTitleHelpersInMainThread(t *testing.T) {
+	svc, src, u := setupGateway(t, func(w http.ResponseWriter, r *http.Request) { completion(w) })
+	svc.codexTitles.path = filepath.Join(t.TempDir(), "session_index.jsonl")
+	ask := func(header, id, extra, text string) {
+		t.Helper()
+		req := httptest.NewRequest("POST", "/v1/responses", strings.NewReader(fmt.Sprintf(`{"model":%q,"input":%q%s}`, src.Models[0].ID, text, extra)))
+		req.Header.Set("Authorization", "Bearer local-key")
+		req.Header.Set("originator", "codex_desktop")
+		if header != "" {
+			req.Header.Set(header, id)
+		}
+		out := httptest.NewRecorder()
+		svc.HandleResponses(out, req)
+		if out.Code != 200 {
+			t.Fatalf("gateway status %d: %s", out.Code, out.Body.String())
+		}
+	}
+	ask("session_id", "main", "", "检查 Windows 打包")
+	ask("thread-id", "main", "", "检查 Windows 打包")
+	ask("", "", `,"prompt_cache_key":"main"`, "检查 Windows 打包")
+	ask("session_id", "other", "", "另一个对话")
+	for range 4 {
+		ask("session-id", "helper", `,"client_metadata":{"x-codex-turn-metadata":"{\"thread_id\":\"helper\",\"thread_source\":\"thread_title\",\"parent_thread_id\":\"main\"}"}`, "title")
+	}
+	if err := os.WriteFile(svc.codexTitles.path, []byte("{\"id\":\"main\",\"thread_name\":\"修复 Windows 打包\"}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := u.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Conversations) != 2 {
+		t.Fatalf("wrong groups: %+v", snap.Conversations)
+	}
+	got := snap.Conversations[0]
+	if got.Title != "修复 Windows 打包" || got.Context.Estimated <= 2 || len(got.Context.Items["messages"]) != 1 || got.Totals.Prompt == nil || *got.Totals.Prompt != 140 {
+		t.Fatalf("main context or title overwritten: %+v", got)
 	}
 }

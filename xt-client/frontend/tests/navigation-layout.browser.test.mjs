@@ -19,7 +19,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     const tokens = {totalTokens: 3000, promptTokens: 2000, completionTokens: 1000, cachedTokens: 500};
     function conversation(id, title, source, estimated) {
       return {id, title, source, active: 1, latestRequestId: id,
-        context: {estimated, window: 10000, parts: {messages: estimated}},
+        context: {estimated, window: 10000, parts: {messages: estimated - 500, tools: 500}, items: {tools: [{label: 'read_file', tokens: 500}]}},
         totals: {prompt: estimated, completion: 0},
         requests: [{id, model: 'same-model', startedAt: Date.now(), status: 'streaming', tokens: {}}]};
     }
@@ -75,6 +75,10 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await sessionTabs.getByRole('tab', {name: '小涛任务'}).press('ArrowRight');
     await page.getByRole('tabpanel').getByText('70%', {exact: true}).waitFor();
     assert.equal(await sessionTabs.getByRole('tab', {name: '外部会话'}).getAttribute('aria-selected'), 'true');
+    await page.locator('.context-map').getByRole('button', {name: '工具定义'}).first().click();
+    await page.getByRole('region', {name: '分块明细'}).getByText('read_file').waitFor();
+    await page.locator('.context-legend').getByRole('button', {name: /对话消息/}).press('Enter');
+    await page.getByRole('region', {name: '分块明细'}).getByText('对话消息', {exact: true}).waitFor();
     const titlebar = await page.locator('.titlebar').boundingBox();
     const dashboardBack = await page.getByRole('button', {name: '返回小涛', exact: true}).boundingBox();
     assert.ok(dashboardBack.x < 20 && dashboardBack.y >= titlebar.y && dashboardBack.y + dashboardBack.height <= titlebar.y + titlebar.height, 'back button must sit at the upper-left of the title bar');

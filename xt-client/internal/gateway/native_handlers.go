@@ -16,7 +16,7 @@ func (s *Service) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	s.handleNative(w, r, wireprotocol.Messages)
 }
 func (s *Service) handleNative(w http.ResponseWriter, r *http.Request, protocol string) {
-	request := withIncomingProtocol(r, protocol)
+	request := r.Clone(r.Context())
 	request.Header = r.Header.Clone()
 	if protocol == wireprotocol.Messages && request.Header.Get("Authorization") == "" {
 		if key := request.Header.Get("x-api-key"); key != "" {
@@ -56,6 +56,7 @@ func (s *Service) handleNative(w http.ResponseWriter, r *http.Request, protocol 
 		nativeError(w, protocol, 400, "Invalid request")
 		return
 	}
+	request = withIncomingContext(request, codexRequestContext(r, protocol, body))
 	request.Body = io.NopCloser(bytes.NewReader(raw))
 	request.ContentLength = int64(len(raw))
 	writer := &nativeWriter{dst: w, protocol: protocol, header: make(http.Header), status: 200, encoder: wireprotocol.Encoder{Protocol: protocol}}
