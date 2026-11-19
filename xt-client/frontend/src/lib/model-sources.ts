@@ -23,6 +23,10 @@ export interface Source {
   hasAPIKey: boolean;
   models: SourceModel[];
 }
+export interface CatalogModel {
+  id: string;
+  display_name?: string;
+}
 export interface SourceInput {
   label: string;
   protocol: SourceProtocol;
@@ -36,6 +40,7 @@ export function modelCatalogChanged() { window.dispatchEvent(new Event(MODEL_CAT
 const pathFor = (id: string) => `/api/model-sources/${encodeURIComponent(id)}`;
 export const modelSources = {
   list: (signal?: AbortSignal) => request<{sources: Source[]}>('/api/model-sources', {signal}),
+  discover: (baseURL: string, protocol: SourceProtocol, apiKey: string, signal?: AbortSignal) => request<{models: CatalogModel[]}>('/api/model-sources/discover', {method: 'POST', body: JSON.stringify({baseURL, protocol, apiKey}), signal}),
   save: (input: SourceInput, id?: string, signal?: AbortSignal) => request<Source>(id ? pathFor(id) : '/api/model-sources', {method: id ? 'PUT' : 'POST', body: JSON.stringify(input), signal}),
   remove: (id: string, signal?: AbortSignal) => request<{ok: true}>(pathFor(id), {method: 'DELETE', signal}),
   test: (id: string, signal?: AbortSignal) => request<{ok: true}>(`${pathFor(id)}/test`, {method: 'POST', signal}),

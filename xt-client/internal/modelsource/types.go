@@ -78,6 +78,19 @@ func protocolPath(protocol string) string {
 func ProtocolURL(base, protocol string) string {
 	return strings.TrimRight(base, "/") + protocolPath(protocol)
 }
+
+// ModelsURL derives the catalog endpoint from the same API prefix used for inference.
+func ModelsURL(raw, protocol string) (string, error) {
+	if !ValidProtocol(protocol) {
+		return "", ErrInvalid
+	}
+	base, err := normalizeURL(raw, protocol)
+	if err != nil {
+		return "", err
+	}
+	return base + "/models", nil
+}
+
 func ChatURL(base string) string { return ProtocolURL(base, "openai-chat") }
 
 func validateModels(models []Model, owned map[string]bool) ([]Model, error) {

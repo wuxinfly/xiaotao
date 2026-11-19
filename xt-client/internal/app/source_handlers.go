@@ -45,6 +45,31 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 	})
 	mux.HandleFunc("POST /api/model-sources", save)
 	mux.HandleFunc("PUT /api/model-sources/{id}", save)
+	mux.HandleFunc("POST /api/model-sources/discover", protect(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			BaseURL  string `json:"baseURL"`
+			Protocol string `json:"protocol"`
+			APIKey   string `json:"apiKey"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil || decoder.Decode(new(any)) != io.EOF {
+			apiError(w, 400, "模型查询配置格式无效")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+		defer cancel()
+		models, err := gw.DiscoverModels(ctx, input.BaseURL, input.Protocol, input.APIKey)
+		if errors.Is(err, modelsource.ErrInvalid) {
+			apiError(w, 400, "请检查 API URL、上游格式和 API Key")
+			return
+		}
+		if err != nil {
+			apiError(w, 502, "获取模型失败，请检查地址和密钥，或手动填写模型 ID")
+			return
+		}
+		send(w, map[string]any{"models": models})
+	}))
 	mux.HandleFunc("DELETE /api/model-sources/{id}", protect(func(w http.ResponseWriter, r *http.Request) {
 		if err := store.Delete(r.PathValue("id")); err != nil {
 			sourceAPIError(w, err, apiError)

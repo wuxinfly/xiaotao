@@ -170,12 +170,7 @@ func (s *Service) send(ctx context.Context, src modelsource.Source, key string, 
 		cancel()
 		return nil, func() {}, err
 	}
-	if src.Protocol == wireprotocol.Messages {
-		req.Header.Set("x-api-key", key)
-		req.Header.Set("anthropic-version", "2023-06-01")
-	} else {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
+	setUpstreamAuth(req, src.Protocol, key)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	// One timer owns idle cancellation throughout headers and response reads. Closing the
@@ -211,3 +206,12 @@ func (b *idleBody) Read(p []byte) (int, error) {
 	return n, err
 }
 func (b *idleBody) Close() error { b.timer.Stop(); return b.ReadCloser.Close() }
+
+func setUpstreamAuth(req *http.Request, protocol, key string) {
+	if protocol == wireprotocol.Messages {
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+}

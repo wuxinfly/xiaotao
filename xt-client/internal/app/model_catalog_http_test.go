@@ -117,7 +117,7 @@ func readAgentCatalog(t *testing.T, h http.Handler, state State) []agent.ModelOp
 
 func TestManualSourcesRejectCrossOriginAndInvalidUpdates(t *testing.T) {
 	h, state := newSourceTestApp(t, t.TempDir())
-	for _, path := range []string{"/api/model-sources", "/api/agent/models/refresh", "/api/model-sources/unknown/test"} {
+	for _, path := range []string{"/api/model-sources", "/api/agent/models/refresh", "/api/model-sources/unknown/test", "/api/model-sources/discover"} {
 		r := httptest.NewRequest("POST", state.URL+path, strings.NewReader("{}"))
 		r.Header.Set("Origin", "http://evil.example")
 		w := httptest.NewRecorder()
