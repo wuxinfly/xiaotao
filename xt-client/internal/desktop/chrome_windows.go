@@ -192,6 +192,9 @@ func chrome(w webview.WebView, url, token, displayName string, onReady func(), s
 				return 0
 			}
 		case 0x5:
+			if win("IsIconic", hwnd) != 0 {
+				return 0
+			}
 			status, _, _ := user.NewProc("CallWindowProcW").Call(old, h, uintptr(msg), wp, lp)
 			if wp != 1 {
 				resizeStartupCover(hwnd)
