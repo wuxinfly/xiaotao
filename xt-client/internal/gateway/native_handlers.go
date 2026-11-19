@@ -16,7 +16,7 @@ func (s *Service) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	s.handleNative(w, r, wireprotocol.Messages)
 }
 func (s *Service) handleNative(w http.ResponseWriter, r *http.Request, protocol string) {
-	request := r.Clone(r.Context())
+	request := withIncomingProtocol(r, protocol)
 	request.Header = r.Header.Clone()
 	if protocol == wireprotocol.Messages && request.Header.Get("Authorization") == "" {
 		if key := request.Header.Get("x-api-key"); key != "" {

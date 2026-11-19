@@ -28,6 +28,7 @@ type Service struct {
 
 	activeRequests map[string]*ActiveRequest
 	recentFinished []*Record
+	conversations  map[string]*conversation
 
 	writeCh chan *writeTask
 	done    chan struct{}
@@ -139,7 +140,7 @@ type ActiveRequest struct {
 }
 
 // StartRequest creates and registers a new active request record.
-func (s *Service) StartRequest(id, channel, model, accountID, actionTag, actionTitle string) *ActiveRequest {
+func (s *Service) StartRequest(id, channel, model, accountID, actionTag, actionTitle string, context ...ConversationInput) *ActiveRequest {
 	if channel == "" {
 		channel = "trae"
 	}
@@ -162,12 +163,15 @@ func (s *Service) StartRequest(id, channel, model, accountID, actionTag, actionT
 		Status:      StatusPending,
 	}
 
+	s.mu.Lock()
+	if len(context) > 0 {
+		s.attachConversation(&rec, context[0])
+	}
 	ar := &ActiveRequest{
 		s:   s,
 		rec: rec,
 	}
 
-	s.mu.Lock()
 	s.activeRequests[id] = ar
 	s.mu.Unlock()
 
@@ -403,6 +407,7 @@ func (s *Service) completeActiveRequest(id string, rec *Record, isFirstFinal boo
 	}
 
 	if isFirstFinal {
+		s.finishConversation(rec)
 		// Update in-memory today & cumulative counts
 		s.todayCache.TotalRequests++
 		s.cumulative.TotalRequests++
@@ -601,6 +606,7 @@ func (s *Service) Snapshot() (*DashboardSnapshot, error) {
 	// Copy finished records
 	finishedList := make([]*Record, len(s.recentFinished))
 	copy(finishedList, s.recentFinished)
+	conversations := s.copyConversations()
 	s.mu.RUnlock()
 
 	activeList := make([]*Record, 0, len(activeRequests))
@@ -694,6 +700,7 @@ func (s *Service) Snapshot() (*DashboardSnapshot, error) {
 		Today:          today,
 		Cumulative:     cumulative,
 		RecentRequests: recentSummaries,
+		Conversations:  summarizeConversations(conversations, activeList, now),
 		ActiveCount:    len(activeList),
 		ActiveRequests: activeSummaries,
 		Heatmap: HeatmapData{

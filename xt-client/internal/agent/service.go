@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -429,7 +431,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	stats.ContextTokens = initialBreakdown.TotalTokens
 	history.RunStats = append(history.RunStats, stats)
 	emit(Event{Type: "run_stats", SessionID: sessionID, RunStats: &stats})
-	runCtx = withAgentSessionRun(runCtx, sessionID, runID)
+	runCtx = withAgentSessionRun(runCtx, sessionID, runID, history.Title)
 	setCurrentSession(sessionID)
 	defer setCurrentSession("")
 	logSessionStart(sessionID, runID, history.Model, len(history.Messages), stats.ContextWindow)
@@ -877,6 +879,12 @@ func (c *httpModelClient) Complete(ctx context.Context, model string, messages [
 	req.Header.Set("Content-Type", "application/json")
 	if sID := agentSessionID(ctx); sID != "" {
 		req.Header.Set("X-Xiaotao-Session", sID)
+		if scope, ok := ctx.Value(agentCtxKey{}).(agentCtxVal); ok && scope.title != "" {
+			req.Header.Set("X-Xiaotao-Title", base64.RawURLEncoding.EncodeToString([]byte(scope.title)))
+		}
+		if settings.ContextWindow > 0 {
+			req.Header.Set("X-Xiaotao-Context-Window", strconv.FormatInt(settings.ContextWindow, 10))
+		}
 	}
 	if rID := agentRunID(ctx); rID != "" {
 		req.Header.Set("X-Xiaotao-Run", rID)

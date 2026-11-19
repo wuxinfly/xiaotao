@@ -1,11 +1,11 @@
 package agent
 
 import (
-	"time"
-	"math"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
 )
 
 // ContextBreakdown classifies what occupies the model's context window for the
@@ -155,6 +155,11 @@ func calculateContextBreakdown(messages []map[string]any, tools []map[string]any
 	return breakdown
 }
 
+// EstimateRequestContext measures the model input as projected to Chat Completions.
+func EstimateRequestContext(messages, tools []map[string]any) ContextBreakdown {
+	return calculateContextBreakdown(messages, tools)
+}
+
 func estimateContextTokens(messages []map[string]any) int64 {
 	return calculateContextBreakdown(messages, nil).TotalTokens
 }
@@ -206,7 +211,6 @@ func derefModelSettings(settings *ModelSettings) ModelSettings {
 	}
 	return *settings
 }
-
 
 // liveStatsInterval throttles run_stats updates while a model response streams.
 const liveStatsInterval = 200 * time.Millisecond

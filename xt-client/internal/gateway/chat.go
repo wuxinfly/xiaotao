@@ -45,7 +45,7 @@ func (s *Service) HandleChat(w http.ResponseWriter, r *http.Request) {
 	tag, title := requestaction.DetectBody(body)
 	var tracker *usage.ActiveRequest
 	if u != nil {
-		tracker = u.StartRequest(id, src.Kind, modelID, src.ID, tag, title)
+		tracker = u.StartRequest(id, src.Kind, modelID, src.ID, tag, title, conversationInput(r, body, int64(m.ContextWindow)))
 		tracker.SetSourceLabel(src.Label)
 	}
 	if err != nil {

@@ -17,10 +17,18 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true});
     const context = await browser.newContext({viewport: {width: 1280, height: 850}, reducedMotion: 'reduce'});
     const tokens = {totalTokens: 3000, promptTokens: 2000, completionTokens: 1000, cachedTokens: 500};
+    function conversation(id, title, source, estimated) {
+      return {id, title, source, active: 1, latestRequestId: id,
+        context: {estimated, window: 10000, parts: {messages: estimated}},
+        totals: {prompt: estimated, completion: 0},
+        requests: [{id, model: 'same-model', startedAt: Date.now(), status: 'streaming', tokens: {}}]};
+    }
+    const internal = conversation('internal', '小涛任务', '小涛', 3000);
+    const external = conversation('external', '外部会话', 'Responses', 7000);
     await context.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/api/dashboard/events') return route.fulfill({contentType: 'text/event-stream', body: ': fixture\n\n'});
-      if (path === '/api/dashboard') return route.fulfill({json: {version: 'fixture', versionSeq: 1, launch: {startedAt: 1793678400, uptimeSeconds: 60, batchId: 'fixture'}, currentSession: tokens, today: {...tokens, totalRequests: 2}, cumulative: {...tokens, totalRequests: 2}, recentRequests: [], activeRequests: [], activeCount: 0, heatmap: {startDate: '2026-01-01', endDate: '2026-11-03', trackingStartDate: '2026-01-01', days: {}}, storage: {status: 'healthy'}}});
+      if (path === '/api/dashboard') return route.fulfill({json: {version: 'fixture', versionSeq: 1, launch: {startedAt: 1793678400, uptimeSeconds: 60, batchId: 'fixture'}, currentSession: tokens, today: {...tokens, totalRequests: 2}, cumulative: {...tokens, totalRequests: 2}, conversations: [internal, external], recentRequests: [], activeRequests: [], activeCount: 0, heatmap: {startDate: '2026-01-01', endDate: '2026-11-03', trackingStartDate: '2026-01-01', days: {}}, storage: {status: 'healthy'}}});
       return route.fulfill({json: {
         sessions: [],
         accounts: [],
@@ -61,6 +69,12 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.locator('.dashboard-page').waitFor();
     assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'secondary pages must not reserve the left sidebar');
     assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
+    const sessionTabs = page.getByRole('tablist', {name: '会话'});
+    assert.equal(await sessionTabs.getByRole('tab').count(), 2);
+    await page.getByRole('tabpanel').getByText('30%', {exact: true}).waitFor();
+    await sessionTabs.getByRole('tab', {name: '小涛任务'}).press('ArrowRight');
+    await page.getByRole('tabpanel').getByText('70%', {exact: true}).waitFor();
+    assert.equal(await sessionTabs.getByRole('tab', {name: '外部会话'}).getAttribute('aria-selected'), 'true');
     const titlebar = await page.locator('.titlebar').boundingBox();
     const dashboardBack = await page.getByRole('button', {name: '返回小涛', exact: true}).boundingBox();
     assert.ok(dashboardBack.x < 20 && dashboardBack.y >= titlebar.y && dashboardBack.y + dashboardBack.height <= titlebar.y + titlebar.height, 'back button must sit at the upper-left of the title bar');

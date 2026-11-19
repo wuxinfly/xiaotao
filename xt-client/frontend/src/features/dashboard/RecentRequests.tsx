@@ -3,13 +3,6 @@ import { useState } from 'react';
 import type { RequestSummary } from '../../lib/api';
 import { formatNumber } from './UsageOverview';
 
-interface Props {
-  recentRequests: RequestSummary[];
-  activeRequests: RequestSummary[];
-  activeCount: number;
-  nowMs: number;
-}
-
 function SpeedometerIcon() {
   return (
     <svg className="req-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -53,45 +46,12 @@ function getTagClass(tag: string): string {
   }
 }
 
-export function RecentRequests({ recentRequests, activeRequests, activeCount, nowMs }: Props) {
-  const [expandedActive, setExpandedActive] = useState(false);
+export function RecentRequests({ requests, nowMs }: {requests: RequestSummary[]; nowMs: number}) {
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
 
-  // If expanded, show all active requests + recent top 3
-  const displayed = expandedActive ? activeRequests : recentRequests;
-
-  if (displayed.length === 0) {
-    return (
-      <section className="requests-section" aria-label="最近请求">
-        <div className="requests-header">
-          <h2>最近三条请求</h2>
-        </div>
-        <div className="empty-requests-card" role="status">
-          暂无模型请求记录。外部工具通过本地代理（/v1/chat/completions）调用模型时，状态将在此处实时展示。
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className="requests-section" aria-label="最近请求">
-      <div className="requests-header">
-        <h2>最近三条请求</h2>
-        {activeCount > 3 && (
-          <button
-            type="button"
-            className="requests-toggle-btn"
-            aria-expanded={expandedActive}
-            onClick={() => setExpandedActive(!expandedActive)}
-          >
-            {expandedActive ? '收起进行中列表' : `查看全部 ${activeCount} 条进行中请求`}
-            <span aria-hidden="true">{expandedActive ? '↑' : '↓'}</span>
-          </button>
-        )}
-      </div>
-
       <div className="requests-list" role="list">
-        {displayed.map((req) => {
+        {requests.map((req) => {
           const hasError = req.status === 'failed' || req.status === 'interrupted';
           const isErrorExpanded = expandedErrorId === req.id;
 
@@ -253,6 +213,5 @@ export function RecentRequests({ recentRequests, activeRequests, activeCount, no
           );
         })}
       </div>
-    </section>
   );
 }

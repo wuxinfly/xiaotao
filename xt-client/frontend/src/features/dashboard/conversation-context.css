@@ -1,0 +1,59 @@
+.requests-section:has(.context-card) .requests-header h2 {color: var(--text);}
+.context-card {
+  --context-blue: #55a4ff;
+  --context-purple: #a286ea;
+  --context-teal: #52c4b2;
+  --context-orange: #e7a762;
+  --context-pink: #da85b7;
+  --context-lime: #a6bd68;
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--muted) 7%, transparent);
+  min-width: 0;
+}
+.context-tabs {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+}
+.context-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  max-width: min(260px, 75%);
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.context-tabs button > span:last-of-type {overflow: hidden; white-space: nowrap; text-overflow: ellipsis;}
+.context-tabs button:hover, .context-tabs button[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--muted) 40%, transparent);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--text);
+}
+.context-tabs button:focus-visible {outline: 2px solid var(--context-blue); outline-offset: -2px;}
+.context-panel {padding: clamp(14px, 3vw, 26px);}
+.context-panel-heading {display: flex; gap: 12px; align-items: flex-end; justify-content: space-between;}
+.context-panel-heading h3 {font-size: clamp(20px, 3.7vw, 32px); margin: 3px 0; font-variant-numeric: tabular-nums;}
+.context-panel-heading small {font-size: .6em; color: var(--muted); font-weight: 500;}
+.context-model {margin: 0; overflow-wrap: anywhere;}
+.context-label {color: var(--muted); font-size: 12px;}
+.context-meter {background: color-mix(in srgb, var(--muted) 24%, transparent); border-radius: 8px; overflow: hidden; height: 12px; margin-top: 16px;}
+.context-meter-fill {display: flex; height: 100%;}
+.context-meter-fill span {flex-basis: 0;}
+.context-legend {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px 16px; padding: 0; margin: 15px 0;}
+.context-legend li {list-style: none; display: flex; align-items: center; gap: 6px; font-size: 12px;}
+.context-legend strong {margin-left: auto; font-variant-numeric: tabular-nums;}
+.context-legend i {width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;}
+.context-requests {margin-top: 16px;}
+.context-requests summary {cursor: pointer; padding: 8px 0; font-size: 13px;}
+.context-requests summary span {color: var(--muted); margin-left: 8px;}

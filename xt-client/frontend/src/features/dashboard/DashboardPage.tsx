@@ -1,6 +1,6 @@
 import { useDashboardData } from './DashboardData';
 import { UsageOverview } from './UsageOverview';
-import { RecentRequests } from './RecentRequests';
+import { ConversationContext } from './ConversationContext';
 import { UsageHeatmap } from './UsageHeatmap';
 import './dashboard.css';
 
@@ -87,13 +87,7 @@ export function DashboardPage() {
       {/* 1. Usage Overview Card */}
       <UsageOverview snap={snap} uptimeSeconds={snap.launch.uptimeSeconds} />
 
-      {/* 2. Recent Requests Card */}
-      <RecentRequests
-        recentRequests={snap.recentRequests}
-        activeRequests={snap.activeRequests}
-        activeCount={snap.activeCount}
-        nowMs={nowMs}
-      />
+      <ConversationContext snapshot={snap} nowMs={nowMs} />
 
       {/* 3. Usage Heatmap */}
       <UsageHeatmap heatmap={snap.heatmap} />

@@ -10,14 +10,15 @@ type agentCtxKey struct{}
 
 type agentCtxVal struct {
 	sessionID string
+	title     string
 	runID     string
 }
 
-func withAgentSessionRun(ctx context.Context, sessionID, runID string) context.Context {
+func withAgentSessionRun(ctx context.Context, sessionID, runID, title string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, agentCtxKey{}, agentCtxVal{sessionID: sessionID, runID: runID})
+	return context.WithValue(ctx, agentCtxKey{}, agentCtxVal{sessionID: sessionID, runID: runID, title: title})
 }
 
 func agentSessionID(ctx context.Context) string {

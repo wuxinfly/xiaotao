@@ -1,3 +1,4 @@
+import type {DashboardConversation} from './dashboard-conversation';
 import {request} from './http';
 import type {AgentModelSettings} from './agent-model-settings';
 import type {ContextBreakdown} from '../features/agent/contextTypes';
@@ -270,6 +271,7 @@ export interface StorageStatus {
 }
 
 export interface DashboardSnapshot {
+  conversations?: DashboardConversation[];
   version: string;
   launch: LaunchInfo;
   currentSession: SessionStats;

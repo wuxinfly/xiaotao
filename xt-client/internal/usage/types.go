@@ -13,6 +13,8 @@ const (
 
 // Record represents a single request log stored in SQLite.
 type Record struct {
+	conversationID   string
+	requestContext   RequestContext
 	RequestID        string     `json:"requestId"`
 	BatchID          string     `json:"batchId"`
 	Channel          string     `json:"channel"`
@@ -128,15 +130,16 @@ type LaunchInfo struct {
 
 // DashboardSnapshot is the complete payload for GET /api/dashboard and SSE initial state.
 type DashboardSnapshot struct {
-	Version        string           `json:"version"`
-	Launch         LaunchInfo       `json:"launch"`
-	CurrentSession SessionStats     `json:"currentSession"`
-	Today          DailyUsage       `json:"today"`
-	Cumulative     CumulativeStats  `json:"cumulative"`
-	RecentRequests []RequestSummary `json:"recentRequests"`
-	ActiveCount    int              `json:"activeCount"`
-	ActiveRequests []RequestSummary `json:"activeRequests"`
-	Heatmap        HeatmapData      `json:"heatmap"`
-	Storage        StorageStatus    `json:"storage"`
-	VersionSeq     int64            `json:"versionSeq"`
+	Conversations  []ConversationSummary `json:"conversations"`
+	Version        string                `json:"version"`
+	Launch         LaunchInfo            `json:"launch"`
+	CurrentSession SessionStats          `json:"currentSession"`
+	Today          DailyUsage            `json:"today"`
+	Cumulative     CumulativeStats       `json:"cumulative"`
+	RecentRequests []RequestSummary      `json:"recentRequests"`
+	ActiveCount    int                   `json:"activeCount"`
+	ActiveRequests []RequestSummary      `json:"activeRequests"`
+	Heatmap        HeatmapData           `json:"heatmap"`
+	Storage        StorageStatus         `json:"storage"`
+	VersionSeq     int64                 `json:"versionSeq"`
 }
