@@ -48,8 +48,11 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
     setCatalogError('');
   }
 
+  const endpointURL = normalizeBaseURL(form.baseURL, form.protocol);
+  const canDiscover = Boolean(endpointURL && (form.apiKey?.trim() || source?.hasAPIKey));
+
   async function discover() {
-    if (busy || discovering || !live.current || !endpointURL || !form.apiKey?.trim()) return;
+    if (busy || discovering || !live.current || !canDiscover) return;
     setDiscovering(true);
     setCatalog(null);
     setSelected(new Set());
@@ -57,7 +60,7 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
     const controller = new AbortController();
     request.current = controller;
     try {
-      const result = await modelSources.discover(form.baseURL, form.protocol, form.apiKey, controller.signal);
+      const result = await modelSources.discover(form.baseURL, form.protocol, form.apiKey, source?.id, controller.signal);
       if (live.current) setCatalog(result.models);
     } catch (reason) {
       if (live.current && !controller.signal.aborted) setCatalogError(reason instanceof Error ? reason.message : String(reason));
@@ -72,7 +75,7 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
     if (!selectedModels.length) return;
     const models = selectedModels.map(model => ({...emptyModel(), upstreamModelId: model.id, label: model.display_name?.trim() || model.id}));
     const firstModel = form.models[0];
-    const replacePlaceholder = form.models.length === 1 && !firstModel.upstreamModelId && !firstModel.label &&
+    const replacePlaceholder = !source && form.models.length === 1 && !firstModel.upstreamModelId && !firstModel.label &&
       firstModel.contextWindow === undefined && firstModel.maxOutputTokens === undefined &&
       !firstModel.supportsImages && !firstModel.supportsReasoning && !firstModel.reasoningEfforts?.length;
     const keys = models.map(() => crypto.randomUUID());
@@ -100,7 +103,6 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
     } catch (reason) {if (live.current && !controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason));}
     finally {if (live.current) setBusy(false);}
   }
-  const endpointURL = normalizeBaseURL(form.baseURL, form.protocol);
   return <ModalFrame title={source ? '编辑模型接口' : '添加模型接口'} description="选择 API 服务要求的上游格式；本地调用入口支持三种协议。" className="source-editor" onClose={close} footer={<div className="app-modal-actions"><button type="button" className="app-modal-button secondary" onClick={close}>取消</button><button type="submit" form="source-form" className="app-modal-button primary" disabled={busy || discovering}>{busy ? '保存中…' : '保存接口'}</button></div>}>
     <form id="source-form" noValidate onSubmit={event => {event.preventDefault(); void save();}}>
       <fieldset disabled={busy || discovering} className="source-form-fields">
@@ -110,8 +112,8 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
         </div>
         <label><span>API URL <em aria-hidden="true">必填</em></span><input aria-label="API URL" required type="url" value={form.baseURL} onChange={event => updateConnection({baseURL: event.target.value})} placeholder="https://api.example.com/v1"/><small>填写实际 API 前缀（如 /v1）或所选协议的完整端点地址，不会自动补 /v1。</small>{endpointURL && <small className="source-url-preview">将请求：<code>{endpointURL}</code></small>}</label>
         <label><span>API Key <em aria-hidden="true">{source ? "选填" : "必填"}</em></span><div className="source-api-key"><input aria-label="API Key" type={showAPIKey ? 'text' : 'password'} required={!source} value={form.apiKey ?? ''} onChange={event => updateConnection({apiKey: event.target.value})} autoComplete="new-password" placeholder={source ? '留空保留已保存的密钥' : '输入 API Key'}/><button type="button" className="source-reveal-key" onClick={() => setShowAPIKey(value => !value)} aria-label={showAPIKey ? '隐藏 API Key' : '显示 API Key'} title={showAPIKey ? '隐藏 API Key' : '显示 API Key'}>{showAPIKey ? <EyeOff size={15}/> : <Eye size={15}/>}</button></div>{source && <small>{source.hasAPIKey ? '已保存密钥；留空保留，不会显示原密钥。' : '尚未保存密钥。'}</small>}</label>
-        {!source && <section className="source-discovery" aria-label="获取可用模型" aria-busy={discovering}>
-          <button type="button" className="app-modal-button secondary" disabled={!endpointURL || !form.apiKey?.trim()} onClick={() => void discover()}>
+        <section className="source-discovery" aria-label="获取可用模型" aria-busy={discovering}>
+          <button type="button" className="app-modal-button secondary" disabled={!canDiscover} onClick={() => void discover()}>
             {discovering ? '获取中…' : '获取可用模型'}
           </button>
           {catalogError && <p role="alert" className="source-error">{catalogError}</p>}
@@ -133,7 +135,7 @@ export function SourceEditor({source, onSaved, onClose}: {source?: Source; onSav
               {selectedModels.length ? `添加选中的 ${selectedModels.length} 个模型` : '添加选中的模型'}
             </button>
           </>}
-        </section>}
+        </section>
         {form.models.map((model, index) => <SourceModelFields key={modelKeys[index]} model={model} index={index} removable={form.models.length > 1} onChange={next => setForm(current => ({...current, models: current.models.map((item, i) => i === index ? next : item)}))} onRemove={() => {setModelKeys(current => current.filter((_, i) => i !== index)); setForm(current => ({...current, models: current.models.filter((_, i) => i !== index)}));}}/>)}
         <button type="button" className="app-modal-button secondary" onClick={() => {setModelKeys(current => [...current, crypto.randomUUID()]); setForm(current => ({...current, models: [...current.models, emptyModel()]}));}}>添加模型</button>
       </fieldset>

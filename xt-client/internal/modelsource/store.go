@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,6 +223,53 @@ func (s *Store) Delete(id string) error {
 	}
 	s.entries = next
 	return nil
+}
+
+// ErrCatalogKeyOrigin requires an explicit key when a draft changes server origin.
+var ErrCatalogKeyOrigin = errors.New("catalog draft has a different origin")
+
+func (s *Store) CatalogKey(id, rawURL, protocol string) (string, error) {
+	endpoint, err := ModelsURL(rawURL, protocol)
+	if err != nil {
+		return "", err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, e := range s.entries {
+		if e.Source.ID != id {
+			continue
+		}
+		if !sameCatalogOrigin(e.Source.BaseURL, endpoint) {
+			return "", ErrCatalogKeyOrigin
+		}
+		if len(e.Secret) == 0 {
+			return "", ErrInvalid
+		}
+		key, err := s.decrypt(e.Secret)
+		if err != nil || len(key) == 0 {
+			return "", errors.New("cannot decrypt model source key")
+		}
+		return string(key), nil
+	}
+	return "", ErrNotFound
+}
+
+func sameCatalogOrigin(saved, draft string) bool {
+	a, errA := url.Parse(saved)
+	b, errB := url.Parse(draft)
+	if errA != nil || errB != nil || a.Scheme != b.Scheme || !strings.EqualFold(a.Hostname(), b.Hostname()) {
+		return false
+	}
+	port := func(u *url.URL) string {
+		if value := u.Port(); value != "" {
+			return value
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	return port(a) == port(b)
 }
 
 func (s *Store) Resolve(modelID string) (Source, Model, string, error) {

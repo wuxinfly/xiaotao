@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"xiaotao/xt-client/internal/gateway"
@@ -45,7 +46,7 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 	})
 	mux.HandleFunc("POST /api/model-sources", save)
 	mux.HandleFunc("PUT /api/model-sources/{id}", save)
-	mux.HandleFunc("POST /api/model-sources/discover", protect(func(w http.ResponseWriter, r *http.Request) {
+	discover := protect(func(w http.ResponseWriter, r *http.Request) {
 		var input struct {
 			BaseURL  string `json:"baseURL"`
 			Protocol string `json:"protocol"`
@@ -57,9 +58,28 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 			apiError(w, 400, "模型查询配置格式无效")
 			return
 		}
+		key := strings.TrimSpace(input.APIKey)
+		if id := r.PathValue("id"); key == "" && id != "" {
+			var err error
+			key, err = store.CatalogKey(id, input.BaseURL, input.Protocol)
+			switch {
+			case errors.Is(err, modelsource.ErrCatalogKeyOrigin):
+				apiError(w, 400, "接口地址已更换服务，请填写 API Key 后再获取模型")
+				return
+			case errors.Is(err, modelsource.ErrInvalid):
+				apiError(w, 400, "请检查 API URL、上游格式和 API Key")
+				return
+			case errors.Is(err, modelsource.ErrNotFound):
+				apiError(w, 404, "模型接口不存在")
+				return
+			case err != nil:
+				apiError(w, 500, "无法读取已保存的 API Key")
+				return
+			}
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
 		defer cancel()
-		models, err := gw.DiscoverModels(ctx, input.BaseURL, input.Protocol, input.APIKey)
+		models, err := gw.DiscoverModels(ctx, input.BaseURL, input.Protocol, key)
 		if errors.Is(err, modelsource.ErrInvalid) {
 			apiError(w, 400, "请检查 API URL、上游格式和 API Key")
 			return
@@ -69,7 +89,9 @@ func registerSourceRoutes(mux *http.ServeMux, store *modelsource.Store, gw *gate
 			return
 		}
 		send(w, map[string]any{"models": models})
-	}))
+	})
+	mux.HandleFunc("POST /api/model-sources/discover", discover)
+	mux.HandleFunc("POST /api/model-sources/{id}/discover", discover)
 	mux.HandleFunc("DELETE /api/model-sources/{id}", protect(func(w http.ResponseWriter, r *http.Request) {
 		if err := store.Delete(r.PathValue("id")); err != nil {
 			sourceAPIError(w, err, apiError)

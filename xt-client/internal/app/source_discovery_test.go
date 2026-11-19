@@ -86,3 +86,50 @@ func TestDiscoverManualSourceRejectsRedirect(t *testing.T) {
 		t.Fatalf("redirect: %d %s", w.Code, w.Body.String())
 	}
 }
+
+func TestDiscoverEditedSourceUsesDraftOrStoredKey(t *testing.T) {
+	h, state := newSourceTestApp(t, t.TempDir())
+	requests := make(chan string, 3)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.Path + " " + r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"data":[{"id":"new-model"}]}`)
+	}))
+	defer upstream.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.Path + " " + r.Header.Get("Authorization")
+		fmt.Fprint(w, `{"data":[]}`)
+	}))
+	defer other.Close()
+
+	create := fmt.Sprintf(`{"label":"saved","baseURL":%q,"protocol":"openai-chat","apiKey":"stored-key","models":[{"upstreamModelId":"existing"}]}`, upstream.URL+"/v1")
+	w := appHTTP(t, h, state, "POST", "/api/model-sources", create)
+	var source struct{ ID string }
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &source) != nil || source.ID == "" {
+		t.Fatalf("create source: %d %s", w.Code, w.Body.String())
+	}
+	path := "/api/model-sources/" + source.ID + "/discover"
+	check := func(base, key string, status int, wantRequest string) {
+		t.Helper()
+		input := fmt.Sprintf(`{"baseURL":%q,"protocol":"openai-chat","apiKey":%q}`, base, key)
+		w := appHTTP(t, h, state, "POST", path, input)
+		if w.Code != status || strings.Contains(w.Body.String(), "stored-key") || strings.Contains(w.Body.String(), "replacement-key") {
+			t.Fatalf("discover edited source: %d %s", w.Code, w.Body.String())
+		}
+		gotRequest := ""
+		select {
+		case gotRequest = <-requests:
+		default:
+		}
+		if gotRequest != wantRequest {
+			t.Fatal("unexpected upstream path or credentials")
+		}
+	}
+	check(upstream.URL+"/custom", "", 200, "/custom/models Bearer stored-key")
+	check(other.URL+"/v1", "", 400, "")
+	check(other.URL+"/v1", "replacement-key", 200, "/v1/models Bearer replacement-key")
+	check(upstream.URL+"/v1", "", 200, "/v1/models Bearer stored-key")
+	w = appHTTP(t, h, state, "GET", "/api/model-sources", "")
+	if !strings.Contains(w.Body.String(), `"upstreamModelId":"existing"`) || strings.Contains(w.Body.String(), "new-model") {
+		t.Fatalf("query changed saved models: %s", w.Body.String())
+	}
+}
