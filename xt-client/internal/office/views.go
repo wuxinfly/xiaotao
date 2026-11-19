@@ -152,6 +152,11 @@ func (s *Service) TaskDetail(projectPath, taskID string) (*TaskDetail, error) {
 		return nil, err
 	}
 	detail := &TaskDetail{Task: task, Artifacts: []*Artifact{}, Messages: []*TaskMessage{}}
+	if receipt, err := s.loadDelivery(taskID); err == nil {
+		detail.Delivery = receipt
+	} else {
+		detail.DeliveryError = "交付记录读取失败"
+	}
 	if artifacts, err := s.loadTaskArtifacts(taskID); err == nil {
 		detail.Artifacts = visibleArtifacts(artifacts)
 	}

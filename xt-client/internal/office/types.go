@@ -58,6 +58,7 @@ type Executor interface {
 }
 
 type Task struct {
+	Interrupted     bool                 `json:"interrupted,omitempty"`
 	ID              string               `json:"id"`
 	ProjectPath     string               `json:"projectPath"`
 	ProjectName     string               `json:"projectName"`
@@ -207,11 +208,13 @@ type Snapshot struct {
 }
 
 type TaskDetail struct {
-	Task         *Task              `json:"task"`
-	History      *agent.HistoryPage `json:"history,omitempty"`
-	HistoryError string             `json:"historyError,omitempty"`
-	Artifacts    []*Artifact        `json:"artifacts"`
-	Messages     []*TaskMessage     `json:"messages"`
+	Delivery      *Delivery          `json:"delivery,omitempty"`
+	DeliveryError string             `json:"deliveryError,omitempty"`
+	Task          *Task              `json:"task"`
+	History       *agent.HistoryPage `json:"history,omitempty"`
+	HistoryError  string             `json:"historyError,omitempty"`
+	Artifacts     []*Artifact        `json:"artifacts"`
+	Messages      []*TaskMessage     `json:"messages"`
 }
 
 type CreateTaskRequest struct {
@@ -230,7 +233,7 @@ func defaultCapabilities() Capabilities {
 		MidRunMessages:       false,
 		QueuedMessages:       true,
 		Approval:             true,
-		RestartResume:        false,
+		RestartResume:        true,
 		SameProjectIsolation: false,
 		CommandArtifacts:     false,
 		ArtifactTools:        []string{"write_file", "str_replace"},
@@ -239,7 +242,7 @@ func defaultCapabilities() Capabilities {
 			"失败或取消后不会自动重发排队消息。",
 			"产物只从 write_file / str_replace 活动识别；命令或外部工具创建的文件不会自动出现。",
 			"同一项目的多个执行者共用工作目录，现有文件检查不是操作系统级隔离。",
-			"服务重启后运行中任务会标记为中断失败，不会自动恢复。",
+			"服务重启后，中断任务可在详情中检查现场并继续；不会自动重放上轮操作。",
 		},
 	}
 }

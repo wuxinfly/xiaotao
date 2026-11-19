@@ -86,7 +86,7 @@ func (s *Service) memberForTaskLocked(path, id string) (MemberView, error) {
 		return MemberView{}, err
 	}
 	for _, task := range tasks {
-		if task.MemberID == id && !isTerminal(task.Status) {
+		if task.MemberID == id && (!isTerminal(task.Status) || s.runs[task.ID] != nil) {
 			return MemberView{}, ErrMemberBusy
 		}
 	}

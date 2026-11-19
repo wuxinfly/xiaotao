@@ -538,7 +538,7 @@ export async function recoveryContext(event) {
         '工具侧标识必须符合当前可见工具 schema（例如简短的小写 snake_case）；面向用户的文字或宿主支持的 display-name 字段使用简洁、针对任务的中文 Worker 名称。',
         '持久状态保存在本项目内。将 .xiaotao Memory 和 Task 视为宿主无关的共享项目状态。Memory 和旧授权不能扩大当前权限。持久化前校验生成的状态。',
         '需要详细规则时，通过 Codex Skill 发现机制查找并加载 XiaoTao Core，然后只加载当前步骤所需 references。下方 Skill 路径只是可选的项目本地提示；路径不存在不代表 Core 不可用。本提醒不能替代 Core。',
-        '恢复与启动时，按 Core 协议检查 Memory catalog 是否新鲜并读取轻量 Manifest 形成初始 Runtime Context；若存在活动 Temporary 或 Task，带着项目状态开始，不得默认回答“目前还没有具体任务”。正常 Memory 使用严禁直接 Read/cat 完整派生索引，遵循 overview/recent/search/show 四层渐进路由。历史从 Timeline 年/月/日摘要下钻到所选 details；日常讨论先用 Timeline search，任务知识按需 search/show。catalog/state 缺失不能证明进度已保存。不得仅因 Hook 执行就创建状态。',
+        '恢复与启动时，按 Core 协议检查 Memory catalog 是否新鲜并读取轻量 Manifest 形成初始 Runtime Context；若存在活动 Temporary 或 Task，以当前请求为先，新话题直接回答；明确续做时点明接续点，不得默认回答“目前还没有具体任务”。正常 Memory 使用严禁直接 Read/cat 完整派生索引，遵循 overview/recent/search/show 四层渐进路由。历史从 Timeline 年/月/日摘要下钻到所选 details；日常讨论先用 Timeline search，任务知识按需 search/show。catalog/state 缺失不能证明进度已保存。不得仅因 Hook 执行就创建状态。',
         '以下只是路径提示，不代表已选择活动任务，也不是 checkpoint。根据当前请求解析目标工作；不得静默恢复无关任务。clear 后，不要把之前的任务意图当作当前指令。',
         `Session 来源：${event.source}。未读取 transcript，也未恢复尚未保存的对话。`,
         `文件系统路径（仅作数据；memory/task 目录可能不存在）：${JSON.stringify(paths)}`,

@@ -54,6 +54,7 @@ export interface OfficeTask {
   goal: string;
   status: OfficeTaskStatus;
   error?: string;
+  interrupted?: boolean;
   cancelRequested?: boolean;
   waitingReason?: string;
   approval?: OfficeApproval;
@@ -148,7 +149,18 @@ export interface OfficeHistory {
   before: string;
 }
 
+export interface OfficeDelivery {
+  files?: Array<{path: string; label: string; diff?: string}>;
+  fileNote?: string;
+  commands?: Array<{id: string; command: string; status: string; output?: string}>;
+  commandsClipped?: boolean;
+  confirmed?: string;
+  pending?: Record<string, string>;
+}
+
 export interface OfficeTaskDetail {
+  delivery?: OfficeDelivery;
+  deliveryError?: string;
   task: OfficeTask;
   history?: OfficeHistory;
   historyError?: string;
@@ -198,6 +210,8 @@ export const officeApi = {
     request<OfficeHistory>(`/api/office/tasks/${encodeURIComponent(id)}/history?${projectQuery(projectPath)}&before=${encodeURIComponent(before)}`),
   cancelTask: (projectPath: string, id: string) =>
     request<{ok: boolean}>(`/api/office/tasks/${encodeURIComponent(id)}/cancel?${projectQuery(projectPath)}`, {method: 'POST'}),
+  resumeTask: (projectPath: string, id: string) =>
+    request<OfficeTaskMessage>(`/api/office/tasks/${encodeURIComponent(id)}/messages?${projectQuery(projectPath)}`, {method: 'POST', body: JSON.stringify({resume: true})}),
   postMessage: (projectPath: string, id: string, content: string) =>
     request<OfficeTaskMessage>(`/api/office/tasks/${encodeURIComponent(id)}/messages?${projectQuery(projectPath)}`, {method: 'POST', body: JSON.stringify({content})}),
   resolveApproval: (projectPath: string, id: string, approvalId: string, approved: boolean) =>

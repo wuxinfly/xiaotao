@@ -120,6 +120,9 @@ test('office page shows real task state, transcript, artifacts and queued messag
       if (path === '/api/office/tasks/task_1' && method === 'GET') {
         return route.fulfill({json: {
           task: tasks[0],
+          delivery: {files: [{path: 'generated.md', label: '本轮观察到变化', diff: '+generated'}],
+            commands: [{id: 'c1', command: 'npm test', status: 'failed', output: 'assertion failed'}],
+            confirmed: '修改源文件', pending: {a2: '发布文档'}},
           history: history([
             {id: 'm1', role: 'user', content: '搜索结果为空时给个提示。', createdAt: '2026-11-12T09:00:01Z'},
             {id: 'm2', role: 'assistant', content: '我先看一下搜索页的实现。', createdAt: '2026-11-12T09:00:03Z'},
@@ -229,6 +232,17 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.keyboard.press('Escape');
     await page.getByRole('alertdialog').waitFor({state: 'detached'});
     await page.getByRole('heading', {name: '给搜索页加空状态'}).waitFor();
+    Object.assign(tasks[0], {status: 'failed', interrupted: true});
+    await page.getByRole('button', {name: '刷新', exact: true}).click();
+    const receipt = page.getByRole('region', {name: '本轮交付'});
+    await receipt.getByText('generated.md · 本轮观察到变化').click();
+    await receipt.getByText('+generated', {exact: true}).waitFor();
+    await receipt.getByText('npm test', {exact: true}).click();
+    await receipt.getByText('assertion failed').waitFor();
+    await receipt.getByText('结果待核对：发布文档').waitFor();
+    const recovery = page.waitForRequest(req => req.method() === 'POST' && req.url().includes('/messages'));
+    await receipt.getByRole('button', {name: '检查现场并继续'}).click();
+    assert.deepEqual((await recovery).postDataJSON(), {resume: true});
     await closeDetail();
     await shelf.click();
     const library = page.getByRole('dialog', {name: '项目资料馆'});

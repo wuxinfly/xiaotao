@@ -1,0 +1,6 @@
+.office-delivery { min-width: 0; overflow-wrap: anywhere; }
+.office-delivery h4 { margin: 1em 0 .4em; }
+.office-delivery p { margin: .45em 0; }
+.office-delivery details { margin: .4em 0; }
+.office-delivery summary { cursor: pointer; }
+.office-delivery pre { max-height: 18rem; overflow: auto; white-space: pre-wrap; }

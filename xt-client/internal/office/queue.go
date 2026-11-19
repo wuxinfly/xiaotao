@@ -12,6 +12,14 @@ import (
 // on a finished task. Delivery is recorded only after the kernel appends the
 // user message to the session.
 func (s *Service) PostMessage(projectPath, taskID, text string) (*TaskMessage, error) {
+	return s.postMessage(projectPath, taskID, text, false)
+}
+
+func (s *Service) ResumeTask(projectPath, taskID string) (*TaskMessage, error) {
+	return s.postMessage(projectPath, taskID, "检查现场并继续", true)
+}
+
+func (s *Service) postMessage(projectPath, taskID, text string, resume bool) (*TaskMessage, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("消息不能为空")
@@ -32,6 +40,33 @@ func (s *Service) PostMessage(projectPath, taskID, text string) (*TaskMessage, e
 	if s.closed {
 		s.mu.Unlock()
 		return nil, ErrClosed
+	}
+	if resume {
+		latest, loadErr := s.loadTask(taskID)
+		if loadErr != nil {
+			s.mu.Unlock()
+			return nil, loadErr
+		}
+		if !canRecover(latest) || s.runs[taskID] != nil || latest.SessionID == "" {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("任务已变化，请刷新后重试")
+		}
+		if latest.MemberID != "" && latest.MemberID != coordinatorID {
+			if _, err = s.memberForTaskLocked(latest.ProjectPath, latest.MemberID); err != nil {
+				s.mu.Unlock()
+				return nil, err
+			}
+		}
+		task = latest
+	}
+	if canRecover(task) {
+		record, loadErr := s.loadDelivery(taskID)
+		if loadErr != nil {
+			s.mu.Unlock()
+			return nil, loadErr
+		}
+		text = recoveryPrompt(task, record, text)
+		message.Content = text
 	}
 	db, err := s.openStore()
 	if err != nil {

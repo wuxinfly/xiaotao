@@ -88,6 +88,7 @@ func (s *Service) recoverInterrupted() error {
 			continue
 		}
 		task.Status = StatusFailed
+		task.Interrupted = true
 		task.Error = "服务重启导致任务中断，本轮无法自动恢复"
 		task.WaitingReason = ""
 		task.Approval = nil
@@ -267,7 +268,8 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 		}
 		s.runs[taskID] = cancel
 		s.mu.Unlock()
-		if !s.beginTurn(taskID, messageID) {
+		ready, resuming := s.beginTurn(taskID)
+		if !ready {
 			cancel()
 			// Canceled before the kernel accepted the turn: finalize here so the
 			// task does not stay queued, and mark any waiting message undelivered.
@@ -279,7 +281,7 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 			delivered = s.handleEvent(taskID, event, messageID, delivered)
 			s.publishTask(taskID, event)
 		}
-		err := s.exec.RunTurn(ctx, sessionID, text, "", nil, emit)
+		err := s.reviewedTurn(ctx, taskID, sessionID, text, resuming, emit)
 		cancel()
 		next, loadErr := s.nextQueuedMessage(taskID)
 		if loadErr != nil {
@@ -296,15 +298,15 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 
 // beginTurn marks the task running. It returns false when the task was
 // canceled before the goroutine could start.
-func (s *Service) beginTurn(taskID, messageID string) bool {
+func (s *Service) beginTurn(taskID string) (ready, resuming bool) {
 	now := s.now()
-	proceed := false
 	s.mutate(taskID, func(task *Task) {
 		if task.CancelRequested {
-			proceed = false
 			return
 		}
-		proceed = true
+		ready = true
+		resuming = canRecover(task)
+		task.Interrupted = false
 		task.Status = StatusRunning
 		if task.StartedAt == nil {
 			task.StartedAt = &now
@@ -317,7 +319,7 @@ func (s *Service) beginTurn(taskID, messageID string) bool {
 	// Delivery is recorded only when the kernel emits the user-message event
 	// (handleEvent). A turn that fails before that point keeps the message
 	// queued until endTurn marks it undelivered.
-	return proceed
+	return ready, resuming
 }
 
 // endTurn finalizes a turn and returns the task status afterwards. When a
@@ -333,6 +335,10 @@ func (s *Service) endTurn(taskID string, runErr error, continuing bool) string {
 			// that arrived after that must not relabel finished work.
 			status = StatusCompleted
 			task.Error = ""
+		case s.closed && !task.CancelRequested && errors.Is(runErr, context.Canceled):
+			status = StatusFailed
+			task.Interrupted = true
+			task.Error = "服务关闭导致任务中断"
 		case task.CancelRequested || errors.Is(runErr, context.Canceled):
 			status = StatusCanceled
 			task.Error = "任务已取消"

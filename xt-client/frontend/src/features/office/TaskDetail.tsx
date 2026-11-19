@@ -5,6 +5,7 @@ import remarkBreaks from 'remark-breaks';
 import type {AgentActivity, AgentMessage, AgentThought} from '../../lib/api';
 import type {OfficeArtifact, OfficeTask, OfficeTaskDetail} from '../../lib/office';
 import {formatBytes, formatClock, formatDuration, isTerminalTask, taskStatusLabel} from '../../lib/office';
+import {DeliveryCard} from './DeliveryCard';
 import {TaskTimeline} from './TaskTimeline';
 import {useTaskEvents} from './useTaskEvents';
 import './member-task.css';
@@ -140,6 +141,7 @@ export function TaskDetail({projectPath, detail, loading, error, onRefresh, onLo
       <div><dt>用量</dt><dd>{usageLine(task)}</dd></div>
       {task.error && <div><dt>失败原因</dt><dd className="office-error-text">{task.error}</dd></div>}
     </dl>
+    {terminal && <DeliveryCard detail={detail} onRefresh={onRefresh}/>}
     {task.approval && <section className="office-approval" role="alert">
       <strong>执行者等待确认高危操作</strong>
       <code>{task.approval.detail}</code>

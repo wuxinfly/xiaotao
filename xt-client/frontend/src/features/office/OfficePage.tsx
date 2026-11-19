@@ -115,9 +115,10 @@ export function OfficePage({visible}: Props) {
   useEffect(() => {
     if (!visible || !activeTaskId || workspaceView !== 'task') return;
     const current = snapshot?.tasks.find(item => item.id === activeTaskId);
-    if (current && isTerminalTask(current.status) && detail?.task.id === activeTaskId) return;
+    if (current && isTerminalTask(current.status) && detail?.task.id === activeTaskId
+      && detail.task.status === current.status && detail.task.updatedAt === current.updatedAt) return;
     void loadDetail(activeTaskId, true);
-  }, [visible, activeTaskId, loadDetail, snapshot, detail?.task.id, workspaceView]);
+  }, [visible, activeTaskId, loadDetail, snapshot, detail?.task.id, detail?.task.status, detail?.task.updatedAt, workspaceView]);
 
   const loadEarlier = useCallback(async () => {
     if (!selectedPath || !activeTaskId || !detail?.history?.before) return;

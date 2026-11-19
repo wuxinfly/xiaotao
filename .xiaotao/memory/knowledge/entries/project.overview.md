@@ -54,7 +54,7 @@ updated_by: xiao-tao/maintainer
   ],
   "code_fingerprints": {
     "xt-skills/package.json": "28cf52f30c26b4ddcd8cd01dbbea41e02db07358fa8da148f23f6bd3ad5ed386",
-    "xt-skills/xiaotao/SKILL.md": "b1dd224e1c26911da9de62af224bc7a13cf74f5fe2bc565807847d4821674e6c",
+    "xt-skills/xiaotao/SKILL.md": "236e6c430d171177a0c6b6d68e13bee5767e0987dc08bfd84ddce2130b5e46e1",
     "xt-skills/bin/xiaotao.js": "06bfa723cc9f7bbc10815dd99c96e01316c08e66ff7b5b95371794d378dfadbb",
     "xt-skills/cli/index.js": "e5271906e918c1e5ba3131d4903a0252d3f7a375442783375d075b179db70319",
     "xt-skills/adapters/zcode/README.md": "159f2157e4a198ae0b4d9b6c4f6db64af2db5ac6ec6271f998cfdcecc2600d00"

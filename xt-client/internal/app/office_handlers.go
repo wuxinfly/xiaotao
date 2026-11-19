@@ -119,12 +119,19 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 		}
 		var input struct {
 			Content string `json:"content"`
+			Resume  bool   `json:"resume"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024)).Decode(&input); err != nil {
 			apiError(w, 400, "消息格式无效")
 			return
 		}
-		message, err := svc.PostMessage(r.URL.Query().Get("projectPath"), r.PathValue("id"), input.Content)
+		var message *office.TaskMessage
+		var err error
+		if input.Resume {
+			message, err = svc.ResumeTask(r.URL.Query().Get("projectPath"), r.PathValue("id"))
+		} else {
+			message, err = svc.PostMessage(r.URL.Query().Get("projectPath"), r.PathValue("id"), input.Content)
+		}
 		if err != nil {
 			officeError(w, err, apiError)
 			return
