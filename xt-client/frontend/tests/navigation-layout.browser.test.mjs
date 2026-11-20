@@ -14,7 +14,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
       new Promise(resolve => server.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})),
       once(server, 'exit').then(() => {throw Error('Vite exited before ready');}),
     ]);
-    browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true});
+    browser = await chromium.launch({...(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath: process.env.XIAOTAO_TEST_EXECUTABLE} : {channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge'}), headless: true});
     const context = await browser.newContext({viewport: {width: 1280, height: 850}, reducedMotion: 'reduce'});
     const tokens = {totalTokens: 3000, promptTokens: 2000, completionTokens: 1000, cachedTokens: 500};
     function conversation(id, title, source, estimated) {
@@ -24,11 +24,20 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
         requests: [{id, model: 'same-model', startedAt: Date.now(), status: 'streaming', tokens: {}}]};
     }
     const internal = conversation('internal', '小涛任务', '小涛', 3000);
-    const external = conversation('external', '外部会话', 'Responses', 7000);
+    const external = conversation('external', '外部会话', 'Responses', 6000);
+    external.requests[0].tokens.prompt = 7000;
+    const idle = {...conversation('idle', '已结束的会话', 'Responses', 4000), active: 0};
+    const snapshot = {version: 'fixture', versionSeq: 1, launch: {startedAt: 1793678400, uptimeSeconds: 60, batchId: 'fixture'}, currentSession: tokens, today: {...tokens, totalRequests: 2}, cumulative: {...tokens, totalRequests: 2}, conversations: [internal, external, idle], recentRequests: [], activeRequests: [], activeCount: 0, heatmap: {startDate: '2026-01-01', endDate: '2026-11-03', trackingStartDate: '2026-01-01', days: {}}, storage: {status: 'healthy'}};
+    await context.addInitScript(() => {
+      window.EventSource = class extends EventTarget {
+        constructor() { super(); window.dashboardEvents = this; }
+        close() {}
+      };
+    });
     await context.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/api/dashboard/events') return route.fulfill({contentType: 'text/event-stream', body: ': fixture\n\n'});
-      if (path === '/api/dashboard') return route.fulfill({json: {version: 'fixture', versionSeq: 1, launch: {startedAt: 1793678400, uptimeSeconds: 60, batchId: 'fixture'}, currentSession: tokens, today: {...tokens, totalRequests: 2}, cumulative: {...tokens, totalRequests: 2}, conversations: [internal, external], recentRequests: [], activeRequests: [], activeCount: 0, heatmap: {startDate: '2026-01-01', endDate: '2026-11-03', trackingStartDate: '2026-01-01', days: {}}, storage: {status: 'healthy'}}});
+      if (path === '/api/dashboard') return route.fulfill({json: snapshot});
       return route.fulfill({json: {
         sessions: [],
         accounts: [],
@@ -69,23 +78,40 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.locator('.dashboard-page').waitFor();
     assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'secondary pages must not reserve the left sidebar');
     assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
-    const sessionTabs = page.getByRole('tablist', {name: '会话'});
-    assert.equal(await sessionTabs.getByRole('tab').count(), 2);
-    await page.getByRole('tabpanel').getByText('30%', {exact: true}).waitFor();
-    await sessionTabs.getByRole('tab', {name: '小涛任务'}).press('ArrowRight');
-    await page.getByRole('tabpanel').getByText('70%', {exact: true}).waitFor();
-    assert.equal(await sessionTabs.getByRole('tab', {name: '外部会话'}).getAttribute('aria-selected'), 'true');
-    await page.locator('.context-map').getByRole('button', {name: '工具定义'}).first().click();
+    const activeSessions = page.getByRole('list', {name: '活跃会话'});
+    const internalRow = activeSessions.getByRole('button', {name: /小涛任务/});
+    const externalRow = activeSessions.getByRole('button', {name: /外部会话/});
+    await internalRow.waitFor();
+    assert.equal(await activeSessions.locator('.context-row').count(), 2);
+    assert.equal(await page.getByText('已结束的会话').count(), 0);
+    assert.equal(await internalRow.locator('.context-percent').innerText(), '30%');
+    assert.equal(await externalRow.locator('.context-percent').innerText(), '70%');
+    assert.equal(await internalRow.getAttribute('aria-expanded'), 'false');
+    await internalRow.press('Enter');
+    await externalRow.press('Enter');
+    assert.equal(await internalRow.getAttribute('aria-expanded'), 'false');
+    assert.equal(await externalRow.getAttribute('aria-expanded'), 'true');
+    await page.locator('.context-legend').getByRole('button', {name: /工具定义/}).click();
     await page.getByRole('region', {name: '分块明细'}).getByText('read_file').waitFor();
     await page.locator('.context-legend').getByRole('button', {name: /对话消息/}).press('Enter');
     await page.getByRole('region', {name: '分块明细'}).getByText('对话消息', {exact: true}).waitFor();
+    await page.setViewportSize({width: 420, height: 800});
+    assert.ok(await externalRow.evaluate(row => row.getBoundingClientRect().right <= innerWidth && row.scrollWidth <= row.clientWidth));
+    await page.setViewportSize({width: 1280, height: 850});
+    await page.screenshot({path: join(tmpdir(), 'xiaotao-dashboard-secondary.png')});
+    await page.evaluate(next => window.dashboardEvents.dispatchEvent(new MessageEvent('update', {data: JSON.stringify(next)})),
+      {...snapshot, versionSeq: 2, conversations: [{...internal, active: 0}, {...external, context: {...external.context, window: 0}}, idle]});
+    await internalRow.waitFor({state: 'detached'});
+    assert.equal(await externalRow.locator('.context-percent').innerText(), '—');
+    await page.evaluate(next => window.dashboardEvents.dispatchEvent(new MessageEvent('update', {data: JSON.stringify(next)})),
+      {...snapshot, versionSeq: 3, conversations: [idle]});
+    await page.getByText('暂无进行中的会话').waitFor();
     const titlebar = await page.locator('.titlebar').boundingBox();
     const dashboardBack = await page.getByRole('button', {name: '返回小涛', exact: true}).boundingBox();
     assert.ok(dashboardBack.x < 20 && dashboardBack.y >= titlebar.y && dashboardBack.y + dashboardBack.height <= titlebar.y + titlebar.height, 'back button must sit at the upper-left of the title bar');
     assert.equal(await page.locator('.workspace-back-row').count(), 0, 'secondary pages must not keep a content back row');
     const dashboardView = await page.locator('.workspace-page-view').boundingBox();
     assert.ok(dashboardView.x < 1 && dashboardView.width >= 1200, 'dashboard must use the full content width');
-    await page.screenshot({path: join(tmpdir(), 'xiaotao-dashboard-secondary.png')});
     await page.getByRole('button', {name: '返回小涛', exact: true}).click();
     await page.locator('.agent-workspace').waitFor();
     assert.equal(await page.locator('.workspace-dock .workspace-nav button.is-active').count(), 0);

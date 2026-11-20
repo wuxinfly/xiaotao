@@ -1,4 +1,5 @@
-import {normaliseImage} from './imageNormalise';
+import {pastedImageFiles, readImageFile, type ComposerImage} from './composerImages';
+import {ComposerReasoning, composerModelSettings, type ReasoningOverride} from './ComposerReasoning';
 import {AgentDroplet} from './AgentDroplet';
 import {MessageRow, RunTimeline} from './messages/MessageFeed';
 import {ChatComposer, ChatSendButton} from './messages/ChatComposer';
@@ -44,7 +45,7 @@ import {
 } from 'lucide-react';
 import {mergeModelCatalog, modelPickerLabel, ModelPickerOptions, pickerModels, useModelCatalogChanged} from './modelOptions';
 import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
-import {modelConfigFor, modelLabelsKey, modelSettingsFor, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
+import {modelConfigFor, modelLabelsKey, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
 import {AgentSettingsModal} from './AgentSettingsModal';
 import {ProjectModal, RenameSessionModal} from './AgentModals';
 import {ReferenceModal, ReferencePicker} from './ReferencePicker';
@@ -262,54 +263,6 @@ function editorReferenceIds(editor: Editor): string[] {
   return Array.from(new Set(ids.filter(Boolean)));
 }
 
-type ComposerImage = {
-  id: string;
-  data: string;
-  mimeType: string;
-  name: string;
-  preview: string;
-  size: number;
-  width?: number;
-  height?: number;
-};
-
-const composerImageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-
-async function readImageFile(file: File): Promise<ComposerImage> {
-  if (!composerImageTypes.has(file.type)) {
-    throw new Error('仅支持 PNG、JPEG、GIF 和 WebP 图片');
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    throw new Error('单张图片不能超过 5 MiB');
-  }
-  // Scale and re-encode before upload: vision models price images by pixel
-  // area, and a large screenshot costs far more to send than it does to read.
-  const normalised = await normaliseImage(file);
-  if (!normalised.width || !normalised.height || normalised.width * normalised.height > 40_000_000) {
-    throw new Error('图片尺寸无效或过大');
-  }
-  return {
-    id: crypto.randomUUID(),
-    data: normalised.data,
-    mimeType: normalised.mimeType,
-    name: file.name || '粘贴的图片',
-    preview: normalised.preview,
-    size: normalised.size,
-    width: normalised.width,
-    height: normalised.height,
-  };
-}
-
-function pastedImageFiles(data: DataTransfer | null): File[] {
-  if (!data) return [];
-  const files = Array.from(data.files).filter(file => file.type.startsWith('image/'));
-  if (files.length) return files;
-  return Array.from(data.items)
-    .filter(item => item.kind === 'file' && item.type.startsWith('image/'))
-    .map(item => item.getAsFile())
-    .filter((file): file is File => !!file);
-}
-
 function referenceQueryAtCursor(state: EditorState): {from: number; query: string} | null {
   if (hasActiveNode(state, ['codeBlock'])) return null;
   const {from} = state.selection;
@@ -361,6 +314,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   const refreshModelsRequested = useRef(false);
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [reasoningOverride, setReasoningOverride] = useState<ReasoningOverride>();
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [pending, setPending] = useState(false), [loading, setLoading] = useState(true);
   const [composerImages, setComposerImages] = useState<ComposerImage[]>([]);
@@ -370,7 +324,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   const runningRef = useRef(new Set<string>());
   const sessionCache = useRef(new Map<string, AgentSession>());
   const busy = pending || !!active && (runningIds.has(active.id) || active.status === 'running');
-  const drafts = useRef(new Map<string, {json: object; model: string; path: string; name: string; top: number; follow: boolean; quotes: typeof quotes; images: ComposerImage[]}>());
+  const drafts = useRef(new Map<string, {json: object; model: string; path: string; name: string; top: number; follow: boolean; quotes: typeof quotes; images: ComposerImage[]; reasoningOverride?: ReasoningOverride}>());
   const [quotes, setQuotes] = useState<Array<{id: string; messageId: string; start: number; end: number; sourceText: string; text: string; reply: string}>>([]);
   const [quoteSelection, setQuoteSelection] = useState<{text: string; messageId: string; start: number; end: number; left: number; top: number} | null>(null);
   const [editingQuote, setEditingQuote] = useState<string | null>(null);
@@ -790,14 +744,15 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
         messages: mergeHistory(current.messages, cached.messages), activity: mergeHistory(current.activity, cached.activity),
         thoughts: mergeHistory(current.thoughts, cached.thoughts), runStats: mergeRunStats(current.runStats, cached.runStats)} : current);
     }
-    drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes, images: composerImagesRef.current});
-  }, [editor, model, path, projectName, quotes]);
+    drafts.current.set(activeIdRef.current || '', {json: editor.getJSON(), model, path, name: projectName, top: feed.current?.scrollTop || 0, follow: followFeed.current, quotes, images: composerImagesRef.current, reasoningOverride});
+  }, [editor, model, path, projectName, quotes, reasoningOverride]);
   const restoreDraft = useCallback((id: string, fallbackModel: string) => {
     const draft = drafts.current.get(id);
     setQuotes(draft?.quotes || []); setQuoteSelection(null); setEditingQuote(null);
     setComposerImages(draft?.images || []);
     editor?.commands.setContent(draft?.json || {type:'doc', content:[{type:'paragraph'}]});
     setModel(draft?.model || fallbackModel);
+    setReasoningOverride(draft?.reasoningOverride);
     if (!id) { setPath(draft?.path || ''); setProjectName(draft?.name || ''); }
     followFeed.current = draft?.follow ?? true;
     requestAnimationFrame(() => {if (feed.current && draft && !draft.follow) feed.current.scrollTop = draft.top;});
@@ -826,7 +781,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     let submitted = false;
     try {
       if (!session) {
-        session = await api.createAgentSession(path, model, projectName, modelSettingsFor(modelConfigs, model, models));
+        session = await api.createAgentSession(path, model, projectName, composerSettings);
         setActive(session);
         setSessions(current => [session!, ...current]);
       }
@@ -838,7 +793,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
       const response = await fetch('/api/agent/sessions/' + encodeURIComponent(id) + '/messages', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({content, model: model || session.model, modelSettings: modelSettingsFor(modelConfigs, model || session.model, models), references, images: submittedImages.map(image => ({data: image.data, mimeType: image.mimeType, width: image.width, height: image.height}))}),
+        body: JSON.stringify({content, model: model || session.model, modelSettings: composerSettings, references, images: submittedImages.map(image => ({data: image.data, mimeType: image.mimeType, width: image.width, height: image.height}))}),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -934,7 +889,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     setPending(true);
     try {
       const resolved = await api.resolveAgentProject(projectPath);
-      resetHistory(); setActive(null); setQuotes([]); setComposerImages([]); setPath(resolved.path); setProjectName(name); setError('');
+      resetHistory(); setActive(null); setQuotes([]); setComposerImages([]); setReasoningOverride(undefined); setPath(resolved.path); setProjectName(name); setError('');
       editor?.commands.clearContent(); editor?.commands.focus();
     } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
     finally {setPending(false);}
@@ -1057,7 +1012,8 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   const currentModel = model || active?.model || '';
   const contextWindow = lastRun?.contextWindow ??modelConfigFor(modelConfigs, currentModel, models)?.contextWindow ?? models.find(item => item.model === currentModel)?.contextWindow ?? 0;
   const hasReference = !!editor && editorReferenceIds(editor).length > 0;
-  const currentModelOption = models.find(item => item.model === (model || active?.model));
+  const currentModelOption = models.find(item => item.model === currentModel);
+  const composerSettings = composerModelSettings(modelConfigs, currentModel, models, reasoningOverride);
   const currentModelSupportsImages = currentModelOption?.supportsImages === true;
   const historyHasImages = !!active && conversationHasImages(active.messages, active.hasImages);
   const isReviewingCurrent = !!active && reviewingSessionId === active.id;
@@ -1211,9 +1167,10 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
                   <span>{modelPickerLabel(availablePickerModels, model || active?.model || '')}</span><ChevronDown aria-hidden="true"/>
                 </button>
                 <Popover open={modelMenuOpen} onClose={() => setModelMenuOpen(false)} anchorRef={modelButtonRef} side="top" align="end" className="agent-model-menu" aria-label="选择模型">
-                  <ModelPickerOptions models={availablePickerModels} value={model} onSelect={value => {setModel(value); setModelMenuOpen(false); modelButtonRef.current?.focus();}}/>
+                  <ModelPickerOptions models={availablePickerModels} value={model} onSelect={value => {if (value !== model) setReasoningOverride(undefined); setModel(value); setModelMenuOpen(false); modelButtonRef.current?.focus();}}/>
                 </Popover>
               </div>
+              <ComposerReasoning key={currentModel} option={currentModelOption} settings={composerSettings} disabled={busy} onChange={value => setReasoningOverride({model: currentModel, value})}/>
               {!!composerImages.length && currentModelSupportsImages && <span className="agent-image-model-hint"><Image aria-hidden="true"/>图片将随消息发送</span>}
               {(!!composerImages.length || historyHasImages) && !currentModelSupportsImages && <span className="agent-image-model-warning" role="status">{historyHasImages ? '会话包含图片，当前模型不支持' : '当前模型不支持图片'}</span>}
               <ChatSendButton busy={busy} disabled={!canSendRef.current} onSend={() => void send()} onStop={stop}/>

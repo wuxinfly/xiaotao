@@ -1,7 +1,9 @@
+import {ChevronDown} from 'lucide-react';
 import {useId, useState} from 'react';
 import type {DashboardSnapshot} from '../../lib/api';
 import type {ContextParts, DashboardConversation} from '../../lib/dashboard-conversation';
 import {RecentRequests} from './RecentRequests';
+import {formatNumber} from './UsageOverview';
 import './conversation-context.css';
 
 const parts: Array<{key: keyof ContextParts; label: string; color: string}> = [
@@ -12,104 +14,90 @@ const parts: Array<{key: keyof ContextParts; label: string; color: string}> = [
   {key: 'references', label: '对话引用', color: 'var(--context-pink)'},
   {key: 'images', label: '图片', color: 'var(--context-lime)'},
 ];
+const compact = new Intl.NumberFormat('en', {notation: 'compact', maximumFractionDigits: 1});
 
-const count = (value?: number | null) => value == null ? '—' : value.toLocaleString('zh-CN');
-
-const cellCount = 80;
-
-function ContextMap({context, filled}: {context: DashboardConversation['context']; filled: number}) {
-  const [selected, setSelected] = useState<keyof ContextParts | null>(null);
+function ContextBar({context, ratio}: {context: DashboardConversation['context']; ratio: number | null}) {
   const sections = parts.filter(part => context.parts[part.key] > 0);
-  if (sections.length === 0) return null;
-  const current = sections.find(part => part.key === selected) ?? sections[0];
   const total = sections.reduce((sum, part) => sum + context.parts[part.key], 0);
-  const cells = Math.max(1, Math.round(filled / 100 * cellCount));
-  let end = 0;
-  const ranges = sections.map(part => {
-    end += context.parts[part.key];
-    return {part, end: end / total * cells};
-  });
-  const detail = context.items?.[current.key] ?? [];
-  return <>
-    <div className="context-map" aria-label="上下文方格图">
-      {Array.from({length: cellCount}, (_, index) => {
-        const match = index < cells ? ranges.find(range => index + 0.5 <= range.end)?.part : undefined;
-        return match
-          ? <button type="button" key={index} tabIndex={-1} title={match.label} aria-label={match.label}
-              data-selected={match.key === current.key} style={{background: match.color}} onClick={() => setSelected(match.key)}/>
-          : <span key={index} aria-hidden="true"/>;
-      })}
-    </div>
-    <div className="context-legend" aria-label="上下文分块">
-      {sections.map(part => <button type="button" key={part.key} aria-pressed={current.key === part.key} onClick={() => setSelected(part.key)}>
-        <i aria-hidden="true" style={{background: part.color}}/>
-        <span>{part.label}</span><strong>{count(context.parts[part.key])}</strong>
-      </button>)}
-    </div>
-    <section className="context-part-detail" aria-label="分块明细">
-      <header><strong>{current.label}</strong><span>约 {count(context.parts[current.key])} tokens</span></header>
-      {detail.length > 0 && <ul>{detail.map((item, index) => <li key={index}><span>{item.label}</span><span>{count(item.tokens)}</span></li>)}</ul>}
-    </section>
-  </>;
+  return <span className="context-bar" data-unknown={ratio === null} aria-hidden="true">
+    {ratio !== null && <span className="context-bar-fill" style={{width: `${Math.min(ratio * 100, 100)}%`}}>
+      {sections.map(part => <span key={part.key} style={{width: `${context.parts[part.key] / total * 100}%`, background: part.color}}/>)}
+    </span>}
+  </span>;
 }
 
-function ContextDetails({session, nowMs}: {session: DashboardConversation; nowMs: number}) {
+function ContextDetails({session, nowMs, usage}: {session: DashboardConversation; nowMs: number; usage: string}) {
   const {context, requests, totals} = session;
-  const latest = requests.find(request => request.id === session.latestRequestId) ?? requests[0];
-  const measured = latest.tokens.prompt;
-  const used = measured ?? context.estimated;
-  const window = context.window;
-  const percent = window > 0 ? Math.round(used / window * 100) : null;
-  const filled = Math.min(100, Math.max(0, percent ?? 100));
-  return <>
-    <div className="context-panel-heading">
-      <div>
-        <p className="context-model">{session.source} · {latest.model}</p>
-        <h3>{measured == null ? '约 ' : ''}{count(used)}{window > 0 && <small> / {count(window)}</small>} <small>tokens</small></h3>
+  const [selected, setSelected] = useState<keyof ContextParts>();
+  const sections = parts.filter(part => context.parts[part.key] > 0);
+  const current = sections.find(part => part.key === selected) ?? sections[0];
+  const detail = current ? context.items?.[current.key] : undefined;
+  return <div className="context-panel">
+    <p className="context-usage-detail">{usage}</p>
+    {current && <>
+      <div className="context-legend" aria-label="上下文构成估算">
+        {sections.map(part => <button type="button" key={part.key} aria-pressed={current.key === part.key} onClick={() => setSelected(part.key)}>
+          <i aria-hidden="true" style={{background: part.color}}/>
+          <span>{part.label}</span><strong>{formatNumber(context.parts[part.key])}</strong>
+        </button>)}
       </div>
-      <span>{percent != null ? `${percent}%` : '窗口未知'}</span>
-    </div>
-    <div className="context-label">{measured == null ? '最新请求 · 估算输入' : '最新请求 · 上游输入用量'}</div>
-    <ContextMap context={context} filled={filled}/>
+      <section className="context-part-detail" aria-label="分块明细">
+        <header><strong>{current.label}</strong><span>约 {formatNumber(context.parts[current.key])} tokens</span></header>
+        {!!detail?.length && <ul>{detail.map((item, index) => <li key={index}><span>{item.label}</span><span>{formatNumber(item.tokens)}</span></li>)}</ul>}
+      </section>
+    </>}
     <details className="context-requests">
-      <summary>最近请求 <span>已确认累计输入 {count(totals.prompt)} · 输出 {count(totals.completion)} tokens</span></summary>
+      <summary>最近请求 <span>已确认累计输入 {formatNumber(totals.prompt)} · 输出 {formatNumber(totals.completion)} tokens</span></summary>
       <RecentRequests requests={requests} nowMs={nowMs}/>
     </details>
-  </>;
+  </div>;
+}
+
+function ConversationRow({session, open, onToggle, nowMs}: {
+  session: DashboardConversation; open: boolean; onToggle: () => void; nowMs: number;
+}) {
+  const panel = useId();
+  const {context, requests} = session;
+  const latest = requests.find(request => request.id === session.latestRequestId) ?? requests[0];
+  const measured = latest?.tokens.prompt;
+  const used = measured ?? (context.estimated > 0 ? context.estimated : null);
+  const window = context.window;
+  const ratio = window > 0 && used !== null ? used / window : null;
+  const percentage = ratio === null ? '—' : `${ratio > 0 && ratio < .01 ? '<1' : Math.round(ratio * 100)}%`;
+  const qualifier = used === null ? '输入未知' : measured == null ? '估算输入' : '上游输入用量';
+  const source = [session.source, latest?.model].filter(Boolean).join(' · ');
+  const tokens = `${used == null ? '—' : `${measured == null ? '≈' : ''}${compact.format(used)}`} / ${window > 0 ? compact.format(window) : '—'}`;
+  const exact = `${qualifier} ${formatNumber(used)} tokens · ${window > 0 ? `窗口 ${formatNumber(window)} tokens` : '窗口未知'}`;
+
+  return <li className="context-entry">
+    <button type="button" className="context-row" aria-expanded={open} aria-controls={panel} onClick={onToggle}>
+      <span className="context-identity">
+        <span className="status-dot" title="有请求进行中" aria-hidden="true"/>
+        <span className="context-name">
+          <strong title={session.title}>{session.title}</strong>
+          <small title={source}>{source}</small>
+        </span>
+      </span>
+      <ContextBar context={context} ratio={ratio}/>
+      <span className="context-tokens" title={exact}><span aria-hidden="true">{tokens}</span><span className="sr-only">{exact}</span></span>
+      <strong className="context-percent" data-near-limit={ratio !== null && ratio >= .8}>{percentage}</strong>
+      <ChevronDown className="context-chevron" size={15} aria-hidden="true"/>
+    </button>
+    <div id={panel} hidden={!open}>{open && <ContextDetails session={session} nowMs={nowMs} usage={exact}/>}</div>
+  </li>;
 }
 
 export function ConversationContext({snapshot, nowMs}: {snapshot: DashboardSnapshot; nowMs: number}) {
-  const [selected, setSelected] = useState('');
-  const panel = useId();
-  const sessions = snapshot.conversations ?? [];
-  const session = sessions.find(item => item.id === selected) ?? sessions[0];
-  if (session && session.id !== selected) setSelected(session.id);
+  const [selected, setSelected] = useState<string | null>(null);
+  const sessions = snapshot.conversations?.filter(session => session.active > 0) ?? [];
   return <section className="requests-section" aria-label="会话上下文">
-    <div className="requests-header"><h2>会话上下文</h2></div>
-    {session ? <div className="context-card">
-      <div className="context-tabs" role="tablist" aria-label="会话" onKeyDown={event => {
-        const index = sessions.indexOf(session);
-        const next = {ArrowLeft: (index + sessions.length - 1) % sessions.length, ArrowRight: (index + 1) % sessions.length, Home: 0, End: sessions.length - 1}[event.key];
-        if (next == null) return;
-        event.preventDefault();
-        setSelected(sessions[next].id);
-        document.getElementById(`${panel}-${sessions[next].id}`)?.focus();
-      }}>
-        {sessions.map(item => <button key={item.id} type="button" role="tab" id={`${panel}-${item.id}`}
-          tabIndex={item.id === session.id ? 0 : -1} aria-selected={item.id === session.id} aria-controls={panel}
-          onClick={() => setSelected(item.id)} title={`${item.source} · ${item.title}`}>
-          {item.active > 0 && <span className="status-dot" aria-label="有请求进行中"/>}
-          <span>{item.title}</span>
-          {(item.source === '按历史关联' || item.source === '归属待确认') && <small>{item.source === '按历史关联' ? '推测' : '待确认'}</small>}
-        </button>)}
-      </div>
-      <div key={session.id} className="context-panel" id={panel} role="tabpanel" aria-labelledby={`${panel}-${session.id}`}>
-        <ContextDetails session={session} nowMs={nowMs}/>
-      </div>
-    </div> : <div className="empty-requests-card">暂无会话。小涛或外部工具发起模型请求后，会在这里显示上下文。</div>}
-    {!session && snapshot.recentRequests.length > 0 && <details className="context-requests">
-      <summary>最近请求</summary>
-      <RecentRequests requests={snapshot.recentRequests} nowMs={nowMs}/>
-    </details>}
+    <div className="requests-header">
+      <h2>会话上下文</h2>
+      {sessions.length > 0 && <span className="context-active-count">{sessions.length} 个进行中</span>}
+    </div>
+    {sessions.length ? <ul className="context-card" aria-label="活跃会话">
+      {sessions.map(session => <ConversationRow key={session.id} session={session} nowMs={nowMs} open={selected === session.id}
+        onToggle={() => setSelected(current => current === session.id ? null : session.id)}/>)}
+    </ul> : <div className="empty-requests-card">暂无进行中的会话</div>}
   </section>;
 }
