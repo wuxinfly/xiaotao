@@ -8,6 +8,26 @@ import (
 	"time"
 )
 
+func TestDashboardConversationsOrderByLatestEndTime(t *testing.T) {
+	svc := &Service{}
+	now := time.Now()
+	earlierEnd, laterEnd := now.Add(3*time.Second), now.Add(4*time.Second)
+	older := &Record{RequestID: "older", CreatedAt: now, EndedAt: &laterEnd, Status: StatusCompleted}
+	overlap := &Record{RequestID: "overlap", CreatedAt: now.Add(time.Second), EndedAt: &earlierEnd, Status: StatusCompleted}
+	newer := &Record{RequestID: "newer", CreatedAt: now.Add(2 * time.Second), EndedAt: &earlierEnd, Status: StatusCompleted}
+	svc.attachConversation(older, ConversationInput{ID: "first"})
+	svc.attachConversation(overlap, ConversationInput{ID: "first"})
+	svc.attachConversation(newer, ConversationInput{ID: "second"})
+	svc.finishConversation(older)
+	svc.finishConversation(overlap)
+	svc.finishConversation(newer)
+
+	got := summarizeConversations(svc.copyConversations(), nil, laterEnd)
+	if len(got) != 2 || got[0].ID != "first" || got[0].Active != 0 {
+		t.Fatalf("expected the session with the latest end time first, got %+v", got)
+	}
+}
+
 func TestService_CumulativeDeduplication(t *testing.T) {
 	tmp := t.TempDir()
 	svc, err := New(tmp, "0.1.0-test")

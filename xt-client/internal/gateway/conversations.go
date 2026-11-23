@@ -30,11 +30,7 @@ func (s *Service) conversationInput(r *http.Request, body map[string]any, window
 	if id := identifier(r.Header.Get("X-Xiaotao-Session")); id != "" {
 		input.ID = dashboardID("agent", id)
 		input.Source = "小涛"
-		if encoded := r.Header.Get("X-Xiaotao-Title"); len(encoded) <= 1024 {
-			if data, err := base64.RawURLEncoding.DecodeString(encoded); err == nil {
-				input.Title = string(data)
-			}
-		}
+		input.Title = requestTitle(r)
 		if override, err := strconv.ParseInt(r.Header.Get("X-Xiaotao-Context-Window"), 10, 64); err == nil && override > 0 {
 			input.Context.Window = override
 		}
@@ -45,6 +41,7 @@ func (s *Service) conversationInput(r *http.Request, body map[string]any, window
 	input.Source = "外部 API"
 	if id := identifier(r.Header.Get("X-Xiaotao-Session-Id")); id != "" {
 		input.ID = dashboardID("external", id)
+		input.Title = shortTitle(requestTitle(r))
 		return input
 	}
 	if incoming.codexID != "" {
@@ -75,6 +72,17 @@ func (s *Service) conversationInput(r *http.Request, body map[string]any, window
 	input.InferenceScope = protocol
 	input.Prefixes = historyPrefixes(messages)
 	return input
+}
+
+func requestTitle(r *http.Request) string {
+	encoded := r.Header.Get("X-Xiaotao-Title")
+	if len(encoded) > 1024 {
+		return ""
+	}
+	if data, err := base64.RawURLEncoding.DecodeString(encoded); err == nil {
+		return string(data)
+	}
+	return ""
 }
 
 func withIncomingContext(r *http.Request, incoming incomingContext) *http.Request {

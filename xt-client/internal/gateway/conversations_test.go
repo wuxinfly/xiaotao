@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -70,10 +71,19 @@ func TestDashboardDoesNotMergeAmbiguousHistory(t *testing.T) {
 }
 
 func TestDashboardGroupsExplicitAPIAndAnthropicSessions(t *testing.T) {
-	svc, src, usage := setupGateway(t, func(w http.ResponseWriter, r *http.Request) { completion(w) })
+	svc, src, usage := setupGateway(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Xiaotao-Title") != "" {
+			t.Error("incoming session title leaked to upstream")
+		}
+		completion(w)
+	})
+	const title = "外部工具中的会话标题"
 	for i := 0; i < 2; i++ {
 		external := chatRequest(src.Models[0].ID, false)
 		external.Header.Set("X-Xiaotao-Session-Id", "same-id")
+		if i == 0 {
+			external.Header.Set("X-Xiaotao-Title", base64.RawURLEncoding.EncodeToString([]byte(title)))
+		}
 		responses := httptest.NewRecorder()
 		svc.HandleChat(responses, external)
 		if responses.Code != 200 {
@@ -98,6 +108,9 @@ func TestDashboardGroupsExplicitAPIAndAnthropicSessions(t *testing.T) {
 	for _, session := range snap.Conversations {
 		if len(session.Requests) != 2 {
 			t.Fatalf("incorrectly grouped: %+v", session)
+		}
+		if session.Source == "外部 API" && session.Title != title {
+			t.Fatalf("external title not retained: %+v", session)
 		}
 	}
 }
