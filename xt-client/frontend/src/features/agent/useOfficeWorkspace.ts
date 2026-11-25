@@ -21,6 +21,7 @@ export function useOfficeWorkspace({parent, project, projectName, visible, picki
   const [members, setMembers] = useState<{project: string; items: OfficeMember[]}>({project: '', items: []});
   const [state, setState] = useState<{parent: string; items: OfficeConversation[]; error?: string}>({parent: '', items: []});
   const [acting, setActing] = useState('');
+  const [openVersion, setOpenVersion] = useState(0);
   const notified = useRef(new Set<string>());
   const parentRef = useRef(parent);
   parentRef.current = parent;
@@ -63,6 +64,7 @@ export function useOfficeWorkspace({parent, project, projectName, visible, picki
   const openMember = useCallback((memberId: string, memberName: string, id = parent, taskId?: string) => {
     if (!id || parentRef.current && id !== parentRef.current) return;
     const key = taskId ? memberId + ':' + taskId : memberId;
+    setOpenVersion(current => current + 1);
     setTabs(current => {
       const next = current[id] || emptyTabs;
       return {...current, [id]: {members: new Map([...next.members, [key, {memberId, name: memberName, taskId}]]), selected: key}};
@@ -132,7 +134,7 @@ export function useOfficeWorkspace({parent, project, projectName, visible, picki
   };
 
   return {
-    members: members.project === project ? members.items : [],
+    members: members.project === project ? members.items : [], openVersion,
     conversations, error: state.parent === parent ? state.error : undefined,
     tabs: currentTabs.members, selected: currentTabs.selected, acting,
     openMember, selectTab, closeTab, refresh, close,

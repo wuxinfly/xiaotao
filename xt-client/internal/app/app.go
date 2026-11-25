@@ -155,6 +155,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 	registerSourceRoutes(mux, sources, gatewaySvc, requireOrigin, send, apiError, plugins)
 	registerPluginRoutes(mux, plugins, requireOrigin)
 	registerPluginMigration(mux, plugins, data, keyring.Decrypt, requireOrigin)
+	registerWorkspaceRoutes(mux, requireOrigin, send, apiError)
 	registerRuntimeRoutes(mux, runtimeRoutes{state: s, data: data, stop: stop, cfg: cfg, sources: sources, gateway: gatewaySvc, usage: usageSvc, send: send, apiError: apiError})
 	sub, _ := fs.Sub(assets, "web")
 	mux.Handle("/", http.FileServer(http.FS(sub)))

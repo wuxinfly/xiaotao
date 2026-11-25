@@ -1,8 +1,12 @@
 import {useState, type FormEvent} from 'react';
-import {ArrowUpRight, Bot, MessageCircleQuestion, UserRound, X} from 'lucide-react';
+import {ArrowUpRight, Bot, FolderOpen, Globe2, MessageCircleQuestion, UserRound, X} from 'lucide-react';
 import {WorkspacePanel} from '../../components/WorkspacePanel';
 import {officeConversations, type OfficeConversation} from '../../lib/office-conversations';
 import {OfficePage} from '../office/OfficePage';
+import {WorkspaceAddTab} from '../workspace/WorkspaceAddTab';
+import {WorkspaceBrowser} from '../workspace/WorkspaceBrowser';
+import {WorkspaceFiles} from '../workspace/WorkspaceFiles';
+import {useWorkspaceTools, type WorkspaceTool} from '../workspace/useWorkspaceTools';
 import {OfficeMemberConversation} from './OfficeMemberConversation';
 import type {OfficeWorkspaceState} from './useOfficeWorkspace';
 import type {AgentModelConfig, AgentModelOption} from '../../lib/api';
@@ -16,6 +20,7 @@ const statusLabels = {
 const needsReply = (item: OfficeConversation) => !!(item.question || item.coordinatorQuestion);
 const statusLabel = (item: OfficeConversation) => needsReply(item) ? '等你回复' : statusLabels[item.status];
 const memberName = (item: OfficeConversation) => item.memberName || '员工';
+const toolLabel: Record<WorkspaceTool, string> = {files: '文件管理', browser: '浏览器'};
 
 export function OfficeDispatchCard({item, office, parent}: {item: OfficeConversation; office: OfficeWorkspaceState; parent: string}) {
   const [answer, setAnswer] = useState('');
@@ -64,22 +69,37 @@ export function OfficeWorkspacePanel({office, parent, project, projectName, mode
   models: AgentModelOption[]; modelConfigs: AgentModelConfig[];
   visible: boolean; open: boolean; coordinatorRunning: boolean; onClose: () => void; onOpenMember: (member: OfficeMember) => void;
 }) {
+  const tools = useWorkspaceTools(project, office.selected, office.openVersion);
+  const showOffice = tools.active === null && office.selected === 'office';
   return <WorkspacePanel open={open} onClose={onClose} tabs={<>
-      <button type="button" className="workspace-panel-tab" aria-pressed={office.selected === 'office'} onClick={() => office.selectTab('office')}>办公室</button>
+      <button type="button" className="workspace-panel-tab" aria-pressed={showOffice} onClick={() => {tools.clear(); office.selectTab('office');}}>办公室</button>
+      {tools.tabs.map(tool => <div className="workspace-panel-tab-group" key={tool}>
+        <button type="button" className="workspace-panel-tab workspace-tool-tab" aria-pressed={tools.active === tool} onClick={() => tools.select(tool)}>
+          {tool === 'files' ? <FolderOpen aria-hidden="true"/> : <Globe2 aria-hidden="true"/>}{toolLabel[tool]}
+        </button>
+        <button type="button" className="workspace-panel-tab-close" aria-label={`关闭${toolLabel[tool]}`} onClick={() => tools.close(tool)}><X aria-hidden="true"/></button>
+      </div>)}
       {Array.from(office.tabs).filter(([, tab]) => !tab.hidden).map(([id, tab]) => <div className="workspace-panel-tab-group" key={id}>
-        <button type="button" className="workspace-panel-tab" aria-pressed={office.selected === id} onClick={() => office.selectTab(id)}>{tab.name}{tab.taskId ? ' · 历史任务' : ''}</button>
+        <button type="button" className="workspace-panel-tab" aria-pressed={tools.active === null && office.selected === id} onClick={() => {tools.clear(); office.selectTab(id);}}>{tab.name}{tab.taskId ? ' · 历史任务' : ''}</button>
         <button type="button" className="workspace-panel-tab-close" aria-label={`收起${tab.name}对话`} onClick={() => office.closeTab(id)}><X aria-hidden="true"/></button>
       </div>)}
+      <WorkspaceAddTab onPick={tools.open}/>
     </>}>
     {office.error && <p className="agent-office-error" role="alert">{office.error}</p>}
-    <div className="workspace-panel-content" hidden={office.selected !== 'office'}>
+    <div className="workspace-panel-content" hidden={!showOffice}>
       {open && <OfficePage visible={visible && office.selected === 'office'} projectPath={project} projectName={projectName}
         conversations={office.conversations.filter(item => !item.historical)} coordinatorRunning={coordinatorRunning} onOpenMember={onOpenMember}
         onOpenConversation={item => office.openMember(item.memberId, memberName(item))}/>}
     </div>
+    {tools.tabs.includes('files') && <div className="workspace-panel-content" hidden={tools.active !== 'files'}>
+      <WorkspaceFiles projectPath={project}/>
+    </div>}
+    {tools.tabs.includes('browser') && <div className="workspace-panel-content" hidden={tools.active !== 'browser'}>
+      <WorkspaceBrowser active={open && visible && tools.active === 'browser'}/>
+    </div>}
     {Array.from(office.tabs, ([id, tab]) => {
       const member = office.members.find(member => member.id === tab.memberId);
-      return <div key={`${parent}:${id}`} className="workspace-panel-content" hidden={tab.hidden || office.selected !== id}>
+      return <div key={`${parent}:${id}`} className="workspace-panel-content" hidden={tools.active !== null || tab.hidden || office.selected !== id}>
         <OfficeMemberConversation parent={parent} project={project} projectName={projectName} memberId={tab.memberId} name={tab.name} historicalTask={tab.taskId}
           item={office.conversations.find(item => item.memberId === tab.memberId && (tab.taskId ? item.taskId === tab.taskId : !item.historical))} defaultModel={model}
           preferredModel={member?.modelPreference?.modelId} avatarColor={member?.appearance?.primaryColor} models={models} modelConfigs={modelConfigs}

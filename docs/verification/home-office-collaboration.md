@@ -16,9 +16,11 @@
 
 12. 检查二维工位墙在宽面板显示双列、窄面板显示单列。点员工工位打开对话，点任务名看详情，从「待你处理」进入员工提问和任务审批。检查组队、角色配色及形状预览、深海/浅海和资料馆入口。
 
+13. 点工作区标签栏的「+」，分别打开「文件管理」和「浏览器」。文件管理进入子目录、预览文本和图片、返回上级，并确认「在资源管理器中打开」定位到当前项目；尝试越界路径应失败。浏览器输入 `example.com` 等地址，确认地址栏归一化、页面在面板内加载、非法协议被拒绝，「在系统浏览器中打开」可用；换成禁止嵌入的网站时确认白屏提示和系统浏览器兜底。关闭工具标签后办公室恢复显示，切到员工对话时工具视图自动让位。
+
 ## 自动验证入口
 
-- 前端目录执行 `node --test tests/home-office-collaboration.browser.test.mjs tests/office-entry.browser.test.mjs tests/office-member-execution.browser.test.mjs tests/office-team-real.browser.test.mjs tests/office.browser.test.mjs tests/navigation-layout.browser.test.mjs`。
+- 前端目录执行 `node --test tests/home-office-collaboration.browser.test.mjs tests/office-entry.browser.test.mjs tests/office-member-execution.browser.test.mjs tests/office-team-real.browser.test.mjs tests/office.browser.test.mjs tests/navigation-layout.browser.test.mjs tests/workspace-tools.browser.test.mjs`。
 - 客户端目录执行 `go test ./...`、`go vet ./...`、`node tools/check-go-size.mjs` 和 `./build.ps1 -Env uat -Verify`。前端 lint、size 和 build 也可在前端目录独立执行。
 
 浏览器用例覆盖交互和隔离 Go 服务中的办公室入口及团队数据，模型协调、记忆和派单走可重复的本地模型替身。真实配置模型的文本质量和原生 WebView2 操作需要单独验收。
@@ -26,3 +28,5 @@
 上次首页协作验收：9 项浏览器回归通过，Go 全量测试、vet、前后端尺寸检查、前端构建和 UAT 验证包构建通过。
 
 2026-11-25 二维工位墙和模型接口弹窗：相关 Edge 浏览器回归 15 项通过，包含独立 Go 服务中的团队持久化。前端 lint、尺寸、TypeScript、生产构建、Go 测试、vet、Go 尺寸及 UAT 验证包构建通过。Windows 启动最小化用例在并行验证中失败一次，单项与串行全量重跑均通过。原生 WebView2 样式与操作仍待实机体验。
+
+2026-11-25 工作区文件管理和浏览器标签：`tests/workspace-tools.browser.test.mjs` 通过，覆盖加号菜单、iframe 地址访问、非法协议、系统浏览器、目录导航、文本/图片预览、资源管理器入口和标签关闭；Go 工作区接口测试覆盖路径越界、预览截断、二进制、图片和链接校验。真实网站嵌入、WebView2 内 iframe 行为与系统浏览器弹窗仍待实机验收。

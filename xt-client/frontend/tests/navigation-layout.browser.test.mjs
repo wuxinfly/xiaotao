@@ -80,7 +80,8 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await workspace.press('Enter');
     assert.equal(await workspace.getAttribute('aria-expanded'), 'true');
     const tabs = officePane(page).getByRole('group', {name: '工作区标签'});
-    assert.deepEqual(await tabs.getByRole('button').allTextContents(), ['办公室']);
+    assert.deepEqual(await tabs.getByRole('button').evaluateAll(nodes => nodes.filter(node => node.hasAttribute('aria-pressed')).map(node => node.textContent)), ['办公室']);
+    assert.equal(await tabs.getByRole('button', {name: '打开文件管理或浏览器'}).count(), 1, 'the tab strip keeps the add-tool button');
     assert.equal(await tabs.getByRole('button', {name: '办公室', exact: true}).getAttribute('aria-pressed'), 'true');
     await officePane(page).getByText('在小涛对话里选择项目后，就能查看它的办公室。').waitFor();
     assert.equal(await page.locator('.workspace-dock').count(), 1, 'the office pane must keep home navigation visible');
