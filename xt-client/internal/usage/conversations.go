@@ -91,7 +91,9 @@ func (s *Service) attachConversation(rec *Record, input ConversationInput) {
 		item.title = input.Title
 	}
 	item.source = input.Source
-	item.updated = rec.CreatedAt
+	if rec.CreatedAt.After(item.updated) {
+		item.updated = rec.CreatedAt
+	}
 	item.active++
 	if len(input.Prefixes) > 0 {
 		item.fingerprint = input.Prefixes[len(input.Prefixes)-1]
@@ -127,6 +129,9 @@ func (s *Service) finishConversation(rec *Record) {
 		return
 	}
 	item.active--
+	if rec.EndedAt != nil && rec.EndedAt.After(item.updated) {
+		item.updated = *rec.EndedAt
+	}
 	addTokens(&item.totals.Prompt, rec.PromptTokens)
 	addTokens(&item.totals.Completion, rec.CompletionTokens)
 	addTokens(&item.totals.Cached, rec.CachedTokens)

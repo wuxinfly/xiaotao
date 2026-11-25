@@ -1,4 +1,4 @@
-import {ChevronDown} from 'lucide-react';
+import {ChevronDown, Gauge, Layers3} from 'lucide-react';
 import {useId, useState} from 'react';
 import type {DashboardSnapshot} from '../../lib/api';
 import type {ContextParts, DashboardConversation} from '../../lib/dashboard-conversation';
@@ -15,6 +15,7 @@ const parts: Array<{key: keyof ContextParts; label: string; color: string}> = [
   {key: 'images', label: '图片', color: 'var(--context-lime)'},
 ];
 const compact = new Intl.NumberFormat('en', {notation: 'compact', maximumFractionDigits: 1});
+const recentConversationCount = 3;
 
 function ContextBar({context, ratio}: {context: DashboardConversation['context']; ratio: number | null}) {
   const sections = parts.filter(part => context.parts[part.key] > 0);
@@ -59,6 +60,8 @@ function ConversationRow({session, open, onToggle, nowMs}: {
   const panel = useId();
   const {context, requests} = session;
   const latest = requests.find(request => request.id === session.latestRequestId) ?? requests[0];
+  const active = session.active > 0;
+  const speed = latest?.speedTokPerSec;
   const measured = latest?.tokens.prompt;
   const used = measured ?? (context.estimated > 0 ? context.estimated : null);
   const window = context.window;
@@ -69,35 +72,52 @@ function ConversationRow({session, open, onToggle, nowMs}: {
   const tokens = `${used == null ? '—' : `${measured == null ? '≈' : ''}${compact.format(used)}`} / ${window > 0 ? compact.format(window) : '—'}`;
   const exact = `${qualifier} ${formatNumber(used)} tokens · ${window > 0 ? `窗口 ${formatNumber(window)} tokens` : '窗口未知'}`;
 
-  return <li className="context-entry">
+  return <li className="context-entry" data-active={active}>
     <button type="button" className="context-row" aria-expanded={open} aria-controls={panel} onClick={onToggle}>
       <span className="context-identity">
-        <span className="status-dot" title="有请求进行中" aria-hidden="true"/>
         <span className="context-name">
           <strong title={session.title}>{session.title}</strong>
           <small title={source}>{source}</small>
         </span>
       </span>
-      <ContextBar context={context} ratio={ratio}/>
-      <span className="context-tokens" title={exact}><span aria-hidden="true">{tokens}</span><span className="sr-only">{exact}</span></span>
-      <strong className="context-percent" data-near-limit={ratio !== null && ratio >= .8}>{percentage}</strong>
+      <span className="context-status">{active ? '进行中' : '已结束'}</span>
+      <span className="context-capacity">
+        <span className="context-tokens" title={exact}><span aria-hidden="true">{tokens}</span><span className="sr-only">{exact}</span></span>
+        <strong className="context-percent" data-near-limit={ratio !== null && ratio >= .8}>{percentage}</strong>
+        <ContextBar context={context} ratio={ratio}/>
+      </span>
+      <span className="context-speed" title="最近一次主请求的输出速度">
+        <Gauge size={14} aria-hidden="true"/>
+        <span><strong>{speed == null ? '—' : speed.toFixed(1)}</strong> <small>tok/s</small></span>
+      </span>
       <ChevronDown className="context-chevron" size={15} aria-hidden="true"/>
     </button>
-    <div id={panel} hidden={!open}>{open && <ContextDetails session={session} nowMs={nowMs} usage={exact}/>}</div>
+    <div id={panel} className="context-disclosure" data-open={open} inert={!open} aria-hidden={!open}>
+      <div><ContextDetails session={session} nowMs={nowMs} usage={exact}/></div>
+    </div>
   </li>;
 }
 
 export function ConversationContext({snapshot, nowMs}: {snapshot: DashboardSnapshot; nowMs: number}) {
   const [selected, setSelected] = useState<string | null>(null);
-  const sessions = snapshot.conversations?.filter(session => session.active > 0) ?? [];
-  return <section className="requests-section" aria-label="会话上下文">
-    <div className="requests-header">
-      <h2>会话上下文</h2>
-      {sessions.length > 0 && <span className="context-active-count">{sessions.length} 个进行中</span>}
+  const conversations = snapshot.conversations ?? [];
+  const active = conversations.filter(session => session.active > 0);
+  const recent = conversations.filter(session => session.active === 0).slice(0, recentConversationCount);
+  const sessions = [...active, ...recent];
+  return <section className="requests-section conversation-context" aria-label="会话上下文">
+    <div className="requests-header context-heading">
+      <h2><Layers3 size={17} aria-hidden="true"/>会话上下文</h2>
+      {sessions.length > 0 && <span className="context-counts">
+        <span data-active={active.length > 0}>{active.length} 个进行中</span>
+        <span>最近结束 {recent.length} 个</span>
+      </span>}
     </div>
-    {sessions.length ? <ul className="context-card" aria-label="活跃会话">
-      {sessions.map(session => <ConversationRow key={session.id} session={session} nowMs={nowMs} open={selected === session.id}
-        onToggle={() => setSelected(current => current === session.id ? null : session.id)}/>)}
-    </ul> : <div className="empty-requests-card">暂无进行中的会话</div>}
+    {sessions.length ? <div className="context-card">
+      <div className="context-columns" aria-hidden="true"><span>会话 / 模型</span><span>状态</span><span>上下文占用</span><span>输出速度</span></div>
+      <ul className="context-list" aria-label="会话列表">
+        {sessions.map(session => <ConversationRow key={session.id} session={session} nowMs={nowMs} open={selected === session.id}
+          onToggle={() => setSelected(current => current === session.id ? null : session.id)}/>)}
+      </ul>
+    </div> : <div className="empty-requests-card">暂无会话请求</div>}
   </section>;
 }
