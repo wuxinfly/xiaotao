@@ -4,19 +4,22 @@ import {LoaderCircle, Search, X} from 'lucide-react';
 import type {Editor} from '@tiptap/react';
 import {api, type AgentConversationReference, type AgentReferenceCandidate} from '../../lib/api';
 import {ReferenceDetailModal} from './AgentModals';
+import type {OfficeMember} from '../../lib/office';
 
-export function ReferencePicker({anchor, editor, anchorAt, query, scope, results, index, loading, error, onScope, onChoose, onClose}: {
+export function ReferencePicker({anchor, editor, anchorAt, query, scope, results, roles, index, loading, error, onScope, onChoose, onRole, onClose}: {
   anchor: React.RefObject<HTMLDivElement | null>;
   editor: Editor | null;
   anchorAt: number;
   query: string;
   scope: 'project' | 'all';
   results: AgentReferenceCandidate[];
+  roles: OfficeMember[];
   index: number;
   loading: boolean;
   error: string;
   onScope: (scope: 'project' | 'all') => void;
   onChoose: (item: AgentReferenceCandidate) => void;
+  onRole: (member: OfficeMember) => void;
   onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -51,19 +54,22 @@ export function ReferencePicker({anchor, editor, anchorAt, query, scope, results
     window.addEventListener('resize', place);
     document.addEventListener('scroll', place, true);
     return () => {window.removeEventListener('resize', place); document.removeEventListener('scroll', place, true);};
-  }, [anchor, editor, anchorAt, results.length, loading, error]);
+  }, [anchor, editor, anchorAt, results.length, roles.length, loading, error]);
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => setShown(true));
     return () => cancelAnimationFrame(frame);
   }, []);
   return createPortal(<div ref={panel} className={'agent-reference-picker' + (shown ? ' is-visible' : '')} style={{...position, bottom: anchorBottom ? window.innerHeight - anchorBottom : 'auto', maxHeight, transformOrigin: origin}} role="dialog" aria-label="引用其他对话">
-    <div className="agent-reference-picker-head"><Search aria-hidden="true"/><span>{query ? `搜索“${query}”` : '引用对话'}</span><button type="button" aria-label="关闭引用选择" title="关闭" onClick={event => {event.preventDefault(); onClose();}}><X aria-hidden="true"/></button></div>
+    <div className="agent-reference-picker-head"><Search aria-hidden="true"/><span>{query ? `搜索“${query}”` : roles.length ? '选择员工或引用对话' : '引用对话'}</span><button type="button" aria-label="关闭引用选择" title="关闭" onClick={event => {event.preventDefault(); onClose();}}><X aria-hidden="true"/></button></div>
     <div className="agent-reference-scope" role="group" aria-label="引用搜索范围">
       <button type="button" aria-pressed={scope === 'project'} onClick={() => onScope('project')}>当前项目</button>
       <button type="button" aria-pressed={scope === 'all'} onClick={() => onScope('all')}>所有项目</button>
     </div>
     <div className="agent-reference-results" role="listbox" aria-label="可引用对话">
-      {results.map((item, itemIndex) => <button type="button" role="option" aria-selected={itemIndex === index} key={item.sessionId} onMouseDown={event => event.preventDefault()} onClick={() => onChoose(item)}>
+      {roles.map((member, memberIndex) => <button type="button" role="option" aria-selected={memberIndex === index} key={member.id} className="agent-role-option" onMouseDown={event => event.preventDefault()} onClick={() => onRole(member)}>
+        <span><strong>{member.name}</strong><small>{member.responsibility || '当前项目员工'}</small></span>
+      </button>)}
+      {results.map((item, itemIndex) => <button type="button" role="option" aria-selected={roles.length + itemIndex === index} key={item.sessionId} onMouseDown={event => event.preventDefault()} onClick={() => onChoose(item)}>
         <span><strong>{item.title}</strong><small>{item.project.name}</small></span>
         <time>{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</time>
       </button>)}

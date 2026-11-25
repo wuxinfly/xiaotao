@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -27,6 +28,30 @@ type ImageInput struct {
 	MimeType string `json:"mimeType"`
 	Width    int    `json:"width,omitempty"`
 	Height   int    `json:"height,omitempty"`
+}
+
+type turnImages struct {
+	inputs []ImageInput
+	stored []ImageAttachment
+}
+
+func (images turnImages) any() bool {
+	return len(images.inputs) != 0 || len(images.stored) != 0
+}
+
+func (s *Service) StoreMessageImages(inputs []ImageInput) ([]ImageAttachment, error) {
+	return s.saveImages(inputs, time.Now())
+}
+
+func (s *Service) SendWithStoredImages(ctx context.Context, sessionID, text, model string, settings *ModelSettings, images []ImageAttachment, emit func(Event)) error {
+	return s.send(ctx, sessionID, text, model, settings, settings != nil, nil, turnImages{stored: images}, emit)
+}
+
+func (s *Service) resolveTurnImages(images turnImages, now time.Time) ([]ImageAttachment, error) {
+	if len(images.stored) > 0 {
+		return images.stored, nil
+	}
+	return s.saveImages(images.inputs, now)
 }
 
 func (s *Service) saveImages(inputs []ImageInput, now time.Time) ([]ImageAttachment, error) {

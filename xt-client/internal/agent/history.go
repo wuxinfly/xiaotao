@@ -13,8 +13,9 @@ const historyPageSize = 80
 const historyPageBytes = 256 * 1024
 
 type HistoryPage struct {
-	Session *Session `json:"session"`
-	Before  string   `json:"before"`
+	Session      *Session  `json:"session"`
+	Before       string    `json:"before"`
+	StreamDrafts []Message `json:"streamDrafts,omitempty"`
 }
 
 // History reads bounded tails using indexed positions. Cursors are exclusive;

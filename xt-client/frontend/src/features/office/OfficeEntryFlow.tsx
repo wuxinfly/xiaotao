@@ -1,6 +1,6 @@
 import {Archive, ArrowRight, RefreshCw, TriangleAlert, UsersRound} from 'lucide-react';
 import {ModalFrame} from '../../components/modal/ModalFrame';
-import type {AgentModelOption, AgentProject} from '../../lib/api';
+import type {AgentModelOption} from '../../lib/api';
 import type {OfficeMember} from '../../lib/office';
 import {useProjectTeam} from './useProjectTeam';
 import {TeamOnboarding} from './TeamOnboarding';
@@ -9,10 +9,10 @@ import {OfficeRoom} from './OfficeRoom';
 import {forwardRef, useImperativeHandle, useState} from 'react';
 import type {TeamSnapshot} from '../../lib/team';
 
-type Props = {projectPath: string; project?: AgentProject; visible: boolean; members: OfficeMember[]; models: AgentModelOption[]; artifactCount: number; onSelectMember: (id: string) => void; onOpenLibrary: () => void; onManage: () => void; onTeamChanged: () => void; onShowTeam: () => void};
+type Props = {projectPath: string; projectName: string; visible: boolean; members: OfficeMember[]; models: AgentModelOption[]; artifactCount: number; onSelectMember: (id: string) => void; onOpenLibrary: () => void; onManage: () => void; onTeamChanged: () => void; onShowTeam: () => void};
 export type OfficeEntryHandle = {setTeam: (team: TeamSnapshot) => void};
 
-export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function OfficeEntryFlow({projectPath, project, visible, members, models, artifactCount, onSelectMember, onOpenLibrary, onManage, onTeamChanged, onShowTeam}, ref) {
+export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function OfficeEntryFlow({projectPath, projectName, visible, members, models, artifactCount, onSelectMember, onOpenLibrary, onManage, onTeamChanged, onShowTeam}, ref) {
   const entry = useProjectTeam(projectPath);
   const [scene, setScene] = useState<'preparing' | 'ready' | 'error'>('preparing');
   const [sceneError, setSceneError] = useState('');
@@ -40,7 +40,7 @@ export const OfficeEntryFlow = forwardRef<OfficeEntryHandle, Props>(function Off
       </div>
     </div>}
     {onboardingOpen && entry.team && <ModalFrame title="组建项目小队" className="office-onboarding-modal" onClose={() => setOnboardingOpen(false)} footer={null}>
-      <TeamOnboarding projectPath={projectPath} projectName={project?.name || ''} team={entry.team} models={models} onCreated={finishSetup} onSkip={finishSetup}/>
+      <TeamOnboarding projectPath={projectPath} projectName={projectName} team={entry.team} models={models} onCreated={finishSetup} onSkip={finishSetup}/>
     </ModalFrame>}
   </div>;
 });

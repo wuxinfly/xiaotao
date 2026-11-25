@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {test} from 'node:test';
 import {chromium} from 'playwright';
+import {openOffice} from './office-test-navigation.mjs';
 
 const projectPath = 'E:\\work\\member-project';
 const memberId = 'role_0123456789abcdef';
@@ -13,13 +14,7 @@ function member(overrides = {}) {
     modelPreference: {modelId: 'test/model'}, responsibility: '负责界面方案', ...overrides};
 }
 
-function history(content = '先确认搜索页的方案。') {
-  return {before: '', session: {id: 'run_chat', project: {path: projectPath, name: '演示项目'}, title: '讨论', model: 'test/model', status: 'completed',
-    messages: [{id: 'user_1', role: 'user', content, runId: 'turn_chat', createdAt: now}, {id: 'answer_1', role: 'assistant', content: '可以先做空状态。', runId: 'turn_chat', createdAt: now}],
-    activity: [], thoughts: [], runStats: [], createdAt: now, updatedAt: now}};
-}
-
-test('member accepts a confirmed task and returns to discussion', {timeout: 60000}, async () => {
+test('the office task list supports manually assigning a task to an employee', {timeout: 60000}, async () => {
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5236', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
@@ -33,12 +28,11 @@ test('member accepts a confirmed task and returns to discussion', {timeout: 6000
       const url = new URL(req.url());
       const path = url.pathname;
       if (path === '/api/agent/projects') return route.fulfill({json: {projects: [{path: projectPath, name: '演示项目', saved: true}]}});
+      if (path === '/api/agent/project') return route.fulfill({json: {path: projectPath, name: '演示项目', saved: true}});
       if (path === '/api/agent/models') return route.fulfill({json: {models: [{model: 'test/model', label: '测试模型', contextWindow: 32000}]}});
       if (path === '/api/office/team') return route.fulfill({json: {members: [member()], globalRoles: [], projectRoles: [], onboarding: 'completed', globalRevision: 0, projectRevision: 0, teamRevision: 0}});
       if (path === '/api/office/snapshot') return route.fulfill({json: {project: {path: projectPath, name: '演示项目'}, accessMode: 'safe', tasks,
-        members: [member(tasks.length ? {status: 'running', taskId: 'task_member', taskTitle: '实现搜索空状态', taskStatus: 'running'} : {})], artifacts: [], capabilities: {notes: []}}});
-      if (path === `/api/office/members/${memberId}/chat`) return route.fulfill({json: {memberId, sessionId: 'run_chat', status: 'completed'}});
-      if (path === `/api/office/members/${memberId}/chat/history`) return route.fulfill({json: history()});
+        members: [{id: 'xiaotao', name: '小涛', role: 'coordinator', status: 'idle', todayTasks: 0}, member(tasks.length ? {status: 'running', taskId: 'task_member', taskTitle: '实现搜索空状态', taskStatus: 'running'} : {})], artifacts: [], capabilities: {notes: []}}});
       if (path === '/api/office/tasks' && req.method() === 'POST') {
         assignment = req.postDataJSON();
         tasks.push({id: 'task_member', projectPath, projectName: '演示项目', title: assignment.title, goal: assignment.goal, status: 'running', memberId,
@@ -53,30 +47,26 @@ test('member accepts a confirmed task and returns to discussion', {timeout: 6000
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://127.0.0.1:5236');
-    await page.getByRole('button', {name: '办公室', exact: true}).click();
+    await openOffice(page, '演示项目');
     await page.locator('canvas[data-office-renderer="three"]').waitFor();
-    await page.getByRole('button', {name: '任务', exact: true}).click();
-    await page.getByRole('tab', {name: /团队/}).click();
-    await page.locator('[data-member-id]').filter({hasText: '设计师'}).click();
-    await page.getByRole('heading', {name: '与设计师对话'}).waitFor();
-    await page.getByRole('button', {name: '交给TA执行'}).click();
+    await page.getByRole('button', {name: '新建任务'}).click();
+    await page.getByRole('button', {name: '执行成员'}).click();
+    await page.getByRole('option', {name: /设计师/}).click();
     const dialog = page.getByRole('dialog', {name: '交给设计师一个任务'});
     await dialog.getByLabel('任务目标').fill('实现搜索空状态并补测试');
     await dialog.getByLabel('标题（可选）').fill('实现搜索空状态');
-    await dialog.getByText('交接当前讨论').waitFor();
     await dialog.getByText(/当前为安全模式/).waitFor();
     await dialog.getByRole('button', {name: '确认并开始'}).click();
     await page.getByRole('heading', {name: '实现搜索空状态'}).waitFor();
     assert.equal(assignment.memberId, memberId);
-    assert.equal(assignment.chatSessionId, 'run_chat');
+    assert.equal(assignment.chatSessionId, undefined);
     assert.equal(assignment.model, 'test/model');
     await page.getByText('指定成员执行（单任务）').waitFor();
     await page.getByText('设计师 · 测试模型').waitFor();
     await page.getByText('正在理解你的需求…').waitFor();
     await page.getByRole('button', {name: '返回任务列表'}).click();
     await page.getByRole('tab', {name: /团队/}).click();
-    await page.locator('[data-member-id]').filter({hasText: '设计师'}).click();
-    await page.getByRole('button', {name: '已有任务进行中'}).waitFor();
+    await page.locator('[data-member-id]').filter({hasText: '设计师'}).getByText('工作中 · 实现搜索空状态').waitFor();
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

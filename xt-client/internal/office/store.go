@@ -20,6 +20,12 @@ PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS office_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS office_delivery (task_id TEXT PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS office_chats (project_key TEXT NOT NULL, member_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(project_key, member_id));
+CREATE TABLE IF NOT EXISTS office_conversations (parent_id TEXT NOT NULL, member_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(parent_id, member_id));
+CREATE INDEX IF NOT EXISTS office_conversations_project ON office_conversations(json_extract(data,'$.Metadata.ProjectKey'));
+CREATE TABLE IF NOT EXISTS office_conversation_archive (parent_id TEXT NOT NULL, source_id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY(parent_id, source_id));
+CREATE TABLE IF NOT EXISTS office_conversation_tasks (task_id TEXT PRIMARY KEY, parent_id TEXT NOT NULL, member_id TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS office_conversation_tasks_parent ON office_conversation_tasks(parent_id);
+CREATE TABLE IF NOT EXISTS office_employee_memory (project_key TEXT NOT NULL, member_id TEXT NOT NULL, turn_id TEXT NOT NULL, summary TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(project_key, member_id, turn_id));
 CREATE TABLE IF NOT EXISTS office_tasks (
 	id TEXT PRIMARY KEY,
 	project_key TEXT NOT NULL,
@@ -73,7 +79,7 @@ func encodeTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }
 
-func (s *Service) writeTask(db *sql.DB, task *Task) error {
+func (s *Service) writeTask(db officeSQLWriter, task *Task) error {
 	raw, err := json.Marshal(task)
 	if err != nil {
 		return err

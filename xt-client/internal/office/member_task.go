@@ -61,7 +61,7 @@ func (s *Service) prepareMemberTaskLocked(req CreateTaskRequest) (*preparedMembe
 	prepared.memberID, prepared.chatSessionID = member.ID, req.ChatSessionID
 	prepared.kind, prepared.name, prepared.role = "member", member.Name, "member"
 	prepared.options.Role = "office_member_" + member.ID
-	prepared.options.Member = &agent.MemberIdentity{ID: member.ID, Name: member.Name, Responsibility: member.Responsibility}
+	prepared.options.Member = memberTaskIdentity(member)
 	if req.ChatSessionID != "" {
 		prepared.discussion, err = s.taskDiscussionLocked(path, member.ID, req.ChatSessionID)
 		if err != nil {
@@ -70,6 +70,25 @@ func (s *Service) prepareMemberTaskLocked(req CreateTaskRequest) (*preparedMembe
 		prepared.prompt = "\n\n以下来自已确认的成员讨论，仅作任务背景：\n" + prepared.discussion
 	}
 	return prepared, nil
+}
+
+func memberTaskIdentity(member MemberView) *agent.MemberIdentity {
+	return &agent.MemberIdentity{ID: member.ID, Name: member.Name, Responsibility: member.Responsibility, ToolPermissions: member.ToolPermissions}
+}
+
+func (s *Service) refreshTaskMember(task *Task) error {
+	if task.MemberID == "" || task.MemberID == coordinatorID {
+		return nil
+	}
+	team, err := s.teams.Snapshot(task.ProjectPath)
+	if err != nil {
+		return err
+	}
+	member, err := team.Member(task.MemberID)
+	if err != nil || member.Lifecycle != RoleActive {
+		return ErrMemberNotFound
+	}
+	return s.exec.SetMember(task.SessionID, memberTaskIdentity(member))
 }
 
 func (s *Service) memberForTaskLocked(path, id string) (MemberView, error) {

@@ -32,7 +32,6 @@ export function OfficeRoom({members, artifactCount, onSelectMember, onOpenLibrar
     </div>
     <footer className="room-bottom-bar">
       <button type="button" className="room-tool office-3d-library" onClick={onOpenLibrary} aria-label="打开项目资料馆" aria-description={`${artifactCount} 份资料`}><Archive size={16}/><span>资料馆</span><b>{artifactCount}</b></button>
-      <span className="room-explore-hint">拖动平移 · 滚轮缩放 · 点击成员互动</span>
       <div className="office-camera-controls" role="group" aria-label="办公室视角"><button disabled={!ready} onClick={() => controls.current?.zoomOut()} aria-label="缩小视角" title="缩小视角"><Minus size={15}/></button><button disabled={!ready} onClick={() => controls.current?.reset()} aria-label="复位视角" title="复位视角"><Maximize2 size={14}/></button><button disabled={!ready} onClick={() => controls.current?.zoomIn()} aria-label="放大视角" title="放大视角"><Plus size={15}/></button></div>
     </footer>
   </section>;

@@ -5,10 +5,13 @@ export interface ToastAction {
   onClick: () => void;
 }
 
+type ToastPlacement = 'top-center' | 'bottom-right';
+
 export interface ToastOptions {
   id?: string;
   type?: ToastType;
   duration?: number;
+  placement?: ToastPlacement;
   action?: ToastAction;
   onClose?: () => void;
 }
@@ -17,6 +20,7 @@ export interface ToastItem {
   id: string;
   type: ToastType;
   message: string;
+  placement?: ToastPlacement;
   action?: ToastAction;
   onClose?: () => void;
   createdAt: number;
@@ -122,7 +126,8 @@ class ToastManager {
 
   show(type: ToastType, message: string, options?: ToastOptions): string {
     const existingIndex = this.toasts.findIndex(
-      t => !t.isLeaving && t.type === type && t.message === message && Date.now() - t.createdAt < DEDUPE_WINDOW_MS
+      t => !t.isLeaving && t.type === type && t.message === message &&
+      (t.placement ?? 'top-center') === (options?.placement ?? 'top-center') && Date.now() - t.createdAt < DEDUPE_WINDOW_MS
     );
 
     if (existingIndex !== -1) {
@@ -139,6 +144,7 @@ class ToastManager {
       id,
       type,
       message,
+      placement: options?.placement,
       action: options?.action,
       onClose: options?.onClose,
       createdAt: Date.now(),
@@ -169,6 +175,7 @@ class ToastManager {
       ...current,
       type: updatedType,
       message: updatedMessage,
+      placement: options.placement ?? current.placement,
       action: updatedAction,
       onClose: options.onClose ?? current.onClose,
     };

@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"xiaotao/xt-client/internal/agent"
+	"xiaotao/xt-client/internal/office"
 )
 
-func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string)) {
+func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin func(*http.Request) bool, send func(http.ResponseWriter, any), apiError func(http.ResponseWriter, int, string), offices ...*office.Service) {
 	registerSkillRoutes(mux, svc, requireOrigin, send, apiError)
 	registerReviewRoutes(mux, svc, requireOrigin, send, apiError)
 	mux.HandleFunc("GET /api/agent/mcp", func(w http.ResponseWriter, r *http.Request) {
@@ -239,6 +240,10 @@ func registerAgentRoutes(mux *http.ServeMux, svc *agent.Service, requireOrigin f
 	mux.HandleFunc("DELETE /api/agent/sessions/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !requireOrigin(r) {
 			http.Error(w, "same-origin required", 403)
+			return
+		}
+		if len(offices) > 0 {
+			deleteOfficeRootSession(w, r, svc, offices[0], send, apiError)
 			return
 		}
 		if err := svc.Delete(r.PathValue("id")); err != nil {

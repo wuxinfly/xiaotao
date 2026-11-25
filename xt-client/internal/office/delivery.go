@@ -106,9 +106,12 @@ func (s *Service) loadDelivery(id string) (*Delivery, error) {
 	return &r, nil
 }
 
-func (s *Service) reviewedTurn(ctx context.Context, taskID, sessionID, text string, resuming bool, emit func(agent.Event)) error {
+func (s *Service) reviewedTurn(ctx context.Context, taskID, sessionID, text string, resuming bool, images []agent.ImageAttachment, emit func(agent.Event)) error {
 	task, err := s.loadTask(taskID)
 	if err != nil {
+		return err
+	}
+	if err := s.refreshTaskMember(task); err != nil {
 		return err
 	}
 	r := &Delivery{FileNote: "本轮尚未完成文件比对", Pending: map[string]string{}}
@@ -130,7 +133,16 @@ func (s *Service) reviewedTurn(ctx context.Context, taskID, sessionID, text stri
 	// Hold terminal status until the receipt is durable so the UI's final
 	// refresh cannot race the file comparison.
 	var terminal *agent.Event
-	err = s.exec.RunTurn(ctx, sessionID, text, "", nil, func(e agent.Event) {
+	var answerID string
+	parent, member, _ := s.officeTaskConversation(taskID)
+	err = s.runEmployeeTurn(ctx, conversationRun{session: sessionID, images: images}, text, func(e agent.Event) {
+		event := s.observeLiveDraft(sessionID, e)
+		if parent != "" {
+			s.publishConversation(conversationKey(parent, member), event)
+		}
+		if e.Type == "answer_end" {
+			answerID = e.MessageID
+		}
 		if e.Type == "activity" && e.Activity != nil {
 			activity := *e.Activity
 			// Cancellation can stop the observer after a command has already
@@ -148,6 +160,7 @@ func (s *Service) reviewedTurn(ctx context.Context, taskID, sessionID, text stri
 		}
 		emit(e)
 	})
+	s.clearLiveDraft(sessionID)
 	if baselineErr == nil {
 		var after *workspaceSample
 		after, baselineErr = captureWorkspace(s.rootCtx, task.ProjectPath)
@@ -160,6 +173,9 @@ func (s *Service) reviewedTurn(ctx context.Context, taskID, sessionID, text stri
 		r.FileNote = baselineErr.Error()
 	}
 	s.saveDelivery(taskID, r)
+	if err == nil && ctx.Err() == nil && answerID != "" {
+		s.summarizeConversationTask(ctx, task, answerID)
+	}
 	if terminal != nil {
 		emit(*terminal)
 	}

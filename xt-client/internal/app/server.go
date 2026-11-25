@@ -54,6 +54,9 @@ func Serve(ctx context.Context, data string) error {
 		defer closer.Close()
 	}
 	srv := http.Server{Handler: h, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	if handler, ok := h.(*closeableHandler); ok {
+		srv.RegisterOnShutdown(handler.office.CloseEventSubscriptions)
+	}
 	if e = Save(filepath.Join(data, "runtime.json"), s); e != nil {
 		logging.Default().For(logging.ModuleClient).Error("save runtime.json failed", logging.F("error", e))
 		return e

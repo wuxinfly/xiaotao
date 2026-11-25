@@ -62,7 +62,7 @@
         {
           "id": "directories.xt-client",
           "kind": "fact",
-          "text": "`xt-client/`：Go 本地服务与 WebView2 轻量客户端原型，构建和运行说明见该目录 README.md 与 AGENTS.md。",
+          "text": "`xt-client/`：Go 本地服务与 WebView2 客户端，首页对话及办公室共用 Agent 执行器；构建和运行说明见该目录 README.md 与 AGENTS.md。",
           "source_refs": [
             "xt-client/README.md",
             "xt-client/AGENTS.md"

@@ -149,6 +149,12 @@ func (s *TeamService) UpdateRole(projectPath, roleID string, draft RoleDraft, ex
 			return err
 		}
 		role.Name, role.Responsibility, role.Capabilities, role.Model, role.Appearance = strings.TrimSpace(draft.Name), strings.TrimSpace(draft.Responsibility), append([]string{}, draft.Capabilities...), draft.Model, draft.Appearance
+		if draft.ToolPermissions != nil {
+			role.ToolPermissions = draft.ToolPermissions
+			if draft.ToolPermissions.Inherit {
+				role.ToolPermissions = nil
+			}
+		}
 		role.UpdatedAt = s.now().UTC()
 		registry.Roles[index] = role
 		registry.Revision++
@@ -254,7 +260,11 @@ func newRole(draft RoleDraft, scope string, index int, now time.Time) (Role, err
 	if err := validateDraft(draft); err != nil {
 		return Role{}, err
 	}
-	return Role{ID: "role_" + randomID(8), Scope: scope, Lifecycle: RoleActive, Name: strings.TrimSpace(draft.Name), Responsibility: strings.TrimSpace(draft.Responsibility), Capabilities: append([]string{}, draft.Capabilities...), Model: draft.Model, Appearance: draft.Appearance, CreatedAt: now, UpdatedAt: now}, nil
+	role := Role{ID: "role_" + randomID(8), Scope: scope, Lifecycle: RoleActive, Name: strings.TrimSpace(draft.Name), Responsibility: strings.TrimSpace(draft.Responsibility), Capabilities: append([]string{}, draft.Capabilities...), Model: draft.Model, Appearance: draft.Appearance, CreatedAt: now, UpdatedAt: now}
+	if draft.ToolPermissions != nil && !draft.ToolPermissions.Inherit {
+		role.ToolPermissions = draft.ToolPermissions
+	}
+	return role, nil
 }
 
 func validateDraft(draft RoleDraft) error {

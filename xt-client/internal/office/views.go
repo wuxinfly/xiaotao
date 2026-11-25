@@ -49,7 +49,15 @@ func (s *Service) Snapshot(projectPath, projectName string) (*Snapshot, error) {
 			}
 		}
 	}
+	scopedStates, err := s.projectConversationStatuses(path, tasks)
+	if err != nil {
+		return nil, err
+	}
 	for i := range members {
+		if state := scopedStates[members[i].ID]; state != "" {
+			members[i].Status = state
+			continue
+		}
 		if members[i].ID != coordinatorID && !roleIDPattern.MatchString(members[i].ID) {
 			continue
 		}

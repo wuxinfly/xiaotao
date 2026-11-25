@@ -430,6 +430,7 @@ export interface AgentSession {
 }
 
 export interface AgentEvent {
+  streamOffset?: number;
   runId?: string;
   messageId?: string;
   type: 'answer_end' | 'session' | 'message' | 'message_delta' | 'activity' | 'thought' | 'run_stats' | 'status' | 'error' | 'approval';

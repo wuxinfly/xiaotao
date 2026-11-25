@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "candidate_id": "client-office-shared-chat-interactions",
+  "created_at": "2026-11-21T03:40:00Z",
+  "action": "add",
+  "kind": "fact",
+  "section_id": "development-conventions",
+  "rule_id": "development-conventions.client-office-shared-chat-interactions",
+  "text": "xt-client 的办公室员工对话与小涛主会话共用输入栏、模型菜单、发送与停止、等待气泡和流式回复组件。员工头像及该会话支持的操作由调用方提供。",
+  "rationale": "员工对话单独实现了模型下拉和处理文案，导致按钮在面板中错行，发送后只显示居中的状态文字。用户明确要求两处直接复用主会话的组件和交互。",
+  "observations": 1,
+  "source_refs": [
+    "docs/verification/home-office-collaboration.md",
+    "xt-client/frontend/src/features/agent/messages/ChatComposer.tsx",
+    "xt-client/frontend/src/features/agent/messages/MessageFeed.tsx",
+    "xt-client/frontend/tests/home-office-collaboration.browser.test.mjs"
+  ]
+}

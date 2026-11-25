@@ -5,6 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {officePane} from './office-test-navigation.mjs';
 
 test('workspace navigation is docked left and theme lives in the more menu', {timeout: 60000}, async () => {
   const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5199', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
@@ -69,9 +70,10 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
     await page.locator('.agent-workspace').waitFor();
     await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
-    await page.locator('.office-page').waitFor();
-    assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
-    await page.getByRole('button', {name: '返回小涛', exact: true}).click();
+    await officePane(page).getByText('在小涛对话里选择项目后，就能查看它的办公室。').waitFor();
+    assert.equal(await page.locator('.workspace-dock').count(), 1, 'the office pane must keep home navigation visible');
+    await page.getByRole('textbox', {name: '给小涛发消息'}).waitFor();
+    await officePane(page).getByRole('button', {name: '收起办公室工作区'}).click();
     await page.locator('.agent-workspace').waitFor();
     assert.equal(new Set(await dockBackgrounds()).size, 1, 'returning from the office restores the resting background');
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();

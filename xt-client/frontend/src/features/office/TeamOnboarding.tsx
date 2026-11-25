@@ -43,7 +43,7 @@ export function TeamOnboarding({projectPath, projectName, team, models, onCreate
       {!template ? <p role="status">{error || '正在读取可编辑模板…'}</p> : <>
         <div className="onboarding-template"><div><span className="office-eyebrow">{custom ? '你的专属角色' : template.name}</span><h2>{custom ? '从第一位成员开始' : '产品实现小队'}</h2><p>{custom ? '设置姓名、职责、讨论模型和外观，之后随时可以继续添加成员。' : template.description}</p></div><span className="team-count">{drafts.length} 位成员</span></div>
         <div className="onboarding-role-list">{drafts.map((draft, index) => <details className="onboarding-role" key={index} open={custom || drafts.length === 1}><summary><span className="role-color" style={{background: draft.appearance.primaryColor}}/><span><strong>{draft.name || `成员 ${index + 1}`}</strong><small>{draft.responsibility || '设置这位成员的职责与外观'}</small></span><span className="role-edit-label">编辑 <ArrowRight size={14}/></span></summary><RoleEditor draft={draft} models={models} onChange={next => setDrafts(items => items.map((item, at) => at === index ? next : item))}/></details>)}</div>
-        {custom && <button className="office-ghost" disabled={drafts.length >= 32} onClick={() => setDrafts(items => [...items, {...items[0], name: '', responsibility: '', capabilities: []}])}><Plus size={15}/>再添加一位成员</button>}
+        {custom && <button className="office-ghost" disabled={drafts.length >= 32} onClick={() => setDrafts(items => [...items, {...items[0], name: '', responsibility: '', capabilities: [], toolPermissions: undefined}])}><Plus size={15}/>再添加一位成员</button>}
       </>}
       {error && <p className="office-error" role="alert">{error}</p>}
     </div>

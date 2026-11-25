@@ -4,6 +4,11 @@
 .role-editor { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 22px; border-top: 1px solid var(--border-subtle); padding: 16px 0; }
 .role-editor-fields, .role-appearance { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .role-editor label { display: grid; gap: 5px; font-size: 12px; min-width: 0; }
+.role-tool-permissions {display: grid; gap: 6px; min-width: 0;}
+.role-tool-permissions fieldset {display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; margin: 0; padding: 8px 0 0; border: 0;}
+.role-tool-permissions fieldset label {display: inline-flex; align-items: center; gap: 5px;}
+.role-tool-permissions fieldset input {width: auto; margin: 0; accent-color: var(--office-accent);}
+.role-tool-permissions small {color: var(--text-secondary); line-height: 1.5;}
 .role-editor input, .role-editor .app-select-trigger, .role-editor textarea { min-width: 0; width: 100%; box-sizing: border-box; }
 .role-model-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .role-stable-id { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; margin: 0; }

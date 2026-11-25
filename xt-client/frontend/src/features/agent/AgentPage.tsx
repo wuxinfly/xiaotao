@@ -1,10 +1,17 @@
 import {pastedImageFiles, readImageFile, type ComposerImage} from './composerImages';
 import {ComposerReasoning, composerModelSettings, type ReasoningOverride} from './ComposerReasoning';
 import {AgentDroplet} from './AgentDroplet';
-import {MessageRow, RunTimeline} from './messages/MessageFeed';
-import {ChatComposer, ChatSendButton} from './messages/ChatComposer';
+import {ChatWorkingIndicator, MessageRow, RunTimeline} from './messages/MessageFeed';
+import {ChatComposer, ChatModelPicker, ChatSendButton} from './messages/ChatComposer';
+import {ChatImagePreviews} from './messages/ChatImages';
 import {ChatEditor, editorMarkdown, hasActiveNode, useChatEditor} from './messages/ChatEditor';
-import {runDuration, runPhase, thoughtKindLabel} from './messages/runStats';
+import {runPhase} from './messages/runStats';
+import {ThoughtDrawer} from './ThoughtDrawer';
+import {OfficeActivityMenu, OfficeDispatchCard, OfficeSidePane} from './OfficeCollaboration';
+import {useOfficeWorkspace} from './useOfficeWorkspace';
+import {RoleMention, editorRoleMentions, insertRoleMention, roleMentionType} from './RoleMention';
+import {officeConversations} from '../../lib/office-conversations';
+import type {OfficeMember} from '../../lib/office';
 import {useBranchSession} from './useBranchSession';
 import {Popover} from '../../components/popover/Popover';
 import {ContextMeter} from './ContextDetailPopover';
@@ -17,15 +24,10 @@ import {NodeSelection} from '@tiptap/pm/state';
 import type {EditorState} from '@tiptap/pm/state';
 import {
   ArrowDown,
-  CircleAlert,
-  CircleCheck,
-  FilePenLine,
-  FileSearch,
   Image,
   ListFilter,
   Check,
   ChevronDown,
-  ChevronRight,
   Circle,
   Folder,
   MessageSquarePlus,
@@ -34,17 +36,13 @@ import {
   Search,
   Settings2,
   Trash2,
-  Route,
-  Terminal,
-  Wrench,
   X,
-  Zap,
   History,
   Sparkles,
   Loader2,
 } from 'lucide-react';
-import {mergeModelCatalog, modelPickerLabel, ModelPickerOptions, pickerModels, useModelCatalogChanged} from './modelOptions';
-import {api, type AgentActivity, type AgentConversationReference, type AgentDefaultModels, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentRunStats, type AgentSession, type AgentThought, type BehaviorReview} from '../../lib/api';
+import {mergeModelCatalog, pickerModels, useModelCatalogChanged} from './modelOptions';
+import {api, type AgentConversationReference, type AgentDefaultModels, type AgentModelConfig, type AgentModelDefaults, type AgentModelOption, type AgentProject, type AgentReferenceCandidate, type AgentSession, type BehaviorReview} from '../../lib/api';
 import {modelConfigFor, modelLabelsKey, readEnabledModels, readModelLabels, utilityModelFor, useAgentModelSettings} from '../../lib/agent-model-settings';
 import {AgentSettingsModal} from './AgentSettingsModal';
 import {ProjectModal, RenameSessionModal} from './AgentModals';
@@ -59,55 +57,6 @@ import {applyEvent, avatarOwners as avatarOwnersForEntries, conversationEntries,
 
 declare global { interface Window { xtPickFolder?: () => Promise<string>; xtOpenDirectory?: (kind: 'data' | 'install') => Promise<void>; } }
 
-type ThoughtTraceRow = {
-  id: string;
-  time: string;
-  status: 'running' | 'completed' | 'failed';
-  text: string;
-} & (
-  {kind: 'thought'; thoughtKind: AgentThought['kind']}
-  | {kind: 'activity'; activityKind: string; title: string; detail?: string; tool?: string; input?: string; output?: string; startedAt: string; endedAt?: string}
-);
-
-function traceSummary(row: ThoughtTraceRow) {
-  const source = (() => {
-    if (row.kind !== 'activity' || row.activityKind !== 'run_command') return row.text;
-    const command = row.input ? (() => {
-      try {
-        const parsed = JSON.parse(row.input) as {command?: unknown};
-        return typeof parsed.command === 'string' ? parsed.command : '';
-      } catch {
-        return '';
-      }
-    })() : '';
-    return command || row.detail || row.text;
-  })();
-  return source.replace(/\s+/g, ' ').trim();
-}
-
-function thoughtTraceIcon(row: ThoughtTraceRow) {
-  if (row.kind === 'activity') {
-    if (row.activityKind === 'write_file' || row.activityKind === 'str_replace') return FilePenLine;
-    if (row.activityKind === 'read_file' || row.activityKind === 'list_files' || row.activityKind === 'search_files') return FileSearch;
-    return Terminal;
-  }
-  if (row.thoughtKind === 'understanding') return Route;
-  if (row.thoughtKind === 'observation') return FileSearch;
-  if (row.thoughtKind === 'decision') return Zap;
-  return CircleCheck;
-}
-
-function traceOffset(startedAt: string, time: string) {
-  const start = new Date(startedAt).getTime();
-  const current = new Date(time).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(current)) return '';
-  return `+${Math.max(0, Math.round((current - start) / 1000))}s`;
-}
-
-function traceStatusLabel(status: ThoughtTraceRow['status']) {
-  return status === 'running' ? '进行中' : status === 'failed' ? '失败' : '完成';
-}
-
 // 最终回复有两种渲染形状：MessageRow 的 .agent-message.role-assistant 与 RunTimeline 的 .agent-run-bubble，
 // 两者的 data-message-id 分别落在 article 和气泡上，正文统一带 .agent-message-content。
 function quoteMessageContent(node: Node): HTMLElement | null {
@@ -117,140 +66,6 @@ function quoteMessageContent(node: Node): HTMLElement | null {
   if (!content || !owner?.dataset.messageId) return null;
   if (owner.classList.contains('role-user')) return null;
   return content;
-}
-
-function ThoughtTraceEntry({row, startedAt, index, expanded, onToggle}: {
-  row: ThoughtTraceRow; startedAt: string; index: number; expanded: boolean; onToggle: () => void;
-}) {
-  const Icon = thoughtTraceIcon(row);
-  const summary = traceSummary(row);
-  const detail = row.kind === 'activity'
-    ? [row.detail, row.tool && `工具：${row.tool}`, row.input && `参数\n${row.input}`, row.output && `结果\n${row.output}`].filter(Boolean).join('\n\n')
-    : row.text;
-  const duration = row.kind === 'activity' && row.endedAt
-    ? Math.max(0, Math.round((new Date(row.endedAt).getTime() - new Date(row.startedAt).getTime()) / 1000))
-    : null;
-  return <li className={'agent-thought-event' + (expanded ? ' is-expanded' : '')} data-kind={row.kind} data-status={row.status}>
-    <span className="agent-thought-status" role="status">{traceStatusLabel(row.status)}</span>
-    <span className="agent-thought-rail" aria-hidden="true"><i/></span>
-    <button type="button" className="agent-thought-event-toggle" aria-expanded={expanded} aria-controls={`thought-event-${row.id}`} onClick={onToggle}>
-      <span className="agent-thought-event-index">{String(index + 1).padStart(2, '0')}</span>
-      <span className="agent-thought-event-icon"><Icon aria-hidden="true"/></span>
-      <span className="agent-thought-event-copy">
-        <span className="agent-thought-event-meta"><strong>{row.kind === 'thought' ? thoughtKindLabel[row.thoughtKind] : row.title}</strong><time dateTime={row.time}>{traceOffset(startedAt, row.time)}</time></span>
-        <span className="agent-thought-event-text">{summary}</span>
-      </span>
-      <ChevronRight className="agent-thought-event-chevron" aria-hidden="true"/>
-    </button>
-    <div className="agent-thought-event-detail" id={`thought-event-${row.id}`} aria-hidden={!expanded} inert={!expanded}>
-      <div className="agent-thought-event-detail-inner">
-        <pre>{detail || summary || '暂无更多详情'}</pre>
-        {row.kind === 'activity' && (row.tool || duration !== null) && <span className="agent-thought-event-detail-meta">
-          {row.tool && <span>工具 {row.tool}</span>}
-          {duration !== null && <span>耗时 {duration} 秒</span>}
-        </span>}
-      </div>
-    </div>
-  </li>;
-}
-
-function thoughtTraceRows(runId: string, thoughts: AgentThought[], activity: AgentActivity[]): ThoughtTraceRow[] {
-  return [
-    ...(thoughts ?? []).filter(item => item.runId === runId).map(item => ({
-      id: item.id, time: item.createdAt,
-      kind: 'thought' as const, thoughtKind: item.kind, text: item.text, status: item.status,
-    })),
-    ...(activity ?? []).filter(item => item.runId === runId).map(item => ({
-      id: item.id, time: item.startedAt, kind: 'activity' as const,
-      activityKind: item.kind, title: item.title, detail: item.detail, tool: item.tool, input: item.input, output: item.output,
-      startedAt: item.startedAt, endedAt: item.endedAt, text: item.title + (item.detail ? ' · ' + item.detail : ''), status: item.status,
-    })),
-  ].sort((a, b) => a.time.localeCompare(b.time));
-}
-
-// The drawer mounts already open, so shown flips one frame late: the closed
-// styles paint first and the CSS transition gets a start value to animate from.
-// Closing keeps present mounted until the exit transition has finished.
-function useDrawerPresence(open: boolean) {
-  const [present, setPresent] = useState(open);
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    if (!open) {
-      setShown(false);
-      const timer = window.setTimeout(() => setPresent(false), 260);
-      return () => window.clearTimeout(timer);
-    }
-    setPresent(true);
-    const frame = window.requestAnimationFrame(() => setShown(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, [open]);
-  return {present, shown};
-}
-
-function ThoughtDrawer({runId, thoughts, activity, stats, open, onClose}: {
-  runId: string; thoughts: AgentThought[]; activity: AgentActivity[]; stats: AgentRunStats; open: boolean; onClose: () => void;
-}) {
-  const close = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const {present, shown} = useDrawerPresence(open);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  useEffect(() => {
-    if (open) returnFocus.current = document.activeElement as HTMLElement | null;
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    const previous = returnFocus.current;
-    close.current?.focus();
-    const escape = (event: KeyboardEvent) => {if (event.key === 'Escape') {event.preventDefault(); onClose();}};
-    document.addEventListener('keydown', escape);
-    return () => {document.removeEventListener('keydown', escape); previous?.focus();};
-  }, [open, onClose]);
-  useEffect(() => {
-    if (open) setExpanded(new Set());
-  }, [open, runId]);
-  const timeline = useMemo(() => thoughtTraceRows(runId, thoughts, activity), [runId, thoughts, activity]);
-  const activities = timeline.filter(row => row.kind === 'activity');
-  const thoughtCount = timeline.length - activities.length;
-  const warnings = activities.filter(row => row.status === 'failed').length;
-  const firstThought = timeline.find(row => row.kind === 'thought');
-  const lastDecision = [...timeline].reverse().find(row => row.kind === 'thought' && row.thoughtKind === 'decision');
-  const hasThought = timeline.some(row => row.kind === 'thought');
-  if (!present) return null;
-  return createPortal(<div className={'agent-drawer-backdrop' + (open && shown ? ' is-open' : ' is-closing')} onPointerDown={event => {if (event.target === event.currentTarget) onClose();}} inert={!open}>
-    <aside className="agent-thought-drawer agent-thought-map" role="dialog" aria-modal="true" aria-label="本轮思考过程">
-      <header className="agent-thought-header">
-        <div><span>思考路线</span><strong><Route aria-hidden="true"/>{runDuration(stats)}</strong></div>
-        <button ref={close} type="button" onClick={onClose} aria-label="关闭思考过程" title="关闭"><X aria-hidden="true"/></button>
-      </header>
-      <div className="agent-thought-overview">
-        <div className="agent-thought-overview-head">
-          <div><span>整体判断</span><h2>{firstThought?.text || '这轮还没有留下可读的思考节点。'}</h2></div>
-          <span className="agent-thought-count"><strong>{timeline.length}</strong> 个节点</span>
-        </div>
-        {!hasThought && <p className="agent-thought-caveat">本轮模型没有输出过程说明，下面只展示实际工具操作。</p>}
-        <div className="agent-thought-narrative">
-          <p><span>最终落点</span>{lastDecision?.text || (stats.filesWritten > 0 ? `本轮完成修改，涉及 ${stats.filesWritten} 个文件。` : activities.length ? `本轮以 ${activities.length} 次操作为主，主要是在收集和执行信息。` : '本轮以模型思考为主，没有额外工具操作。')}</p>
-          <div className="agent-thought-facts">
-            <span><FileSearch aria-hidden="true"/>{stats.filesRead} 个文件读取</span>
-            <span><FilePenLine aria-hidden="true"/>{stats.filesWritten} 个文件写入</span>
-            <span><Wrench aria-hidden="true"/>{stats.toolCalls} 次操作</span>
-            {warnings > 0 && <span className="is-warning"><CircleAlert aria-hidden="true"/>{warnings} 次失败</span>}
-          </div>
-        </div>
-      </div>
-      <div className="agent-thought-timeline-head">
-        <div><span>思考链</span><small>点击任意节点展开细节</small></div>
-        <span>{thoughtCount} 思考 · {activities.length} 操作</span>
-      </div>
-      {timeline.length ? <ol className="agent-thought-timeline">
-        {timeline.map((row, index) => <ThoughtTraceEntry key={row.id} row={row} startedAt={stats.startedAt} index={index} expanded={expanded.has(row.id)} onToggle={() => setExpanded(current => {
-          const next = new Set(current);
-          if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
-          return next;
-        })}/>)}
-      </ol> : <div className="agent-thought-empty"><Route aria-hidden="true"/><strong>没有可展开的过程</strong><p>这轮只有最终回答，没有留下思考节点或工具调用。</p></div>}
-    </aside>
-  </div>, document.body);
 }
 
 function editorReferenceIds(editor: Editor): string[] {
@@ -274,7 +89,9 @@ function referenceQueryAtCursor(state: EditorState): {from: number; query: strin
   return {from: from - match[1].length - 1, query: match[1]};
 }
 
-export function AgentPage({visible, navigation}: {visible: boolean; navigation?: React.ReactNode}) {
+export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
+  visible: boolean; navigation?: React.ReactNode; officeOpen: boolean; onOfficeChange: (open: boolean) => void;
+}) {
   const confirm = useConfirm();
   const [accessMode, setAccessMode] = useState<'safe' | 'full'>('safe');
   const [accessReady, setAccessReady] = useState(false);
@@ -313,9 +130,9 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   useModelCatalogChanged(useCallback(() => setModelsAttempt(value => value + 1), []));
   const refreshModelsRequested = useRef(false);
   const [model, setModel] = useState(() => readEnabledModels()[0] || ''), [path, setPath] = useState(''), [projectName, setProjectName] = useState('');
+  const officeProject = active?.project.isDefault ? '' : active?.project.path || path;
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [reasoningOverride, setReasoningOverride] = useState<ReasoningOverride>();
-  const modelButtonRef = useRef<HTMLButtonElement>(null);
   const [prompt, setPrompt] = useState(''), [pending, setPending] = useState(false), [loading, setLoading] = useState(true);
   const [composerImages, setComposerImages] = useState<ComposerImage[]>([]);
   const composerImagesRef = useRef<ComposerImage[]>([]);
@@ -554,6 +371,8 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   const referenceOpenRef = useRef(false);
   const closeReferencePickerRef = useRef<() => void>(() => {});
   const [referencePicker, setReferencePicker] = useState<{open: boolean; query: string; scope: 'project' | 'all'}>({open: false, query: '', scope: 'project'});
+  const office = useOfficeWorkspace({parent: active?.id || '', project: officeProject, projectName: active?.project.name || projectName, visible, pickingRole: referencePicker.open, paneOpen: officeOpen, onOpen: onOfficeChange});
+  const roleChoices = office.members.filter(item => `${item.name} ${item.responsibility || ''}`.toLowerCase().includes(referencePicker.query.toLowerCase()));
   const [referenceResults, setReferenceResults] = useState<AgentReferenceCandidate[]>([]);
   const [referenceIndex, setReferenceIndex] = useState(0);
   const [referenceLoading, setReferenceLoading] = useState(false);
@@ -584,7 +403,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   }, []);
   const editor = useChatEditor({
     label: '给小涛发消息',
-    extensions: [ConversationReference],
+    extensions: [ConversationReference, RoleMention],
     handlePaste: (_view, event) => {
       const imageFiles = pastedImageFiles(event.clipboardData);
       if (imageFiles.length) {
@@ -598,16 +417,16 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
       if (referenceOpenRef.current && !event.isComposing) {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault();
-          setReferenceIndex(index => referenceResults.length ? (index + (event.key === 'ArrowDown' ? 1 : -1) + referenceResults.length) % referenceResults.length : 0);
-          return true;
-        }
-        if (event.key === 'Enter' && referenceResults.length) {
-          event.preventDefault();
-          chooseReference(referenceResults[referenceIndex]);
+          const count = roleChoices.length + referenceResults.length;
+          setReferenceIndex(index => count ? (index + (event.key === 'ArrowDown' ? 1 : -1) + count) % count : 0);
           return true;
         }
         if (event.key === 'Enter') {
           event.preventDefault();
+          const member = roleChoices[referenceIndex];
+          const reference = referenceResults[referenceIndex - roleChoices.length];
+          if (member) chooseRole(member);
+          else if (reference) chooseReference(reference);
           return true;
         }
         if (event.key === 'Escape') {
@@ -627,7 +446,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
       const next = editorMarkdown(editor);
       promptRef.current = next;
       setPrompt(next);
-      if (editor.state.selection instanceof NodeSelection && editor.state.selection.node.type.name === conversationReferenceType) {
+      if (editor.state.selection instanceof NodeSelection && [conversationReferenceType, roleMentionType].includes(editor.state.selection.node.type.name)) {
         closeReferencePickerRef.current();
         return;
       }
@@ -651,7 +470,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     api.agentReferenceSessions(referencePicker.query, referencePicker.scope, active?.project.path || path, Array.from(new Set([active?.id, ...editorReferenceIds(editor!)].filter((id): id is string => !!id))))
       .then(result => {
         if (request !== referenceRequest.current) return;
-        setReferenceResults(result.sessions);
+        setReferenceResults(Array.isArray(result.sessions) ? result.sessions : []);
         setReferenceIndex(0);
       })
       .catch(reason => {
@@ -689,6 +508,13 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     tr.insertText(' ', current.from + node.nodeSize);
     editor.view.dispatch(tr.scrollIntoView());
     editor.commands.focus();
+    closeReferencePicker();
+  }
+
+  function chooseRole(member: OfficeMember) {
+    const current = referenceQueryRef.current;
+    if (!editor || !current) return;
+    insertRoleMention(editor, current.from, member);
     closeReferencePicker();
   }
 
@@ -730,10 +556,11 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     if (!visible) { setSettingsOpen(false); setProjectOpen(false); setModelMenuOpen(false); setQuoteSelection(null); }
   }, [visible]);
 
+  const officeUpdate = office.conversations.map(item => `${item.status}:${item.question}:${item.coordinatorQuestion}:${item.reply}`).join('|');
   useEffect(() => {
     if (feed.current && followFeed.current) feed.current.scrollTop = feed.current.scrollHeight;
     updateScrollToBottom();
-  }, [active?.messages, active?.activity.length, busy, visible, updateScrollToBottom]);
+  }, [active?.messages, active?.activity.length, busy, visible, updateScrollToBottom, officeUpdate]);
 
   const saveDraft = useCallback(() => {
     if (!editor) return;
@@ -758,6 +585,28 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     requestAnimationFrame(() => {if (feed.current && draft && !draft.follow) feed.current.scrollTop = draft.top;});
   }, [editor]);
 
+  async function officeParent() {
+    if (active) return active;
+    const session = await api.createAgentSession(officeProject, currentModel, projectName, composerSettings);
+    setActive(session);
+    setSessions(current => [session, ...current]);
+    sessionCache.current.set(session.id, session);
+    return session;
+  }
+
+  async function openOfficeMember(member: OfficeMember) {
+    if (member.role === 'coordinator') {onOfficeChange(false); editor?.commands.focus(); return;}
+    if (pending || !officeProject) return;
+    if (active) {office.openMember(member.id, member.name); return;}
+    if (!currentModel) {setError('先启用一个模型，再与员工对话。'); return;}
+    setPending(true);
+    try {
+      const session = await officeParent();
+      office.openMember(member.id, member.name, session.id);
+    } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
+    finally {setPending(false);}
+  }
+
   async function send(contentOverride?: string) {
     const text = (contentOverride ?? promptRef.current).trim();
     const submittedImages = composerImagesRef.current;
@@ -772,6 +621,31 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
     followFeed.current = true;
     const submittedContent = editorMarkdown(editor);
     const references = editorReferenceIds(editor);
+    const roles = contentOverride ? new Map<string, string>() : editorRoleMentions(editor);
+    if (roles.size) {
+      if (roles.size !== 1 || submittedImages.length || references.length) {
+        setError('请每条消息选择一位员工，图片和会话引用可另发。');
+        return;
+      }
+      const [memberId, memberName] = Array.from(roles)[0], employee = office.members.find(member => member.id === memberId);
+      if (!officeProject || !employee || !content.replace('@' + memberName, '').trim()) {
+        setError('请选择当前项目的员工，并写下要沟通的内容。');
+        return;
+      }
+      setPending(true);
+      setError('');
+      try {
+        const parent = await officeParent();
+        await officeConversations.dispatch(parent.id, memberId, {content});
+        if (editorMarkdown(editor) === submittedContent) editor.commands.clearContent();
+        setQuotes([]); setEditingQuote(null); closeReferencePicker();
+        drafts.current.delete(parent.id);
+        if (!active) drafts.current.delete('');
+        await office.refresh(parent.id);
+      } catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
+      finally {setPending(false);}
+      return;
+    }
     setPending(true);
     setError('');
     setActive(current => current ? {...current, error: ''} : current);
@@ -946,10 +820,10 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
 
   async function deleteSession(item: AgentSession) {
     if (busy || deleting) return;
-    if (!await confirm({title: '删除会话？', description: '“' + item.title + '”的消息和执行记录将一并删除。', confirmLabel: '删除会话'})) return;
+    if (!await confirm({title: '删除会话？', description: '“' + item.title + '”的消息、执行记录及其员工临时对话将一并删除。', confirmLabel: '删除会话'})) return;
     setDeleting(item.id);
     try {
-      await api.deleteAgentSession(item.id);
+      if (!await office.close(item.id, true)) return;
       if (item.project.path && !item.project.isDefault && !item.project.removed) {
         setSavedProjects(current => {
           const key = item.project.path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
@@ -961,11 +835,17 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (!reduceMotion) await new Promise(resolve => window.setTimeout(resolve, 180));
       setSessions(current => current.filter(session => session.id !== item.id));
-      if (active?.id === item.id) newChat();
+      if (activeIdRef.current === item.id) newChat();
       setError('');
       if (!reduceMotion) await new Promise(resolve => window.setTimeout(resolve, 220));
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setDeleting(''); setExitingSession(''); }
+  }
+
+  async function closeOfficeSession() {
+    if (!active || busy) return;
+    try {if (await office.close(active.id) && activeIdRef.current === active.id) newChat();}
+    catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
   }
 
   const deleteProject = useCallback(async (item: {path: string; name: string}) => {
@@ -1026,7 +906,16 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
   const {avatarOwners} = useMemo(() => {
     return {avatarOwners: avatarOwnersForEntries(entries)};
   }, [entries]);
-  const workingIndicator = <div className="agent-working-row" role="status"><div className="agent-message-avatar"><AgentDroplet running/></div><div className="agent-working"><span><strong>正在思考</strong><small>准备下一步…</small></span></div></div>;
+  const sourceMessages = office.conversations.map(item => item.sourceMessageId).filter(Boolean).join(',');
+  useEffect(() => {
+    const id = active?.id;
+    if (!id || !sourceMessages) return;
+    let live = true;
+    void api.agentHistory(id).then(({session}) => {
+      if (live) setActive(current => current?.id === id ? {...current, messages: mergeHistory(current.messages, session.messages)} : current);
+    }).catch(() => {});
+    return () => {live = false;};
+  }, [active?.id, sourceMessages]);
   const activeProjectName = active ? active.project.name : projectName || (path ? path.split(/[\\/]/).filter(Boolean).pop() : '') || '默认工作目录';
   const activeProjectPath = active ? active.project.path : path;
   const availablePickerModels = pickerModels(models, enabledModels, model, active?.model);
@@ -1054,6 +943,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
         <div className="agent-context-title">
           <AgentDroplet running={busy}/>
           <div><strong>{active ? active.title : '新会话'}</strong><small>{busy ? '小涛正在处理' : active ? 'Agent 工作台' : '准备开始'}</small></div>
+          {active && officeProject && <OfficeActivityMenu key={active.id} office={office} onCloseSession={() => void closeOfficeSession()}/>}
         </div>
         <div className="agent-context-actions">
           {active && (
@@ -1117,9 +1007,13 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
             </ReactFragment>;
           }
           const followsProcess = entry.item.role === 'assistant' && !avatarOwners.has(index);
-          return <MessageRow key={entry.item.id} item={entry.item} followsProcess={followsProcess} stats={entry.stats} onBranch={branchSession} branchDisabled={busy}/>;
+          return <ReactFragment key={entry.item.id}>
+            <MessageRow item={entry.item} followsProcess={followsProcess} stats={entry.stats} onBranch={branchSession} branchDisabled={busy}/>
+            {active && office.conversations.filter(item => item.sourceMessageId === entry.item.id).map(item => <OfficeDispatchCard key={item.sourceMessageId || item.memberId} item={item} office={office} parent={active.id}/>)}
+          </ReactFragment>;
         })}
-        {busy && !entries.some(entry => entry.kind === 'run' || (entry.kind === 'message' && entry.stats && !entry.stats.endedAt)) && workingIndicator}
+        {active && office.conversations.filter(item => (item.request || item.question || item.coordinatorQuestion) && !entries.some(entry => entry.kind === 'message' && entry.item.id === item.sourceMessageId)).map(item => <OfficeDispatchCard key={item.sourceMessageId || item.memberId} item={item} office={office} parent={active.id}/>)}
+        {busy && !entries.some(entry => entry.kind === 'run' ? entry.phase === 'live' : entry.stats && !entry.stats.endedAt) && <ChatWorkingIndicator/>}
         {(error || (!busy && active?.error && !runEndedInFeed)) && <div className="agent-error" role="alert"><Circle aria-hidden="true"/><span>{error || active?.error}</span></div>}
       </div>
 
@@ -1162,14 +1056,9 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
             </div>
             <div className="agent-composer-actions">
               <ContextMeter stats={lastRun} contextWindow={contextWindow} modelLabel={currentModelOption?.label || currentModel} />
-              <div className="agent-model-picker">
-                <button ref={modelButtonRef} type="button" className="agent-option agent-model" aria-label="选择模型" aria-haspopup="menu" aria-expanded={modelMenuOpen} disabled={busy || active?.status === 'running' || !availablePickerModels.length} onClick={() => setModelMenuOpen(open => !open)}>
-                  <span>{modelPickerLabel(availablePickerModels, model || active?.model || '')}</span><ChevronDown aria-hidden="true"/>
-                </button>
-                <Popover open={modelMenuOpen} onClose={() => setModelMenuOpen(false)} anchorRef={modelButtonRef} side="top" align="end" className="agent-model-menu" aria-label="选择模型">
-                  <ModelPickerOptions models={availablePickerModels} value={model} onSelect={value => {if (value !== model) setReasoningOverride(undefined); setModel(value); setModelMenuOpen(false); modelButtonRef.current?.focus();}}/>
-                </Popover>
-              </div>
+              <ChatModelPicker models={availablePickerModels} value={model} displayValue={model || active?.model || ''} open={modelMenuOpen}
+                onOpen={setModelMenuOpen} disabled={busy || active?.status === 'running'}
+                onSelect={value => {if (value !== model) setReasoningOverride(undefined); setModel(value);}}/>
               <ComposerReasoning key={currentModel} option={currentModelOption} settings={composerSettings} disabled={busy} onChange={value => setReasoningOverride({model: currentModel, value})}/>
               {!!composerImages.length && currentModelSupportsImages && <span className="agent-image-model-hint"><Image aria-hidden="true"/>图片将随消息发送</span>}
               {(!!composerImages.length || historyHasImages) && !currentModelSupportsImages && <span className="agent-image-model-warning" role="status">{historyHasImages ? '会话包含图片，当前模型不支持' : '当前模型不支持图片'}</span>}
@@ -1177,14 +1066,9 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
             </div>
           </>}>
           {!!quotes.length && <div className="agent-quote-drafts" aria-label="引用的文字">{quotes.map((item, index) => <div className="agent-quote-chip" key={item.id}><button type="button" className="agent-quote-chip-open" title={item.text} onClick={() => setEditingQuote(item.id)} aria-label={`编辑引用 ${index + 1}`}><span>{index + 1}</span><span>{item.text}</span></button><button type="button" className="agent-quote-chip-remove" aria-label={`移除引用 ${index + 1}`} onClick={() => {setQuotes(current => current.filter(quote => quote.id !== item.id)); setEditingQuote(current => current === item.id ? null : current);}}><X aria-hidden="true"/></button></div>)}</div>}
-          {!!composerImages.length && <div className="agent-composer-images" aria-label="待发送图片">
-            {composerImages.map((image, index) => <div className="agent-composer-image" key={image.id}>
-              <img src={image.preview} alt={image.name} title={image.name}/>
-              <button type="button" aria-label={`移除图片 ${index + 1}`} title="移除图片" onClick={() => setComposerImages(current => current.filter(item => item.id !== image.id))}><X aria-hidden="true"/></button>
-            </div>)}
-          </div>}
+          <ChatImagePreviews images={composerImages} onRemove={id => setComposerImages(current => current.filter(item => item.id !== id))}/>
           <ChatEditor editor={editor}/>
-          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
+          {referencePicker.open && <ReferencePicker anchor={referenceComposerRef} editor={editor} anchorAt={referenceQueryRef.current?.from ?? editor?.state.selection.from ?? 0} query={referencePicker.query} scope={referencePicker.scope} results={referenceResults} roles={roleChoices} index={referenceIndex} loading={referenceLoading} error={referenceError} onScope={scope => {setReferencePicker(current => ({...current, scope})); setReferenceIndex(0);}} onChoose={chooseReference} onRole={chooseRole} onClose={() => {closeReferencePicker(); editor?.commands.focus();}}/>}
         </ChatComposer>
         <div className="agent-hint">
           <span className="agent-project-context" title={activeProjectPath || '小涛数据目录中的默认工作区'}>{activeProjectPath ? `工作目录：${activeProjectPath}` : '工作目录：小涛数据目录中的默认工作区'}</span>
@@ -1192,6 +1076,7 @@ export function AgentPage({visible, navigation}: {visible: boolean; navigation?:
         </div>
       </div>
     </div>
+    {(officeOpen || office.tabs.size > 0) && <OfficeSidePane office={office} parent={active?.id || ''} project={officeProject} projectName={activeProjectName} model={active?.model || currentModel} models={models} modelConfigs={modelConfigs} visible={visible} open={officeOpen} onClose={() => onOfficeChange(false)} onOpenMember={member => void openOfficeMember(member)}/>}
 
     {openThoughtRun && (() => {
       const stats = runStats.find(item => item.runId === openThoughtRun);

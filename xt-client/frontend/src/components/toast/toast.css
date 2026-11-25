@@ -28,6 +28,12 @@
   max-width: calc(100vw - 32px);
 }
 
+.toast-container--bottom-right {
+  inset: auto 16px 16px auto;
+  align-items: flex-end;
+  transform: none;
+}
+
 .toast-item {
   pointer-events: auto;
   position: relative;

@@ -22,6 +22,7 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 		return true
 	}
 	registerOfficeChatRoutes(mux, svc, guard, send, apiError)
+	registerOfficeConversationRoutes(mux, svc, guard, send, apiError)
 	registerTeamRoutes(mux, svc, guard, send, apiError)
 	mux.HandleFunc("GET /api/office/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
@@ -82,26 +83,7 @@ func registerOfficeRoutes(mux *http.ServeMux, svc *office.Service, requireOrigin
 			return
 		}
 		defer unsubscribe()
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			apiError(w, 500, "当前环境不支持流式响应")
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Connection", "keep-alive")
-		flusher.Flush()
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case event, open := <-events:
-				if !open {
-					return
-				}
-				writeOfficeEvent(w, flusher, event)
-			}
-		}
+		streamOfficeEvents(w, r, events, apiError)
 	})
 	mux.HandleFunc("POST /api/office/tasks/{id}/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
@@ -175,6 +157,11 @@ func registerOfficeChatRoutes(mux *http.ServeMux, svc *office.Service, guard fun
 		if !guard(w, r) {
 			return
 		}
+		if parent := r.URL.Query().Get("parentSessionId"); parent != "" {
+			result, err := svc.ScopedChat(parent, r.URL.Query().Get("projectPath"), r.PathValue("id"))
+			sendOfficeConversationResult(w, result, err, send, apiError)
+			return
+		}
 		chat, err := svc.Chat(r.URL.Query().Get("projectPath"), r.PathValue("id"))
 		if err != nil {
 			officeError(w, err, apiError)
@@ -184,6 +171,11 @@ func registerOfficeChatRoutes(mux *http.ServeMux, svc *office.Service, guard fun
 	})
 	mux.HandleFunc("GET "+base+"/history", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
+			return
+		}
+		if parent := r.URL.Query().Get("parentSessionId"); parent != "" {
+			result, err := svc.ScopedHistory(parent, r.URL.Query().Get("projectPath"), r.PathValue("id"), r.URL.Query().Get("before"))
+			sendOfficeConversationResult(w, result, err, send, apiError)
 			return
 		}
 		history, err := svc.ChatHistory(r.URL.Query().Get("projectPath"), r.PathValue("id"), r.URL.Query().Get("before"))
@@ -198,8 +190,18 @@ func registerOfficeChatRoutes(mux *http.ServeMux, svc *office.Service, guard fun
 			return
 		}
 		var input office.ChatInput
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024)).Decode(&input) != nil {
+		parent := r.URL.Query().Get("parentSessionId")
+		limit := int64(128 * 1024)
+		if parent != "" {
+			limit = 64 << 20
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(&input) != nil {
 			apiError(w, 400, "消息格式无效")
+			return
+		}
+		if parent != "" {
+			result, err := svc.SendScopedChat(parent, r.URL.Query().Get("projectPath"), r.PathValue("id"), input)
+			sendOfficeConversationResult(w, result, err, send, apiError)
 			return
 		}
 		chat, err := svc.SendChat(r.URL.Query().Get("projectPath"), r.PathValue("id"), input)
@@ -211,6 +213,11 @@ func registerOfficeChatRoutes(mux *http.ServeMux, svc *office.Service, guard fun
 	})
 	mux.HandleFunc("POST "+base+"/cancel", func(w http.ResponseWriter, r *http.Request) {
 		if !guard(w, r) {
+			return
+		}
+		if parent := r.URL.Query().Get("parentSessionId"); parent != "" {
+			err := svc.CancelScopedChat(parent, r.URL.Query().Get("projectPath"), r.PathValue("id"))
+			sendOfficeConversationResult(w, map[string]bool{"ok": true}, err, send, apiError)
 			return
 		}
 		if err := svc.CancelChat(r.URL.Query().Get("projectPath"), r.PathValue("id")); err != nil {
@@ -249,6 +256,28 @@ func officeError(w http.ResponseWriter, err error, apiError func(http.ResponseWr
 		apiError(w, 503, err.Error())
 	default:
 		apiError(w, 400, err.Error())
+	}
+}
+
+func streamOfficeEvents(w http.ResponseWriter, r *http.Request, events <-chan agent.Event, apiError func(http.ResponseWriter, int, string)) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		apiError(w, 500, "当前环境不支持流式响应")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	flusher.Flush()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, open := <-events:
+			if !open {
+				return
+			}
+			writeOfficeEvent(w, flusher, event)
+		}
 	}
 }
 

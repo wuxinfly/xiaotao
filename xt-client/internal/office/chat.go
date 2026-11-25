@@ -21,6 +21,7 @@ type Chat struct {
 	Approval  *TaskApproval `json:"approval,omitempty"`
 }
 type ChatInput struct {
+	Images        []agent.ImageInput   `json:"images,omitempty"`
 	Content       string               `json:"content"`
 	Model         string               `json:"model"`
 	ProjectName   string               `json:"projectName,omitempty"`
@@ -103,6 +104,9 @@ func (s *Service) ChatHistory(projectPath, id, before string) (*agent.HistoryPag
 	return s.exec.History(chat.SessionID, before)
 }
 func (s *Service) SendChat(projectPath, id string, input ChatInput) (*Chat, error) {
+	if len(input.Images) != 0 {
+		return nil, fmt.Errorf("请在小涛会话中打开员工对话发送图片")
+	}
 	path, err := chatProject(projectPath, id)
 	if err != nil {
 		return nil, err

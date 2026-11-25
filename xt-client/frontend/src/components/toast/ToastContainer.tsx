@@ -50,18 +50,12 @@ function CloseIcon() {
   );
 }
 
-export function ToastContainer() {
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-  useEffect(() => {
-    return toastManager.subscribe(setToasts);
-  }, []);
-
+function ToastStack({toasts, bottomRight}: {toasts: ToastItem[]; bottomRight?: boolean}) {
   if (toasts.length === 0) return null;
 
   return (
     <div
-      className="toast-container"
+      className={bottomRight ? 'toast-container toast-container--bottom-right' : 'toast-container'}
       aria-live="polite"
       aria-atomic="true"
       onMouseEnter={() => toastManager.pauseAll()}
@@ -104,4 +98,14 @@ export function ToastContainer() {
       ))}
     </div>
   );
+}
+
+export function ToastContainer() {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  useEffect(() => toastManager.subscribe(setToasts), []);
+
+  return <>
+    <ToastStack toasts={toasts.filter(item => item.placement !== 'bottom-right')}/>
+    <ToastStack toasts={toasts.filter(item => item.placement === 'bottom-right')} bottomRight/>
+  </>;
 }

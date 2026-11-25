@@ -32,7 +32,7 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
     if (showLoading) setState(current => ({...current, loading: true}));
     try {
       const snapshot = await officeApi.snapshot(projectPath, projectName, next.signal);
-      if (id !== sequence.current) return;
+      if (id !== sequence.current || next.signal.aborted) return;
       setState({projectPath, snapshot, loading: false, error: '', lastUpdated: Date.now()});
     } catch (reason) {
       if (id !== sequence.current) return;
@@ -44,11 +44,10 @@ export function useOfficePolling(projectPath: string, projectName: string, visib
   useEffect(() => {
     sequence.current++;
     controller.current?.abort();
-    setState({projectPath, snapshot: null, loading: !!projectPath, error: '', lastUpdated: 0});
-    if (!projectPath) return;
+    if (!visible || !projectPath) return;
     void load(true);
     return () => {controller.current?.abort();};
-  }, [projectPath, load]);
+  }, [projectPath, load, visible]);
 
   useEffect(() => {
     window.clearTimeout(timer.current);

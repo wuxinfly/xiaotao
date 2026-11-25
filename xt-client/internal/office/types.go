@@ -130,13 +130,14 @@ type TaskStats struct {
 }
 
 type TaskMessage struct {
-	ID          string     `json:"id"`
-	TaskID      string     `json:"taskId"`
-	Content     string     `json:"content"`
-	Status      string     `json:"status"`
-	Error       string     `json:"error,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	DeliveredAt *time.Time `json:"deliveredAt,omitempty"`
+	Images      []agent.ImageAttachment `json:"images,omitempty"`
+	ID          string                  `json:"id"`
+	TaskID      string                  `json:"taskId"`
+	Content     string                  `json:"content"`
+	Status      string                  `json:"status"`
+	Error       string                  `json:"error,omitempty"`
+	CreatedAt   time.Time               `json:"createdAt"`
+	DeliveredAt *time.Time              `json:"deliveredAt,omitempty"`
 }
 
 type Artifact struct {

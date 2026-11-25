@@ -319,18 +319,18 @@ func (s *Service) SendWithReferences(ctx context.Context, sessionID, text, model
 }
 
 func (s *Service) SendWithImages(ctx context.Context, sessionID, text, model string, sourceIDs []string, images []ImageInput, emit func(Event)) error {
-	return s.send(ctx, sessionID, text, model, nil, false, sourceIDs, images, emit)
+	return s.send(ctx, sessionID, text, model, nil, false, sourceIDs, turnImages{inputs: images}, emit)
 }
 
 // SendWithModelSettings changes the model and execution settings together.
 // The effective values are snapshotted on the session for later compaction.
 func (s *Service) SendWithModelSettings(ctx context.Context, sessionID, text, model string, settings *ModelSettings, sourceIDs []string, images []ImageInput, emit func(Event)) error {
-	return s.send(ctx, sessionID, text, model, settings, settings != nil, sourceIDs, images, emit)
+	return s.send(ctx, sessionID, text, model, settings, settings != nil, sourceIDs, turnImages{inputs: images}, emit)
 }
 
-func (s *Service) send(ctx context.Context, sessionID, text, model string, settings *ModelSettings, replaceSettings bool, sourceIDs []string, images []ImageInput, emit func(Event)) error {
+func (s *Service) send(ctx context.Context, sessionID, text, model string, settings *ModelSettings, replaceSettings bool, sourceIDs []string, images turnImages, emit func(Event)) error {
 	text = strings.TrimSpace(text)
-	if text == "" && len(images) == 0 {
+	if text == "" && !images.any() {
 		return fmt.Errorf("消息不能为空")
 	}
 	if activeReview, err := s.getActiveReviewForSession(sessionID); err == nil && activeReview != nil {
@@ -382,13 +382,13 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	if effectiveSettings != nil {
 		effectiveSettings.ReasoningEffort = s.reasoningEffort(history.Model, effectiveSettings.ReasoningEffort)
 	}
-	if (len(images) > 0 || historyHasImages(history.Messages)) && !s.supportsImages(history.Model) {
+	if (images.any() || historyHasImages(history.Messages)) && !s.supportsImages(history.Model) {
 		return fmt.Errorf("会话包含图片，当前模型未声明支持图片，请切换支持图片的模型")
 	}
 	history.Status = StatusRunning
 	s.mu.Lock()
 	r.project = history.Project.Path
-	r.task = titleFromPrompt(text, len(images) > 0)
+	r.task = titleFromPrompt(text, images.any())
 	s.mu.Unlock()
 	history.Error = ""
 	now := time.Now()
@@ -399,7 +399,7 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	if err = s.saveConversationReferences(references, referenceSources); err != nil {
 		return err
 	}
-	attachments, err := s.saveImages(images, now)
+	attachments, err := s.resolveTurnImages(images, now)
 	if err != nil {
 		return err
 	}
@@ -409,14 +409,14 @@ func (s *Service) send(ctx context.Context, sessionID, text, model string, setti
 	history.Messages = append(history.Messages, userMessage)
 	history.UpdatedAt = now
 	if history.Title == "新任务" {
-		history.Title = titleFromPrompt(text, len(images) > 0)
+		history.Title = titleFromPrompt(text, images.any())
 	}
 	if err := s.saveSessionWithReferences(history, nil, nil); err != nil {
 		return err
 	}
 	emit(Event{Type: "session", SessionID: sessionID, Message: &userMessage, Status: StatusRunning})
 
-	messages := []map[string]any{{"role": "system", "content": systemPrompt(history.Project.Path) + coreInstructions + skillInstructions + "\n" + instructions + officeChatRole(history)}}
+	messages := []map[string]any{{"role": "system", "content": turnSystemPrompt(history, coreInstructions, skillInstructions, instructions)}}
 	modelMessages, err := modelHistoryWithSummary(history.Messages, userMessage.ID, history.Summary, s.imageDataURLs)
 	if err != nil {
 		return err
@@ -506,7 +506,8 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 	defer mcpState.close()
 	// A run whose history already contains MCP tool calls must keep those
 	// tool names resolvable, so the servers start before the first request.
-	if !history.ReadOnly && historyUsesMCPTools(messages) {
+	permissions := employeeToolPermissions(history)
+	if !history.ReadOnly && permissions.allows(mcpEnableToolName) && historyUsesMCPTools(messages) {
 		if _, err := s.enableMCP(ctx, mcpState); err != nil {
 			return err
 		}
@@ -524,20 +525,7 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		var tools []map[string]any
-		if workspace != nil {
-			tools = toolDefinitions
-		}
-		if len(references) > 0 {
-			tools = append(append([]map[string]any{}, tools...), referenceToolDefinition)
-		}
-		if hasPrunedToolResults(history.Messages, stats.UserMessageID) {
-			tools = append(append([]map[string]any{}, tools...), historicalToolLookupDefinition)
-		}
-		tools = append(append([]map[string]any{}, tools...), mcpState.definitions()...)
-		if history.ReadOnly {
-			tools = nil
-		}
+		tools := toolsForTurn(workspace, history, references, stats, mcpState)
 		var streamed *Message
 		requestMessages := append([]map[string]any{}, messages...)
 		if len(requestMessages) > 0 && requestMessages[0]["role"] == "system" {
@@ -642,6 +630,11 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 		history.Messages = append(history.Messages, Message{ID: "msg_" + randomID(6), Role: "assistant", Content: result.Content, ToolCalls: storedCalls, RunID: runID, CreatedAt: time.Now()})
 		for callIndex := 0; callIndex < len(result.ToolCalls); {
 			call := result.ToolCalls[callIndex]
+			if !permissions.allows(call.Name) {
+				messages = recordToolResult(history, messages, call, "员工没有调用此工具的权限", time.Now())
+				callIndex++
+				continue
+			}
 			if workspace != nil && isParallelRead(call.Name) {
 				end := callIndex + 1
 				for end < len(result.ToolCalls) && isParallelRead(result.ToolCalls[end].Name) {
@@ -738,13 +731,7 @@ func (s *Service) loopWithRunSettings(ctx context.Context, workspace *Workspace,
 			if call.Name == "write_file" || call.Name == "str_replace" {
 				stats.FilesWritten++
 			}
-			messages = append(messages, map[string]any{
-				"role": "tool", "tool_call_id": call.ID, "name": call.Name, "content": output,
-			})
-			history.Messages = append(history.Messages, Message{
-				ID: "msg_" + randomID(6), Role: "tool", Content: output,
-				ToolCallID: call.ID, ToolName: call.Name, CreatedAt: end,
-			})
+			messages = recordToolResult(history, messages, call, output, end)
 			if err := s.saveSession(history); err != nil {
 				return err
 			}
@@ -968,13 +955,7 @@ func systemPrompt(root string) string {
 			"当前未关联项目，无法访问文件或运行命令；需要这些操作时请用户新建关联项目的会话。" + browserNotice()
 	}
 	return "你是小涛，一个直接和用户一起做软件工作的 AI 工程师。使用中文，简洁、自然、不说套话。" +
-		"\n当前项目根目录：" + root +
-		"\n先调查再修改。优先使用 search_files 和 read_file 定位代码，写文件前确认目标。" +
-		"\n操作子目录前检查并遵守该目录及其上级目录中的 AGENTS.override.md 或 AGENTS.md；同目录优先前者。" +
-		"\n修改后必须运行相关验证。不要声称执行过没有实际执行的命令。" +
-		"\n工作目录是默认位置；可以按用户要求访问其他路径。不要泄露凭据、token 或隐私信息。" +
-		"\n只有在工作完成、遇到阻碍或需要用户决定时才给最终答复。" +
-		voiceNotice() + browserNotice()
+		projectToolNotice(root) + voiceNotice() + browserNotice()
 }
 
 // browserNotice tells the model that browser and MCP tools are reachable

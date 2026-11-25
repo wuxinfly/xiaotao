@@ -16,25 +16,21 @@ type Props = {
   modelConfigs: AgentModelConfig[];
   preferredModel: string;
   members: OfficeMember[];
-  assignment: {memberId: string; chatSessionId: string} | null;
   accessMode: 'safe' | 'full';
   onCreated: (task: OfficeTask) => void;
   onClose: () => void;
 };
 
-// CreateTaskModal is the one place a user starts work in the office. It only
-// submits a goal and an executor model; the server creates the real session.
-export function CreateTaskModal({projectPath, projectName, models, modelConfigs, preferredModel, members, assignment, accessMode, onCreated, onClose}: Props) {
+export function CreateTaskModal({projectPath, projectName, models, modelConfigs, preferredModel, members, accessMode, onCreated, onClose}: Props) {
   const usable = useMemo(() => models.filter(model => !model.unavailable), [models]);
   const assignable = useMemo(() => {
     const seen = new Set<string>();
     return members.filter(member => member.role !== 'executor' && (!member.taskId || ['completed', 'failed', 'canceled'].includes(member.taskStatus || '')) && !seen.has(member.id) && seen.add(member.id));
   }, [members]);
-  const initialMember = assignment?.memberId || 'xiaotao';
-  const preferred = members.find(member => member.id === initialMember)?.modelPreference?.modelId || preferredModel;
+  const preferred = members.find(member => member.id === 'xiaotao')?.modelPreference?.modelId || preferredModel;
   const [goal, setGoal] = useState('');
   const [title, setTitle] = useState('');
-  const [memberId, setMemberId] = useState(initialMember);
+  const [memberId, setMemberId] = useState('xiaotao');
   const [model, setModel] = useState(() => usable.find(item => item.model === preferred)?.model || usable[0]?.model || '');
   const selectedMember = members.find(member => member.id === memberId);
   const executorName = selectedMember?.name || '小涛';
@@ -55,7 +51,6 @@ export function CreateTaskModal({projectPath, projectName, models, modelConfigs,
         model,
         modelSettings: modelSettingsFor(modelConfigs, model, models),
         memberId,
-        chatSessionId: assignment?.chatSessionId,
       });
       onCreated(task);
     } catch (reason) {
@@ -85,13 +80,12 @@ export function CreateTaskModal({projectPath, projectName, models, modelConfigs,
     </label>
     <label className="office-field">
       <span>执行成员</span>
-      <Select searchable value={memberId} disabled={busy || !!assignment} aria-label="执行成员" onChange={value => {
+      <Select searchable value={memberId} disabled={busy} aria-label="执行成员" onChange={value => {
         setMemberId(value);
         const next = members.find(member => member.id === value)?.modelPreference?.modelId || preferredModel;
         setModel(usable.find(item => item.model === next)?.model || usable[0]?.model || '');
       }} options={assignable.map(member => ({value: member.id, label: `${member.name}${member.responsibility ? ` · ${member.responsibility}` : ''}`}))}/>
     </label>
-    {assignment?.chatSessionId && <div className="member-task-context"><strong>交接当前讨论</strong><p>由服务端读取最近 12 条讨论，总长度不超过 12,000 字符。任务创建后不再同步之后的闲聊。</p></div>}
     <p className="member-task-access">{accessMode === 'safe' ? '当前为安全模式：可以使用项目工具，高危操作需你确认。' : '当前为完全访问模式：可以自主使用项目工具，请确认任务范围。'} 职责和能力标签不会带来额外权限。</p>
     <label className="office-field">
       <span>标题（可选）</span>

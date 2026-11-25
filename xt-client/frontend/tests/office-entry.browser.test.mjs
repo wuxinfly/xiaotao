@@ -6,6 +6,7 @@ import {readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
+import {openOffice} from './office-test-navigation.mjs';
 
 const path = 'E:\\work\\office-entry-test';
 const appearance = {shape:'round',primaryColor:'#36a9c9',secondaryColor:'#173b55'};
@@ -23,6 +24,7 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await context.route('**/api/**',route=>{
       const url=new URL(route.request().url()), pathname=url.pathname, method=route.request().method();
       if(pathname==='/api/agent/projects')return route.fulfill({json:{projects:[{path,name:'新项目',saved:true}]}});
+      if(pathname==='/api/agent/project')return route.fulfill({json:{path,name:'新项目',saved:true}});
       if(pathname==='/api/agent/models')return route.fulfill({json:{models:[{model:'test/model',label:'测试模型',contextWindow:128000,maxOutputTokens:8192}]}});
       if(pathname==='/api/office/team'&&method==='GET')return route.fulfill({json:current});
       if(pathname==='/api/office/team/templates')return route.fulfill({json:[{id:'product',name:'产品实现小队',description:'清晰分工，自由讨论',roles:[{name:'设计师',responsibility:'需求与界面',capabilities:['设计'],model:{modelId:'',contextWindow:0,maxOutputTokens:0},appearance}]}]});
@@ -39,15 +41,18 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     const bounds=await office.boundingBox();
     const sidebar=await page.locator('.agent-sidebar').boundingBox();
     assert.ok(bounds.x>=sidebar.x && bounds.x+bounds.width<=sidebar.x+sidebar.width);
-    await office.click();
+    const pane=await openOffice(page, '新项目');
     await page.locator('[data-entry-phase=ready]').waitFor();
-    await page.locator('.workspace-page-view').evaluate(async element => {
+    await pane.evaluate(async element => {
       await Promise.all(element.getAnimations().map(animation => animation.finished));
     });
     const surface = page.locator('.office-3d-canvas');
     const roomBounds = await surface.boundingBox();
-    const content = await page.getByRole('main', {name: 'office'}).boundingBox();
-    assert.deepEqual(roomBounds, content, 'the 3D surface fills the workspace below the title bar');
+    const content = await pane.locator('.office-live-page').boundingBox();
+    const home = await page.getByRole('main', {name: 'agent'}).boundingBox();
+    assert.deepEqual(roomBounds, content, 'the 3D surface fills its office pane');
+    assert.ok(roomBounds.width < home.width && roomBounds.x > home.x, 'the office opens on the right of the home workspace');
+    await page.getByRole('textbox', {name: '给小涛发消息'}).waitFor();
     await page.getByRole('button', {name: '任务', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).waitFor();
     assert.deepEqual(await surface.boundingBox(), roomBounds, 'opening the drawer must keep the 3D viewport in place');
@@ -64,7 +69,7 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     await page.getByRole('button',{name:'组建小队',exact:true}).waitFor({state:'detached'});
     assert.equal(await page.locator('canvas[data-office-renderer="three"]').count(),1);
     await page.reload();
-    await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
+    await openOffice(page, '新项目');
     await page.locator('[data-entry-phase=ready]').waitFor();
     if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).click();
@@ -73,7 +78,7 @@ test('onboarding, saved-team isolation and scene recovery', {timeout:90000}, asy
     current=team(0,'pending');
     failModel=true;
     await page.reload();
-    await page.locator('.workspace-dock').getByRole('button',{name:'办公室',exact:true}).click();
+    await openOffice(page, '新项目');
     await page.getByText('办公室场景暂时未能准备完成').waitFor();
     await page.getByRole('button',{name:'组建小队',exact:true}).click();
     await page.getByRole('button',{name:'创建我的小队'}).click();

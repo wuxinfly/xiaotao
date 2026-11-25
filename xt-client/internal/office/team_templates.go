@@ -1,11 +1,14 @@
 package office
 
+import "xiaotao/xt-client/internal/agent"
+
 type RoleDraft struct {
-	Name           string          `json:"name"`
-	Responsibility string          `json:"responsibility"`
-	Capabilities   []string        `json:"capabilities"`
-	Model          ModelPreference `json:"model"`
-	Appearance     Appearance      `json:"appearance"`
+	ToolPermissions *agent.ToolPermissions `json:"toolPermissions,omitempty"`
+	Name            string                 `json:"name"`
+	Responsibility  string                 `json:"responsibility"`
+	Capabilities    []string               `json:"capabilities"`
+	Model           ModelPreference        `json:"model"`
+	Appearance      Appearance             `json:"appearance"`
 }
 
 type TeamTemplate struct {

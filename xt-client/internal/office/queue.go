@@ -1,10 +1,13 @@
 package office
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
+	"xiaotao/xt-client/internal/agent"
 	"xiaotao/xt-client/internal/logging"
 )
 
@@ -27,33 +30,40 @@ func (s *Service) postMessage(projectPath, taskID, text string, resume bool) (*T
 	if len([]rune(text)) > maxMessageText {
 		return nil, fmt.Errorf("消息最多 %d 个字符", maxMessageText)
 	}
-	task, err := s.projectTask(projectPath, taskID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.postMessageLocked(projectPath, taskID, text, resume, nil)
+}
+
+func (s *Service) postMessageLocked(projectPath, taskID, text string, resume bool, images []agent.ImageAttachment) (*TaskMessage, error) {
+	task, err := s.loadTask(taskID)
 	if err != nil {
 		return nil, err
 	}
+	if projectKey(task.ProjectPath) != projectKey(projectPath) {
+		return nil, ErrTaskNotFound
+	}
+	if err := s.checkLinkedTaskMessageLocked(taskID); err != nil {
+		return nil, err
+	}
 	now := s.now()
-	message := &TaskMessage{ID: "msg_" + randomID(8), TaskID: taskID, Content: text, Status: MessageQueued, CreatedAt: now}
+	message := &TaskMessage{ID: "msg_" + randomID(8), TaskID: taskID, Content: text, Images: images, Status: MessageQueued, CreatedAt: now}
 	// Persist and decide under the same lock the run loop uses to exit, so the
 	// message is either queued for a live loop or starts a turn here — never
 	// left behind by a loop that just finished.
-	s.mu.Lock()
 	if s.closed {
-		s.mu.Unlock()
 		return nil, ErrClosed
 	}
 	if resume {
 		latest, loadErr := s.loadTask(taskID)
 		if loadErr != nil {
-			s.mu.Unlock()
 			return nil, loadErr
 		}
 		if !canRecover(latest) || s.runs[taskID] != nil || latest.SessionID == "" {
-			s.mu.Unlock()
 			return nil, fmt.Errorf("任务已变化，请刷新后重试")
 		}
 		if latest.MemberID != "" && latest.MemberID != coordinatorID {
 			if _, err = s.memberForTaskLocked(latest.ProjectPath, latest.MemberID); err != nil {
-				s.mu.Unlock()
 				return nil, err
 			}
 		}
@@ -62,7 +72,6 @@ func (s *Service) postMessage(projectPath, taskID, text string, resume bool) (*T
 	if canRecover(task) {
 		record, loadErr := s.loadDelivery(taskID)
 		if loadErr != nil {
-			s.mu.Unlock()
 			return nil, loadErr
 		}
 		text = recoveryPrompt(task, record, text)
@@ -70,12 +79,10 @@ func (s *Service) postMessage(projectPath, taskID, text string, resume bool) (*T
 	}
 	db, err := s.openStore()
 	if err != nil {
-		s.mu.Unlock()
 		return nil, err
 	}
 	if err = s.writeMessage(db, message); err != nil {
 		db.Close()
-		s.mu.Unlock()
 		return nil, err
 	}
 	db.Close()
@@ -85,17 +92,36 @@ func (s *Service) postMessage(projectPath, taskID, text string, resume bool) (*T
 	}
 	_, running := s.runs[taskID]
 	if running || !isTerminal(status) || task.SessionID == "" {
-		s.mu.Unlock()
 		return message, nil
 	}
 	s.runs[taskID] = func() {}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.runLoop(taskID, task.SessionID, text, message.ID)
+		s.runLoop(taskID, task.SessionID, text, message.ID, images)
 	}()
-	s.mu.Unlock()
 	return message, nil
+}
+
+func (s *Service) checkLinkedTaskMessageLocked(taskID string) error {
+	parent, member, err := s.officeTaskConversation(taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if s.closingConversations[parent] {
+		return ErrConversationBusy
+	}
+	entry, err := s.readConversation(parent, member)
+	if err != nil {
+		return err
+	}
+	if entry.TaskID != taskID {
+		return fmt.Errorf("请在小涛会话中继续当前员工对话")
+	}
+	return nil
 }
 
 func (s *Service) nextQueuedMessage(taskID string) (*TaskMessage, error) {

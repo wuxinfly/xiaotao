@@ -132,15 +132,17 @@ type Session struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	// Role marks sessions dispatched by the project office. An empty role is
 	// the regular user-facing XiaoTao session.
-	Role     string          `json:"role,omitempty"`
-	ReadOnly bool            `json:"readOnly,omitempty"`
-	Member   *MemberIdentity `json:"member,omitempty"`
+	Role          string          `json:"role,omitempty"`
+	ReadOnly      bool            `json:"readOnly,omitempty"`
+	OfficeContext string          `json:"officeContext,omitempty"`
+	Member        *MemberIdentity `json:"member,omitempty"`
 }
 
 type MemberIdentity struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Responsibility string `json:"responsibility,omitempty"`
+	ToolPermissions *ToolPermissions `json:"toolPermissions,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Responsibility  string           `json:"responsibility,omitempty"`
 }
 
 type Options struct {
@@ -198,15 +200,16 @@ type ConversationReferenceCandidate struct {
 }
 
 type Event struct {
-	Approval  *Approval    `json:"approval,omitempty"`
-	RunID     string       `json:"runId,omitempty"`
-	MessageID string       `json:"messageId,omitempty"`
-	Type      string       `json:"type"`
-	SessionID string       `json:"sessionId,omitempty"`
-	Message   *Message     `json:"message,omitempty"`
-	Activity  *Activity    `json:"activity,omitempty"`
-	Thought   *ThoughtStep `json:"thought,omitempty"`
-	RunStats  *RunStats    `json:"runStats,omitempty"`
-	Status    string       `json:"status,omitempty"`
-	Error     string       `json:"error,omitempty"`
+	StreamOffset *int         `json:"streamOffset,omitempty"`
+	Approval     *Approval    `json:"approval,omitempty"`
+	RunID        string       `json:"runId,omitempty"`
+	MessageID    string       `json:"messageId,omitempty"`
+	Type         string       `json:"type"`
+	SessionID    string       `json:"sessionId,omitempty"`
+	Message      *Message     `json:"message,omitempty"`
+	Activity     *Activity    `json:"activity,omitempty"`
+	Thought      *ThoughtStep `json:"thought,omitempty"`
+	RunStats     *RunStats    `json:"runStats,omitempty"`
+	Status       string       `json:"status,omitempty"`
+	Error        string       `json:"error,omitempty"`
 }

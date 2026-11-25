@@ -3,6 +3,7 @@ import type {AgentModelOption} from '../../lib/api';
 import type {Appearance, RoleDraft} from '../../lib/team';
 import {Select} from '../../components/select/Select';
 import {RolePreview} from './RolePreview';
+import {RoleToolPermissions} from './RoleToolPermissions';
 
 export function draftWithModel<T extends RoleDraft>(draft: T, models: AgentModelOption[]): T {
   const model = models.find(item => item.model === draft.model.modelId && !item.unavailable) || models.find(item => !item.unavailable);
@@ -24,6 +25,7 @@ export function RoleEditor({draft: initial, models, onChange, onSave, onCancel, 
     <label>姓名<input required maxLength={40} value={draft.name} onChange={event => update({...draft, name: event.target.value})}/></label>
     <label>职责<textarea required maxLength={240} rows={2} value={draft.responsibility} onChange={event => update({...draft, responsibility: event.target.value})}/></label>
     <label>能力描述<input maxLength={1200} value={draft.capabilities.join('；')} onChange={event => update({...draft, capabilities: event.target.value.split(/[；;]/).map(item => item.trim()).filter(Boolean)})}/></label>
+    <RoleToolPermissions value={draft.toolPermissions} onChange={toolPermissions => update({...draft, toolPermissions})} disabled={saving}/>
     <label><span id={modelLabelId}>模型</span><Select aria-labelledby={modelLabelId} searchable value={draft.model.modelId} placeholder={!model ? '模型不可用，请选择' : '请选择'}
       onChange={next => update(draftWithModel({...draft, model: {...draft.model, modelId: next, contextWindow: 0, maxOutputTokens: 0}}, models))}
       options={models.filter(item => !item.unavailable).map(item => ({value: item.model, label: item.label}))}/>

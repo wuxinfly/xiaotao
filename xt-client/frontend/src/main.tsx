@@ -4,7 +4,6 @@ import './style.css';
 import {AccountsPage} from './features/accounts/AccountsPage';
 import {DashboardPage} from './features/dashboard/DashboardPage';
 import {DashboardDataProvider} from './features/dashboard/DashboardData';
-import {OfficePage} from './features/office/OfficePage';
 import {ToastContainer} from './components/toast';
 import {WindowMenu} from './components/WindowMenu';
 import {AgentPage} from './features/agent/AgentPage';
@@ -32,7 +31,8 @@ document.addEventListener('scroll', event => {
 }, true);
 
 function App(){
- const [page,setPage]=useState<Page>('agent');
+ const [page,setPage]=useState<Exclude<Page,'office'>>('agent');
+ const [officeOpen,setOfficeOpen]=useState(false);
  const desktop=typeof window.xtWindow==='function';
  useEffect(()=>{document.documentElement.dataset.page=page;return()=>{delete document.documentElement.dataset.page}},[page]);
  useEffect(()=>{
@@ -46,11 +46,11 @@ function App(){
   return()=>{cancelled=true;clearTimeout(timer)};
  },[]);
  useEffect(()=>{
-  const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='agent'||next==='office'||next==='dashboard'||next==='accounts')setPage(next)};
+  const navigate=(event:Event)=>{const next=(event as CustomEvent<Page>).detail;if(next==='office'){setPage('agent');setOfficeOpen(true)}else if(next==='agent'||next==='dashboard'||next==='accounts')setPage(next)};
   window.addEventListener('xiaotao:navigate',navigate);
   return()=>window.removeEventListener('xiaotao:navigate',navigate);
  },[]);
- const select=(p:Page)=>setPage(p);
+ const select=(p:Page)=>{if(p==='office'){setPage('agent');setOfficeOpen(open=>!open)}else setPage(p)};
  return <div className="app">
   {desktop&&['n','s','w','e','nw','ne','sw','se'].map(edge=><div key={edge} aria-hidden="true" className={'resize-edge resize-'+edge} onPointerDown={e=>{if(e.button===0){e.preventDefault();window.xtWindow?.('resize-'+edge)}}}/>)}
   <div className="workspace-shell">
@@ -64,12 +64,11 @@ function App(){
   </header>
   <main aria-label={page} className={page==='agent'?'agent-main':undefined}>
    <div className="page-view" style={{display: page === 'agent' ? undefined : 'none'}}>
-    <AgentPage visible={page === 'agent'} navigation={page === 'agent' && <WorkspaceDock page="agent" onSelect={select}/>}/>
+    <AgentPage visible={page === 'agent'} officeOpen={officeOpen} onOfficeChange={setOfficeOpen} navigation={page === 'agent' && <WorkspaceDock page="agent" officeOpen={officeOpen} onSelect={select}/>}/>
    </div>
   {page !== 'agent' && <div className="workspace-page-layout">
     <div key={page} className="page-view workspace-page-view">
      <div className="workspace-page-content">
-      {page === 'office' && <OfficePage visible={page === 'office'}/>}
       {page === 'dashboard' && <DashboardDataProvider enabled><DashboardPage /></DashboardDataProvider>}
       {page === 'accounts' && <AccountsPage />}
      </div>

@@ -8,7 +8,8 @@ export interface Appearance {
 }
 export const defaultAppearance: Appearance = {shape: 'round', primaryColor: '#36a9c9', secondaryColor: '#173b55'};
 export interface ModelPreference {modelId: string; contextWindow: number; maxOutputTokens: number; reasoningEffort?: string}
-export interface RoleDraft {name: string; responsibility: string; capabilities: string[]; model: ModelPreference; appearance: Appearance}
+export interface ToolPermissions {inherit?: boolean; read?: boolean; write?: boolean; command?: boolean; mcp?: boolean}
+export interface RoleDraft {name: string; responsibility: string; capabilities: string[]; model: ModelPreference; appearance: Appearance; toolPermissions?: ToolPermissions}
 export interface Role extends RoleDraft {id: string; scope: RoleScope; lifecycle: string; createdAt: string; updatedAt: string}
 export interface TeamMember extends Role {joinedAt: string}
 export interface TeamSnapshot {
@@ -23,13 +24,13 @@ export function roleRevisions(team: TeamSnapshot): RoleRevisions {
   return {global: {revision: team.globalRevision}, project: {revision: team.projectRevision}, team: {revision: team.teamRevision}};
 }
 function roleRequest(projectPath: string, team: TeamSnapshot, roleId = '', scope: RoleScope = 'project', role?: RoleDraft) {
-  const draft = role ? {name: role.name, responsibility: role.responsibility, capabilities: role.capabilities, model: role.model, appearance: role.appearance} : {name: '', responsibility: '', capabilities: [], model: {modelId: '', contextWindow: 0, maxOutputTokens: 0}, appearance: {} as Appearance};
+  const draft = role ? {name: role.name, responsibility: role.responsibility, capabilities: role.capabilities, model: role.model, appearance: role.appearance, toolPermissions: role.toolPermissions} : {name: '', responsibility: '', capabilities: [], model: {modelId: '', contextWindow: 0, maxOutputTokens: 0}, appearance: {} as Appearance};
   return {projectPath, roleId, scope, role: draft, revisions: roleRevisions(team)};
 }
 export const teamApi = {
   templates: (signal?: AbortSignal) => request<TeamTemplate[]>('/api/office/team/templates', {signal}),
   snapshot: (projectPath: string, signal?: AbortSignal) => request<TeamSnapshot>(`/api/office/team?projectPath=${encodeURIComponent(projectPath)}`, {signal}),
-  bootstrap: (projectPath: string, team: TeamSnapshot, templateId: string, roles: RoleDraft[]) => request<TeamSnapshot>('/api/office/team/bootstrap', {method: 'POST', body: JSON.stringify({projectPath, templateId, roles: roles.map(({name, responsibility, capabilities, model, appearance}) => ({name, responsibility, capabilities, model, appearance})), revisions: roleRevisions(team)})}),
+  bootstrap: (projectPath: string, team: TeamSnapshot, templateId: string, roles: RoleDraft[]) => request<TeamSnapshot>('/api/office/team/bootstrap', {method: 'POST', body: JSON.stringify({projectPath, templateId, roles: roles.map(({name, responsibility, capabilities, model, appearance, toolPermissions}) => ({name, responsibility, capabilities, model, appearance, toolPermissions})), revisions: roleRevisions(team)})}),
   skip: (projectPath: string, team: TeamSnapshot) => request<TeamSnapshot>('/api/office/team/skip-onboarding', {method: 'POST', body: JSON.stringify({projectPath, revisions: roleRevisions(team)})}),
   create: (projectPath: string, team: TeamSnapshot, scope: RoleScope, role: RoleDraft) => request<TeamSnapshot>('/api/office/roles', {method: 'POST', body: JSON.stringify(roleRequest(projectPath, team, '', scope, role))}),
   update: (projectPath: string, team: TeamSnapshot, id: string, role: RoleDraft) => request<TeamSnapshot>('/api/office/roles', {method: 'PUT', body: JSON.stringify(roleRequest(projectPath, team, id, 'project', role))}),

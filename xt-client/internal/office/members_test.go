@@ -9,6 +9,61 @@ import (
 	"xiaotao/xt-client/internal/agent"
 )
 
+func TestMemberTaskPermissionsFollowRoleEdits(t *testing.T) {
+	exec := newFakeExecutor()
+	svc, project := newTestService(t, exec)
+	empty, err := svc.teams.Snapshot(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft := TeamTemplates()[0].Roles[0]
+	draft.ToolPermissions = &agent.ToolPermissions{Read: true}
+	team, err := svc.teams.Bootstrap(project, []RoleDraft{draft}, revisions(empty))
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := team.Members[0]
+	task, err := svc.CreateTask(CreateTaskRequest{ProjectPath: project, Goal: "检查文件", Model: "test/model", MemberID: member.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		latest, err := svc.loadTask(task.ID)
+		return err == nil && latest.Status == StatusCompleted
+	})
+	exec.mu.Lock()
+	initial := exec.sessions[task.SessionID].Member.ToolPermissions
+	exec.mu.Unlock()
+	if initial == nil || !initial.Read || initial.Write {
+		t.Fatalf("任务没有读取员工的初始权限: %+v", initial)
+	}
+	draft.ToolPermissions = &agent.ToolPermissions{}
+	team, err = svc.teams.UpdateRole(project, member.ID, draft, revisions(team))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A text-only edit from an older client must preserve explicit restrictions.
+	draft.ToolPermissions = nil
+	team, err = svc.teams.UpdateRole(project, member.ID, draft, revisions(team))
+	if err != nil || team.Members[0].ToolPermissions == nil || team.Members[0].ToolPermissions.Read {
+		t.Fatalf("省略权限的编辑清除了限制: %+v %v", team, err)
+	}
+	if _, err = svc.PostMessage(project, task.ID, "继续检查"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool {
+		exec.mu.Lock()
+		defer exec.mu.Unlock()
+		current := exec.sessions[task.SessionID].Member.ToolPermissions
+		return current != nil && !current.Read
+	})
+	draft.ToolPermissions = &agent.ToolPermissions{Inherit: true}
+	team, err = svc.teams.UpdateRole(project, member.ID, draft, revisions(team))
+	if err != nil || team.Members[0].ToolPermissions != nil {
+		t.Fatalf("无法恢复跟随小涛: %+v %v", team, err)
+	}
+}
+
 func TestBootstrapCRUDInvitePromoteAndHistoryIndependent(t *testing.T) {
 	store := NewRegistryStore(t.TempDir())
 	service := NewTeamService(store)

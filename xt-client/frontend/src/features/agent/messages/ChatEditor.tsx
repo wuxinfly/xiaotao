@@ -10,6 +10,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import {conversationReferenceType} from '../ConversationReference';
+import {roleMentionType} from '../RoleMention';
 
 type Options = {
   label: string;
@@ -101,6 +102,7 @@ function submit(event: KeyboardEvent, onSend: () => boolean): boolean {
 
 function inlineMarkdown(node: JSONContent): string {
   if (node.type === conversationReferenceType) return '@' + String(node.attrs?.title || '');
+  if (node.type === roleMentionType) return '@' + String(node.attrs?.name || '');
   if (node.type === 'text') {
     let text = node.text ?? '';
     for (const mark of node.marks ?? []) {

@@ -150,7 +150,7 @@ func Handler(s State, data string, stop func()) (http.Handler, error) {
 		}
 		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
-	registerAgentRoutes(mux, agentSvc, requireOrigin, send, apiError)
+	registerAgentRoutes(mux, agentSvc, requireOrigin, send, apiError, officeSvc)
 	registerOfficeRoutes(mux, officeSvc, requireOrigin, send, apiError)
 	registerSourceRoutes(mux, sources, gatewaySvc, requireOrigin, send, apiError, plugins)
 	registerPluginRoutes(mux, plugins, requireOrigin)

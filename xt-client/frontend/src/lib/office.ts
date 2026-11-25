@@ -147,6 +147,7 @@ export interface OfficeTaskMessage {
 export interface OfficeHistory {
   session: AgentSession;
   before: string;
+  streamDrafts?: AgentSession['streamDrafts'];
 }
 
 export interface OfficeDelivery {

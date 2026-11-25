@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"xiaotao/xt-client/internal/agent"
 )
 
 const (
@@ -46,16 +48,17 @@ type Appearance struct {
 }
 
 type Role struct {
-	ID             string          `json:"id" yaml:"id"`
-	Scope          string          `json:"scope" yaml:"scope"`
-	Lifecycle      string          `json:"lifecycle" yaml:"lifecycle"`
-	Name           string          `json:"name" yaml:"name"`
-	Responsibility string          `json:"responsibility" yaml:"responsibility"`
-	Capabilities   []string        `json:"capabilities" yaml:"capabilities"`
-	Model          ModelPreference `json:"model" yaml:"model"`
-	Appearance     Appearance      `json:"appearance" yaml:"appearance"`
-	CreatedAt      time.Time       `json:"createdAt" yaml:"created_at"`
-	UpdatedAt      time.Time       `json:"updatedAt" yaml:"updated_at"`
+	ToolPermissions *agent.ToolPermissions `json:"toolPermissions,omitempty" yaml:"tool_permissions,omitempty"`
+	ID              string                 `json:"id" yaml:"id"`
+	Scope           string                 `json:"scope" yaml:"scope"`
+	Lifecycle       string                 `json:"lifecycle" yaml:"lifecycle"`
+	Name            string                 `json:"name" yaml:"name"`
+	Responsibility  string                 `json:"responsibility" yaml:"responsibility"`
+	Capabilities    []string               `json:"capabilities" yaml:"capabilities"`
+	Model           ModelPreference        `json:"model" yaml:"model"`
+	Appearance      Appearance             `json:"appearance" yaml:"appearance"`
+	CreatedAt       time.Time              `json:"createdAt" yaml:"created_at"`
+	UpdatedAt       time.Time              `json:"updatedAt" yaml:"updated_at"`
 }
 
 type RoleRegistry struct {

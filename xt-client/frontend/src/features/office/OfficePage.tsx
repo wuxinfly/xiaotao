@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {api, type AgentModelOption, type AgentProject} from '../../lib/api';
+import {api, type AgentModelOption} from '../../lib/api';
 import {useAgentModelSettings} from '../../lib/agent-model-settings';
-import {isTerminalTask, officeApi, type OfficeArtifact, type OfficeArtifactDetail, type OfficeTask, type OfficeTaskDetail} from '../../lib/office';
+import {isTerminalTask, officeApi, type OfficeArtifact, type OfficeArtifactDetail, type OfficeMember, type OfficeTask, type OfficeTaskDetail} from '../../lib/office';
 import {toast} from '../../components/toast';
 import {useConfirm} from '../../components/confirm/ConfirmProvider';
 import {ModalPresence} from '../../components/modal/ModalFrame';
@@ -16,18 +16,30 @@ import './team.css';
 import './office.css';
 import './office-workspace.css';
 
-type Props = {visible: boolean};
+type Props = {
+  visible: boolean;
+  projectPath: string;
+  projectName?: string;
+  onOpenMember: (member: OfficeMember) => void;
+};
 type Panel = 'library' | 'create' | 'team' | null;
-type WorkspaceView = 'tasks' | 'team' | 'task' | 'member' | null;
+type WorkspaceView = 'tasks' | 'team' | 'task' | null;
 
-const projectKey = (path: string) => path.toLowerCase().replaceAll('\\', '/').replace(/\/+$/, '');
+export function OfficePage(props: Props) {
+  if (!props.projectPath) {
+    return <div className="office-empty-page">
+      <div className="office-empty-project">
+        <h2>办公室</h2>
+        <p>在小涛对话里选择项目后，就能查看它的办公室。</p>
+      </div>
+    </div>;
+  }
+  return <ProjectOffice key={props.projectPath} {...props}/>;
+}
 
-export function OfficePage({visible}: Props) {
+function ProjectOffice({visible, projectPath: selectedPath, projectName, onOpenMember}: Props) {
   const confirm = useConfirm();
-  const [projects, setProjects] = useState<AgentProject[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const [projectsError, setProjectsError] = useState('');
-  const [selectedPath, setSelectedPath] = useState('');
+  const name = projectName || selectedPath.split(/[\\/]/).filter(Boolean).at(-1) || selectedPath;
   const [models, setModels] = useState<AgentModelOption[]>([]);
   const [detail, setDetail] = useState<OfficeTaskDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -35,32 +47,16 @@ export function OfficePage({visible}: Props) {
   const [activeTaskId, setActiveTaskId] = useState('');
   const [panel, setPanel] = useState<Panel>(null);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>(null);
-  const [activeMemberId, setActiveMemberId] = useState('');
-  const [assignment, setAssignment] = useState<{memberId: string; chatSessionId: string} | null>(null);
   const [artifact, setArtifact] = useState<{id: number; detail: OfficeArtifactDetail; trigger: HTMLElement | null} | null>(null);
   const detailRequest = useRef(0);
   const taskSelection = useRef<{path: string; id: string} | null>(null);
   const artifactRequest = useRef(0);
   const entry = useRef<OfficeEntryHandle>(null);
-  const currentProject = useRef(selectedPath);
-  currentProject.current = selectedPath;
-
-  const project = useMemo(() => projects.find(item => projectKey(item.path) === projectKey(selectedPath)), [projects, selectedPath]);
-  const projectName = project?.name || '';
-  const {snapshot, loading, error, refresh} = useOfficePolling(selectedPath, projectName, visible);
+  const {snapshot, loading, error, refresh} = useOfficePolling(selectedPath, name, visible);
   const {enabledModels, modelConfigs} = useAgentModelSettings();
 
   useEffect(() => {
     let live = true;
-    api.agentProjects()
-      .then(result => {
-        if (!live) return;
-        const saved = result.projects.filter(item => item.saved || !item.isDefault);
-        setProjects(saved);
-        setSelectedPath(current => current || saved[0]?.path || '');
-      })
-      .catch(reason => live && setProjectsError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => live && setProjectsLoading(false));
     api.agentModels().then(result => { if (live) setModels(result.models); }).catch(() => {});
     return () => {live = false;};
   }, []);
@@ -93,20 +89,6 @@ export function OfficePage({visible}: Props) {
     artifactRequest.current++;
     setArtifact(null);
     setPanel(next);
-  }
-
-  function executeMember(member: {id: string}, chatSessionId: string) {
-    setAssignment({memberId: member.id, chatSessionId});
-    showPanel('create');
-  }
-
-  function selectProject(path: string) {
-    if (path === selectedPath) return;
-    clearTask();
-    showPanel(null);
-    setActiveMemberId('');
-    setWorkspaceView(null);
-    setSelectedPath(path);
   }
 
   // The board snapshot changes on every poll; refresh the open task with it
@@ -206,52 +188,38 @@ export function OfficePage({visible}: Props) {
   }
 
   function selectMember(id: string) {
-    const taskId = snapshot?.members.find(member => member.id === id)?.taskId;
-    if (taskId && snapshot?.members.find(member => member.id === id)?.role === 'executor') {selectTask(taskId); return;}
-    setActiveMemberId(id);
-    showPanel(null);
-    setWorkspaceView('member');
-  }
-
-  if (!projectsLoading && !projects.length) {
-    return <div className="office-page office-empty-page content-column">
-      <div className="office-empty-project">
-        <h1>Agent 办公室</h1>
-        <p>一个项目对应一间办公室。先返回小涛选择项目目录，或保存一个项目。</p>
-        {projectsError && <p className="office-error" role="alert">{projectsError}</p>}
-      </div>
-    </div>;
+    const member = snapshot?.members.find(item => item.id === id);
+    if (!member) return;
+    if (member.role === 'executor' && member.taskId) selectTask(member.taskId);
+    else onOpenMember(member);
   }
 
   const close = () => showPanel(null);
   const visibleArtifacts = snapshot ? new Set(snapshot.artifacts.map(item => item.id)) : null;
   const currentDetail = detail && visibleArtifacts ? {...detail, artifacts: detail.artifacts.filter(item => visibleArtifacts.has(item.id))} : detail;
   return <div className="office-page office-live-page">
-    <OfficeWorkspace projectPath={selectedPath} projectName={projectName} projects={projects} snapshot={snapshot} loading={loading} error={error}
-      view={workspaceView} activeTaskId={activeTaskId} activeMemberId={activeMemberId} detail={currentDetail} detailLoading={detailLoading} detailError={detailError}
-      models={models} modelConfigs={modelConfigs} preferredModel={preferredModel}
-      onProject={selectProject} onView={next => {setWorkspaceView(next); clearTask();}}
+    <OfficeWorkspace projectPath={selectedPath} projectName={name} visible={visible} snapshot={snapshot} loading={loading} error={error}
+      view={workspaceView} activeTaskId={activeTaskId} detail={currentDetail} detailLoading={detailLoading} detailError={detailError}
+      onView={next => {setWorkspaceView(next); clearTask();}}
       onCloseDrawer={() => {clearTask(); setWorkspaceView(null);}}
       onRefresh={() => void refresh()}
-      onCreate={() => {setAssignment(null); showPanel('create');}} onExecuteMember={executeMember} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
-      onCloseDetail={() => {clearTask(); setWorkspaceView(workspaceView === 'member' ? 'team' : 'tasks');}}
+      onCreate={() => showPanel('create')} onManage={() => showPanel('team')} onSelectTask={selectTask} onSelectMember={selectMember}
+      onCloseDetail={() => {clearTask(); setWorkspaceView('tasks');}}
       onRefreshDetail={() => void loadDetail(activeTaskId)} onLoadEarlier={() => void loadEarlier()} onCancelTask={() => void cancelTask()}
       onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}
       onOpenArtifact={item => void openArtifact(item)}
       onOpenLibrary={() => showPanel('library')}>
-      {selectedPath ? <OfficeEntryFlow key={selectedPath} ref={entry} projectPath={selectedPath} project={project} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
+      <OfficeEntryFlow ref={entry} projectPath={selectedPath} projectName={name} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
         onTeamChanged={() => void refresh()} onShowTeam={() => {clearTask(); setWorkspaceView('team');}}
         onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
-        : <div className="office-room office-room-skeleton" role="status">{projectsLoading || loading ? '正在打开办公室…' : '暂时无法打开办公室，请选择项目后重试。'}</div>}
     </OfficeWorkspace>
     <ModalPresence>
       {panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {
-        if (currentProject.current !== selectedPath) return;
         entry.current?.setTeam(team);
         await refresh();
       }} onClose={close}/>
-      : panel === 'create' ? <CreateTaskModal projectPath={selectedPath} projectName={projectName} models={models}
-        modelConfigs={modelConfigs} preferredModel={preferredModel} members={snapshot?.members || []} assignment={assignment} accessMode={snapshot?.accessMode || 'safe'}
+      : panel === 'create' ? <CreateTaskModal projectPath={selectedPath} projectName={name} models={models}
+        modelConfigs={modelConfigs} preferredModel={preferredModel} members={snapshot?.members || []} accessMode={snapshot?.accessMode || 'safe'}
         onCreated={(created: OfficeTask) => {toast.success(`任务已交给${created.executor.name}`); void refresh(); selectTask(created.id);}}
         onClose={close}/>
       : panel === 'library' ? <ArtifactLibraryModal artifacts={snapshot?.artifacts || []} covered={!!artifact} onOpenArtifact={(item, trigger) => void openArtifact(item, trigger)} onClose={close}/>

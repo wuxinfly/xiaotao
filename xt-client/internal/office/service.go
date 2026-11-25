@@ -16,16 +16,18 @@ import (
 // requests: the office goroutine owns the context, so leaving a page never
 // cancels a task, while Close cancels every remaining run.
 type Service struct {
-	dataDir     string
-	exec        Executor
-	mu          sync.Mutex
-	active      map[string]*Task
-	runs        map[string]context.CancelFunc
-	closed      bool
-	wg          sync.WaitGroup
-	now         func() time.Time
-	teams       *TeamService
-	subscribers map[string]map[chan agent.Event]struct{}
+	dataDir              string
+	exec                 Executor
+	mu                   sync.Mutex
+	active               map[string]*Task
+	runs                 map[string]context.CancelFunc
+	closed               bool
+	wg                   sync.WaitGroup
+	now                  func() time.Time
+	teams                *TeamService
+	subscribers          map[string]map[chan agent.Event]struct{}
+	closingConversations map[string]bool
+	liveDrafts           map[string]officeDraft
 	// rootCtx is canceled by Close. Every turn derives from it, so shutdown
 	// stops runs that started after Close snapshotted the run map.
 	rootCtx    context.Context
@@ -35,14 +37,15 @@ type Service struct {
 func New(dataDir string, exec Executor) (*Service, error) {
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	svc := &Service{
-		dataDir:    dataDir,
-		exec:       exec,
-		active:     map[string]*Task{},
-		runs:       map[string]context.CancelFunc{},
-		now:        time.Now,
-		rootCtx:    rootCtx,
-		rootCancel: rootCancel,
-		teams:      NewTeamService(NewRegistryStore(filepath.Dir(dataDir))),
+		dataDir:              dataDir,
+		exec:                 exec,
+		active:               map[string]*Task{},
+		runs:                 map[string]context.CancelFunc{},
+		now:                  time.Now,
+		rootCtx:              rootCtx,
+		rootCancel:           rootCancel,
+		closingConversations: map[string]bool{},
+		teams:                NewTeamService(NewRegistryStore(filepath.Dir(dataDir))),
 	}
 	db, err := svc.openStore()
 	if err != nil {
@@ -127,7 +130,7 @@ func (s *Service) Close() {
 	// Cancel the root first: it reaches every turn, including one that claimed
 	// its slot after the run map was inspected.
 	s.rootCancel()
-	s.closeTaskEvents()
+	s.CloseEventSubscriptions()
 	s.mu.Lock()
 	cancels := make([]context.CancelFunc, 0, len(s.runs))
 	for _, cancel := range s.runs {
@@ -143,6 +146,10 @@ func (s *Service) Close() {
 func (s *Service) CreateTask(req CreateTaskRequest) (*Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createTaskLocked(req, nil)
+}
+
+func (s *Service) createTaskLocked(req CreateTaskRequest, binding *conversationTaskBinding) (*Task, error) {
 	if s.closed {
 		return nil, ErrClosed
 	}
@@ -171,12 +178,10 @@ func (s *Service) CreateTask(req CreateTaskRequest) (*Task, error) {
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
-	db, err := s.openStore()
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	if err = s.writeTask(db, task); err != nil {
+	if err = s.persistNewTask(task, binding); err != nil {
+		if executor, ok := s.exec.(collaborationExecutor); ok {
+			_ = executor.DeleteSession(task.SessionID)
+		}
 		return nil, err
 	}
 	s.active[task.ID] = task
@@ -193,7 +198,7 @@ func (s *Service) startRunLocked(taskID, sessionID, text, messageID string) {
 	}
 	go func() {
 		defer s.wg.Done()
-		s.runLoop(taskID, sessionID, text, messageID)
+		s.runLoop(taskID, sessionID, text, messageID, nil)
 	}()
 }
 
@@ -203,7 +208,7 @@ func (s *Service) startRun(taskID, sessionID, text, messageID string) {
 	}
 	go func() {
 		defer s.wg.Done()
-		s.runLoop(taskID, sessionID, text, messageID)
+		s.runLoop(taskID, sessionID, text, messageID, nil)
 	}()
 }
 
@@ -235,7 +240,7 @@ func (s *Service) claimRunLocked(taskID string) bool {
 // successful turn. It never delivers a message into a running model turn.
 // The run entry stays registered for the whole loop so a message posted while
 // the loop is finishing still queues instead of starting a second goroutine.
-func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
+func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string, images []agent.ImageAttachment) {
 	text, messageID := firstText, firstMessageID
 	defer func() {
 		// Claim and start the next queued turn while still holding the lock, so
@@ -251,7 +256,7 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 					s.wg.Add(1)
 					go func() {
 						defer s.wg.Done()
-						s.runLoop(taskID, sessionID, next.Content, next.ID)
+						s.runLoop(taskID, sessionID, next.Content, next.ID, next.Images)
 					}()
 				}
 			}
@@ -267,7 +272,14 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 			return
 		}
 		s.runs[taskID] = cancel
+		scope, _, _ := s.officeTaskConversation(taskID)
+		closing := scope != "" && s.closingConversations[scope]
 		s.mu.Unlock()
+		if closing {
+			cancel()
+			s.endTurn(taskID, context.Canceled, false)
+			return
+		}
 		ready, resuming := s.beginTurn(taskID)
 		if !ready {
 			cancel()
@@ -281,7 +293,7 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 			delivered = s.handleEvent(taskID, event, messageID, delivered)
 			s.publishTask(taskID, event)
 		}
-		err := s.reviewedTurn(ctx, taskID, sessionID, text, resuming, emit)
+		err := s.reviewedTurn(ctx, taskID, sessionID, text, resuming, images, emit)
 		cancel()
 		next, loadErr := s.nextQueuedMessage(taskID)
 		if loadErr != nil {
@@ -292,7 +304,7 @@ func (s *Service) runLoop(taskID, sessionID, firstText, firstMessageID string) {
 		if status == StatusCanceled || status == StatusFailed || !continuing || next == nil {
 			return
 		}
-		text, messageID = next.Content, next.ID
+		text, messageID, images = next.Content, next.ID, next.Images
 	}
 }
 

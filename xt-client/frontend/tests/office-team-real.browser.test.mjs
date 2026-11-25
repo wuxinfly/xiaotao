@@ -8,6 +8,7 @@ import {test} from 'node:test';
 import {chromium} from 'playwright';
 import {Vector3} from 'three';
 import {createCamera} from '../src/features/office/scene-geometry.ts';
+import {officePane, openOffice} from './office-test-navigation.mjs';
 
 test('real service team persistence and 3D interactions', {timeout: 120000}, async context => {
   const root = await mkdtemp(join(tmpdir(), 'xiaotao-team-real-'));
@@ -36,12 +37,13 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     assert.equal(response.status, 200);
     browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true, args: ['--enable-unsafe-swiftshader']});
     page = await browser.newPage({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
+    await page.addInitScript(() => localStorage.setItem('xiaotao.agent.enabledModels', JSON.stringify(['test/model'])));
     await page.route('**/api/agent/models', route => route.fulfill({json: {models: [{model: 'test/model', label: '团队测试模型', contextWindow: 128000, maxOutputTokens: 8192}]}}));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
     await page.goto('http://127.0.0.1:5239');
-    await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    await openOffice(page, '真实验收项目');
     await page.locator('[data-entry-phase=ready]').waitFor();
     await page.getByRole('button', {name: '组建小队', exact: true}).click();
     await page.getByRole('button', {name: '稍后设置', exact: true}).click();
@@ -56,6 +58,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.locator('.team-member-list h3').filter({hasText: '设计'}).waitFor();
     let team = await (await fetch(`${base}/api/office/team?projectPath=${encodeURIComponent(project)}`)).json();
     assert.equal(team.members.length, 3);
+    assert.equal(team.members[0].toolPermissions, undefined);
     const originalId = team.members[0].id;
     const teamYaml = await readFile(join(project, '.xiaotao', 'team.yaml'), 'utf8');
     const rolesYaml = await readFile(join(project, '.xiaotao', 'roles', 'registry.yaml'), 'utf8');
@@ -70,18 +73,29 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
       throw new Error(`3D load failed: entry=${phase}; text=${body}; ${errors.join(' | ')}; ${reason.message}`);
     });
     await page.locator('.room-tool').filter({hasText: '成员4'}).waitFor();
+    await page.getByRole('button', {name: '收起协作面板'}).click();
     await page.screenshot({path: join(output, 'office-team-real.png')});
     const bounds = await page.locator('canvas[data-office-renderer="three"]').boundingBox();
     // The first employee sits behind the left desk, separate from the coordinator.
     const point = new Vector3(.78, 2.18, 1.42).project(createCamera(bounds.width, bounds.height));
     await page.mouse.click(bounds.x + (point.x + 1) * bounds.width / 2, bounds.y + (1 - point.y) * bounds.height / 2);
-    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
-    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
+    await officePane(page).getByRole('textbox', {name: /给.+发消息/}).waitFor({timeout: 7000}).catch(async error => {
+      throw new Error(`3D member click did not open a tab. ${await page.locator('body').innerText()}. ${error.message}`);
+    });
+    await openOffice(page);
+    await page.getByRole('button', {name: /^成员/}).click();
     await page.getByRole('button', {name: '管理团队', exact: true}).click();
     await page.getByRole('button', {name: '编辑', exact: true}).first().click();
     const editor = page.getByRole('dialog', {name: '管理团队'});
     await editor.getByLabel('姓名', {exact: true}).fill('真实产品设计师');
     await editor.locator('textarea').fill('负责真实需求与交互设计');
+    const permissions = editor.getByRole('button', {name: '任务工具权限'});
+    assert.match(await permissions.innerText(), /跟随小涛/);
+    await permissions.click();
+    await page.getByRole('option', {name: '自定义'}).click();
+    await editor.getByRole('checkbox', {name: '修改文件'}).uncheck();
+    await editor.getByRole('checkbox', {name: '执行命令'}).uncheck();
+    await editor.getByRole('checkbox', {name: '使用浏览器和 MCP'}).uncheck();
     await editor.getByRole('button', {name: '人物造型'}).click();
     await page.getByRole('option', {name: '六边形'}).click();
     await editor.locator('input[type="color"]').first().fill('#123456');
@@ -95,6 +109,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     assert.equal(team.members[0].responsibility, '负责真实需求与交互设计');
     assert.equal(team.members[0].appearance.primaryColor, '#123456');
     assert.equal(team.members[0].appearance.shape, 'hexagon');
+    assert.deepEqual(team.members[0].toolPermissions, {read: true, write: false, command: false, mcp: false});
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({state: 'detached'});
     await page.getByRole('button', {name: '收起协作面板'}).click();
@@ -104,20 +119,20 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.getByRole('dialog').waitFor();
     await page.keyboard.press('Escape');
     await page.reload();
-    await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    await openOffice(page, '真实验收项目');
     if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).waitFor();
     await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).click();
-    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
-    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
+    await officePane(page).getByRole('textbox', {name: '给真实产品设计师发消息'}).waitFor();
+    await openOffice(page);
     const snapshot = await (await fetch(`${base}/api/office/snapshot?projectPath=${encodeURIComponent(project)}`)).json();
     assert.equal(snapshot.members.find(member => member.id === originalId).responsibility, '负责真实需求与交互设计');
     assert.equal(snapshot.members.find(member => member.id === originalId).status, 'idle');
     await page.setViewportSize({width: 600, height: 900});
     await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '真实产品设计师'}).click();
-    await page.getByRole('heading', {name: /与.*对话/}).waitFor();
-    await page.getByRole('button', {name: '返回团队成员', exact: true}).click();
+    await officePane(page).getByRole('textbox', {name: '给真实产品设计师发消息'}).waitFor();
+    await openOffice(page);
     await page.setViewportSize({width: 800, height: 900});
     assert.ok(await page.locator('.workspace-grid').evaluate(element => {
       const [scene, panel] = element.children;

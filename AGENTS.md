@@ -11,7 +11,7 @@
 
 ## 目录
 - `xt-skills/`：Skill npm 包、CLI、宿主适配器和测试；开发前阅读该目录的 AGENTS.md 和 README.md。
-- `xt-client/`：Go 本地服务与 WebView2 轻量客户端原型，构建和运行说明见该目录 README.md 与 AGENTS.md。
+- `xt-client/`：Go 本地服务与 WebView2 客户端，首页对话及办公室共用 Agent 执行器；构建和运行说明见该目录 README.md 与 AGENTS.md。
 - `website/`：独立 Astro 网站，使用自己的 package.json。
 - `docs/`：共享架构、计划及验收文档。历史计划中的旧根目录代码路径需对应到 xt-skills/。
 - `.github/`：仓库级 CI 与部署。

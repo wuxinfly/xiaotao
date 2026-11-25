@@ -1,4 +1,5 @@
 import {memo, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import type {ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {ArrowDown, ArrowUp, CircleStop, Clock3, MessageSquarePlus, PanelRight, TriangleAlert, Zap} from 'lucide-react';
 import Markdown from 'react-markdown';
@@ -8,6 +9,13 @@ import {AgentDroplet} from '../AgentDroplet';
 import type {AgentActivity, AgentMessage, AgentRunStats, AgentThought} from '../../../lib/api';
 import {MessageActions, MessageCopyButton} from './MessageActions';
 import {formatCompactTokens, formatElapsed, liveOutput, liveRunState, runElapsed, runPhase, runSummaryItems, thoughtKindLabel, useTicker} from './runStats';
+
+export function ChatWorkingIndicator({avatar}: {avatar?: ReactNode}) {
+  return <div className="agent-working-row" role="status">
+    <div className="agent-message-avatar">{avatar ?? <AgentDroplet running/>}</div>
+    <div className="agent-working"><span><strong>正在思考</strong><small>准备下一步…</small></span></div>
+  </div>;
+}
 
 export function RunSummary({stats}: {stats: AgentRunStats}) {
   const anchor = useRef<HTMLDivElement>(null);
@@ -31,17 +39,18 @@ export function RunSummary({stats}: {stats: AgentRunStats}) {
   </div>;
 }
 
-export const MessageRow = memo(function MessageRow({item, followsProcess, stats, onBranch, branchDisabled}: {
+export const MessageRow = memo(function MessageRow({item, followsProcess, stats, onBranch, branchDisabled, assistantAvatar}: {
   item: AgentMessage;
   followsProcess: boolean;
   stats?: AgentRunStats;
   onBranch?: (messageId: string) => void;
   branchDisabled?: boolean;
+  assistantAvatar?: ReactNode;
 }) {
   const completed = !!stats?.endedAt;
   const canBranch = item.role === 'assistant' && (stats ? completed : true);
   return <article data-message-id={item.id} className={'agent-message role-' + item.role + (followsProcess ? ' follows-process' : '')}>
-    {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar"><AgentDroplet state={stats?.phase === 'failed' ? 'error' : completed ? 'completed' : 'output'}/></div>}
+    {item.role === 'assistant' && !followsProcess && <div className="agent-message-avatar">{assistantAvatar ?? <AgentDroplet state={stats?.phase === 'failed' ? 'error' : completed ? 'completed' : 'output'}/>}</div>}
     <div className="agent-message-body">
       {item.role === 'user' && !!item.references?.length && <div className="agent-message-references" aria-label="已引用对话">
         {item.references.map(reference => <button type="button" key={reference.id} className={'agent-message-reference' + (reference.sourceAvailable === false ? ' is-unavailable' : '')} onClick={() => window.dispatchEvent(new CustomEvent('xiaotao:agent-reference', {detail: reference}))} title={reference.sourceAvailable === false ? '来源对话已删除，摘要仍保留' : `引用对话：${reference.title}`}>
@@ -60,7 +69,7 @@ export const MessageRow = memo(function MessageRow({item, followsProcess, stats,
         : <MessageActions messageId={item.id} content={item.content} canBranch={canBranch} branchDisabled={branchDisabled} onBranch={onBranch}/>}
     </div>
   </article>;
-}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.branchDisabled === next.branchDisabled && previous.onBranch === next.onBranch && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
+}, (previous, next) => previous.followsProcess === next.followsProcess && previous.item.id === next.item.id && previous.item.role === next.item.role && previous.item.content === next.item.content && previous.stats === next.stats && previous.branchDisabled === next.branchDisabled && previous.onBranch === next.onBranch && previous.assistantAvatar === next.assistantAvatar && JSON.stringify(previous.item.references) === JSON.stringify(next.item.references) && JSON.stringify(previous.item.images) === JSON.stringify(next.item.images));
 
 // LiveStats shows the four numbers that matter while a run is streaming:
 // elapsed time, first-token latency, produced tokens and output speed.
@@ -78,10 +87,11 @@ function LiveStats({stats}: {stats: AgentRunStats}) {
   </div>;
 }
 
-export function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, busy, onOpen, onBranch, branchDisabled, notice}: {
+export function RunTimeline({runId, thoughts, activity, streamDraft, answer, stats, busy, onOpen, onBranch, branchDisabled, notice, assistantAvatar}: {
   runId: string; thoughts: AgentThought[]; activity: AgentActivity[];
   streamDraft?: AgentMessage; answer?: AgentMessage; stats: AgentRunStats; busy: boolean; onOpen: () => void;
   onBranch?: (messageId: string) => void; branchDisabled?: boolean; notice?: string;
+  assistantAvatar?: ReactNode;
 }) {
   const rows = useMemo(() => [
     ...thoughts.filter(item => item.runId === runId).map(item => ({id: item.id, time: item.createdAt, kind: 'thought', label: thoughtKindLabel[item.kind], text: item.text})),
@@ -111,7 +121,7 @@ export function RunTimeline({runId, thoughts, activity, streamDraft, answer, sta
   const hasEvents = rows.length > 0;
   const hasAnswer = !!answer;
   return <div className={'agent-run-timeline' + (finished ? ' is-finished' : '')} data-run-id={runId}>
-    <div className="agent-message-avatar"><AgentDroplet state={finished ? stats.phase === 'failed' ? 'error' : 'completed' : liveRunState(runId, thoughts, activity)} running={busy && !finished}/></div>
+    <div className="agent-message-avatar">{assistantAvatar ?? <AgentDroplet state={finished ? stats.phase === 'failed' ? 'error' : 'completed' : liveRunState(runId, thoughts, activity)} running={busy && !finished}/>}</div>
     {(!finished || hasAnswer || terminal) && <div className={'agent-run-bubble' + (!finished && streamDraft ? ' is-streaming' : '') + (terminal ? ' is-terminal' : '')} data-phase={terminal ? phase : undefined} data-message-id={answer?.id}>
       {(!terminal || hasAnswer) && <div ref={viewport} className={'agent-result-viewport' + (finished ? ' is-expanded' : '')} style={{height}}><div ref={content} className="agent-run-bubble-text agent-message-content"><Markdown remarkPlugins={[remarkGfm, remarkBreaks]}>{text}</Markdown></div></div>}
       {terminal && <div className="agent-run-notice" role="status">{phase === 'canceled' ? <CircleStop aria-hidden="true"/> : <TriangleAlert aria-hidden="true"/>}<span>{noticeText}</span></div>}

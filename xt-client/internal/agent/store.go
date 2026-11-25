@@ -291,7 +291,7 @@ func (s *Service) deleteSession(id string) error {
 	var metadata string
 	if err = tx.QueryRow("SELECT metadata FROM sessions WHERE id=?", id).Scan(&metadata); err != nil {
 		if err == sql.ErrNoRows {
-			return fmt.Errorf("任务不存在")
+			return errOfficeSessionMissing
 		}
 		return err
 	}
@@ -320,7 +320,7 @@ func (s *Service) deleteSession(id string) error {
 		return err
 	}
 	if count == 0 {
-		return fmt.Errorf("任务不存在")
+		return errOfficeSessionMissing
 	}
 	for _, table := range []string{"messages", "activities", "thoughts", "run_stats"} {
 		if _, err = tx.Exec("DELETE FROM "+table+" WHERE session_id=?", id); err != nil {

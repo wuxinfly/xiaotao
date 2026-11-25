@@ -62,10 +62,14 @@ export function applyEvent(session: AgentSession, event: AgentEvent): AgentSessi
   }
   if (event.type === 'message_delta' && event.message) {
     const message = event.message;
-    if (session.messages.some(item => item.role === 'assistant' && item.runId === message.runId)) return session;
+    if (session.messages.some(item => item.role === 'assistant' && !item.toolCalls?.length && item.runId === message.runId)) return session;
     const current = session.streamDrafts ?? [];
     const existing = current.find(item => item.id === message.id);
-    const draft = existing ? {...existing, content: existing.content + message.content} : message;
+    const length = existing?.content.length ?? 0;
+    if (event.streamOffset !== undefined && event.streamOffset > length) return session;
+    const content = event.streamOffset === undefined ? message.content : message.content.slice(length - event.streamOffset);
+    if (!content) return session;
+    const draft = existing ? {...existing, content: existing.content + content} : message;
     return {...session, streamDrafts: existing ? current.map(item => item.id === draft.id ? draft : item) : [...current, draft]};
   }
   if ((event.type === 'message' || event.type === 'session') && event.message) {

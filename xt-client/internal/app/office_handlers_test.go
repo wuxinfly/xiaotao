@@ -72,6 +72,7 @@ func TestOfficeRoutesRequireSameOrigin(t *testing.T) {
 		{"GET", "/api/office/snapshot?projectPath=x"},
 		{"POST", "/api/office/tasks"},
 		{"GET", "/api/office/tasks/task_1?projectPath=x"},
+		{"GET", "/api/office/conversations/main/members/employee/events?projectPath=x"},
 	} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest(target.method, target.path, strings.NewReader("{}")))
