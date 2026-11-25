@@ -4,7 +4,7 @@ import {ModalFrame} from '../../components/modal/ModalFrame';
 import {Select} from '../../components/select/Select';
 import type {AgentProject} from '../../lib/api';
 import {isTerminalTask, type OfficeSnapshot} from '../../lib/office';
-import {TaskCard} from './OfficeRoom';
+import {TaskCard} from './TaskCard';
 
 export function OfficeMenuButton({count, onOpen}: {count: number; onOpen: () => void}) {
   return createPortal(<button className="office-fab" type="button" aria-haspopup="dialog" aria-label="办公室菜单"

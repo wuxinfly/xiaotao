@@ -2,7 +2,7 @@
 .agent-workspace {
   --agent-bg: #071724;
   --agent-content-edge: 52px;
-  --agent-content-width: 780px;
+  --agent-content-width: 780px; --agent-context-height: 58px;
   --agent-panel: #0b2030;
   --agent-panel-raised: #102a3c;
   --agent-line: rgba(119, 186, 214, .12);
@@ -44,7 +44,7 @@
 }
 .agent-context-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  flex: none; height: 58px; padding: 0 clamp(18px, 3vw, 34px);
+  flex: none; height: var(--agent-context-height); padding: 0 clamp(18px, 3vw, 34px);
   border-bottom: 1px solid var(--agent-line);
 }
 .agent-context-title { display: flex; align-items: center; gap: 10px; min-width: 0; }

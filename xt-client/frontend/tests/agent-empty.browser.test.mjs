@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('empty Agent state shows only the hero mascot and greeting', {timeout:60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5193', '--strictPort'], {stdio:['ignore','pipe','pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5243', '--strictPort'], {stdio:['ignore','pipe','pipe']});
   let browser;
   try {
     await Promise.race([new Promise(resolve => server.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})), once(server, 'exit').then(() => {throw Error('Vite exited before ready');})]);
@@ -19,7 +19,7 @@ test('empty Agent state shows only the hero mascot and greeting', {timeout:60000
       return route.fulfill({json:{models:[], accounts:[], mode:'full'}});
     });
 
-    await page.goto('http://127.0.0.1:5193');
+    await page.goto('http://127.0.0.1:5243');
     const image = page.locator('.agent-empty-mark img');
     await image.waitFor();
     assert.equal(await image.getAttribute('src'), '/agent/mascot-hero.png');

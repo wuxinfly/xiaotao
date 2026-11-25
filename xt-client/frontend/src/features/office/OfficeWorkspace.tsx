@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {Archive, ArrowLeft, ClipboardList, MessageCircle, PanelRightClose, Plus, Settings2, Users} from 'lucide-react';
 import type {CSSProperties, ReactNode} from 'react';
 import {isTerminalTask, type OfficeMember, type OfficeSnapshot, type OfficeTaskDetail} from '../../lib/office';
-import {TaskCard} from './OfficeRoom';
+import {TaskCard} from './TaskCard';
 import {TaskDetail} from './TaskDetail';
 import './office-detail-panel.css';
 
@@ -80,13 +80,15 @@ export function OfficeWorkspace(props: Props) {
     <header className="workspace-heading">
       <h2 className="workspace-project-name" title={props.projectName}>{props.projectName}</h2>
       <div className="workspace-heading-right">
+        <button type="button" className="workspace-icon-button" aria-controls="office-drawer" aria-expanded={view === 'team'} onClick={() => view === 'team' ? onCloseDrawer() : props.onView('team')}><Users size={15} aria-hidden="true"/>成员</button>
         <button type="button" className="workspace-icon-button workspace-task-trigger" aria-label="任务" aria-controls="office-drawer" aria-expanded={view === 'tasks' || view === 'task'} onClick={() => view === 'tasks' || view === 'task' ? onCloseDrawer() : props.onView('tasks')}><ClipboardList size={15}/>任务{activeCount > 0 && <span aria-hidden="true">{activeCount}</span>}</button>
+        <button type="button" className="workspace-icon-button" aria-label="打开项目资料馆" onClick={props.onOpenLibrary}><Archive size={15} aria-hidden="true"/>资料馆{snapshot && <span className="workspace-nav-count" aria-hidden="true">{snapshot.artifacts.length}</span>}</button>
         <button className="workspace-create" type="button" disabled={!canCreate} onClick={props.onCreate}><Plus size={17}/>新建任务</button></div>
     </header>
     <div className="workspace-grid">
-      <div className="workspace-scene" role="region" aria-label={`${props.projectName}的办公室`}>
-        {props.children}
+      <div className="workspace-scene" role="region" aria-label={`${props.projectName}的办公室`} inert={open}>
         {props.error && <p className="office-error workspace-scene-error" role="alert">刷新办公室失败：{props.error}<button className="office-link" onClick={props.onRefresh}>重试</button></p>}
+        {props.children}
       </div>
       <aside ref={panel} id="office-drawer" className={`workspace-sidebar ${open ? 'is-open' : ''}`} aria-label="办公室协作面板" inert={!open}>
         <div className="workspace-drawer-heading"><strong>协作面板</strong><button type="button" ref={close} className="workspace-icon-button" aria-label="收起协作面板" onClick={onCloseDrawer}><PanelRightClose size={16}/></button></div>

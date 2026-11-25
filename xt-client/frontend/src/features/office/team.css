@@ -13,8 +13,13 @@
 .role-model-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .role-stable-id { font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; margin: 0; }
 .role-stable-id code { color: var(--text-primary); }
-.role-preview { position: relative; display: grid; width: 100%; max-width: 180px; height: 180px; overflow: hidden; justify-self: center; place-items: center; border: 1px solid var(--border-subtle); border-radius: 10px; background: #e4e5d9; color: var(--text-secondary); font-size: 12px; text-align: center; }
-.role-preview canvas { display: block; max-width: 100%; height: auto !important; }
+.role-preview { display: grid; min-height: 112px; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--ocean-panel); }
+.office-role-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50%; font-size: 13px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; background: linear-gradient(145deg, var(--role-primary), var(--role-secondary)); }
+.office-role-mark[data-shape='square'] { border-radius: 5px; }
+.office-role-mark[data-shape='triangle'] { clip-path: polygon(50% 0, 100% 100%, 0 100%); border-radius: 4px; padding-top: 18%; }
+.office-role-mark[data-shape='hexagon'] { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); border-radius: 0; }
+.role-preview .office-role-mark { width: 60px; height: 60px; font-size: 23px; }
+.role-preview .office-role-mark[data-shape='triangle'] { padding-top: 12px; }
 .team-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; grid-column: 1 / -1; }
 .team-member-list article { padding: 14px 0; border-bottom: 1px solid var(--border-subtle); }
 .team-member-list header { display: flex; justify-content: space-between; gap: 10px; }
@@ -24,11 +29,6 @@
 .team-invite button { margin: 0 6px 6px 0; }
 @media (max-width: 640px) { .role-editor { grid-template-columns: 1fr; } .role-appearance { grid-template-columns: repeat(2, minmax(0, 1fr)); } .role-preview { grid-column: 1 / -1; } }
 
-.office-entry-flow { min-height: calc(100dvh - 80px); position: relative; }
-.office-loading { max-width: 650px; margin: 12vh auto; padding: 48px 28px; text-align: center; border: 1px solid var(--border-subtle); border-radius: 28px; background: color-mix(in srgb, var(--bg-secondary) 85%, transparent); }
-.office-loading-mark { width: 64px; height: 64px; margin: 0 auto 24px; display: block; border-radius: 20px; background: linear-gradient(135deg, #b3d8ca, #5caaa5); box-shadow: 0 16px 45px #52afa526; animation: office-breathe 2s ease-in-out infinite; }
-.office-loading h1 { margin: 10px 0; font-size: clamp(26px, 4vw, 38px); }
-.office-loading p { color: var(--text-secondary); }
 .office-eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 11px; color: #77bdb7; font-weight: 600; }
 .team-onboarding { max-width: 1020px; margin: 0 auto; padding: 40px 18px 30px; }
 .onboarding-heading { max-width: 650px; margin: 0 auto 32px; text-align: center; }
@@ -52,27 +52,12 @@
 .onboarding-role .role-editor { margin: 0 16px; }
 .onboarding-footer { display: flex; gap: 16px; align-items: center; margin-top: 20px; }
 .onboarding-footer > span { color: var(--text-secondary); font-size: 12px; flex: 1; text-align: center; }
-.team-fallback { padding: 32px; max-width: 1000px; margin: 24px auto; border: 1px solid var(--border-subtle); border-radius: 22px; background: color-mix(in srgb, var(--bg-secondary) 90%, transparent); }
-.team-fallback header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.team-fallback-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; }
-.team-fallback-grid > button { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; text-align: left; padding: 18px; border-radius: 14px; background: var(--bg-primary); border: 1px solid var(--border-subtle); }
-.team-fallback-grid > button > span, .team-fallback-grid > button > small { grid-column: 2 / -1; color: var(--text-secondary); }
-.team-presence { width: 7px; height: 7px; margin-top: 7px; border-radius: 50%; background: #7fbaa5; }
-.team-presence.status-running { background: #75bde2; }
-.team-presence.status-failed { background: #d79675; }
-.office-scene-error { display: flex; gap: 14px; align-items: center; padding: 18px; border-radius: 16px; border: 1px solid #d2a97955; background: #d2a97912; }
-.office-scene-error > div { flex: 1; }
-.office-scene-error p { margin: 5px 0 0; color: var(--text-secondary); }
-.office-fallback-wrap { max-width: 1020px; margin: 0 auto; padding: 30px 18px; }
-.office-loading-note { text-align: center; color: var(--text-secondary); }
-[data-theme='light'] .office-loading, [data-theme='light'] .onboarding-workspace, [data-theme='light'] .team-fallback { background: #fff; border-color: #c8d9dd; }
+[data-theme='light'] .onboarding-workspace { background: #fff; border-color: #c8d9dd; }
 [data-theme='light'] .office-eyebrow { color: #267570; }
 [data-theme='light'] .onboarding-icon { color: #176e66; }
 [data-theme='light'] .onboarding-role { background: #f5f9fa; border-color: #c8d9dd; }
 [data-theme='light'] .team-count { color: #176e66; background: #e5f3ef; }
-@keyframes office-breathe { 50% { transform: translateY(-4px); opacity: .75; } }
-@media (prefers-reduced-motion: reduce) { .office-loading-mark { animation: none; } }
-@media (max-width: 640px) { .onboarding-workspace { padding: 16px; } .onboarding-footer { flex-wrap: wrap; } .onboarding-footer > span { order: 3; flex-basis: 100%; } .onboarding-footer button { flex: 1; } .office-scene-error { align-items: start; flex-wrap: wrap; } .team-fallback { padding: 20px; } }
+@media (max-width: 640px) { .onboarding-workspace { padding: 16px; } .onboarding-footer { flex-wrap: wrap; } .onboarding-footer > span { order: 3; flex-basis: 100%; } .onboarding-footer button { flex: 1; } }
 .office-onboarding-modal { width: min(820px, 100%); }
 .office-onboarding-modal .app-modal-footer:empty { display: none; }
 .office-onboarding-modal .team-onboarding { padding: 8px 0; }

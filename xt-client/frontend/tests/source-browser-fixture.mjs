@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
@@ -45,3 +46,11 @@ export async function fillSource(page, label, upstream = 'org/shared') {
   await page.getByLabel('模型 1 显示名', {exact:true}).fill('Shared model');
 }
 export async function saveSource(page) {await page.getByRole('button', {name:'保存接口', exact:true}).click(); await page.getByRole('dialog').waitFor({state:'hidden'});}
+
+export async function pickSelectOption(page, label, optionLabel) {
+  const trigger = page.getByRole('button', {name:label, exact:true});
+  await trigger.click();
+  await page.getByRole('option', {name:optionLabel, exact:true}).click();
+  await trigger.waitFor();
+  assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+}

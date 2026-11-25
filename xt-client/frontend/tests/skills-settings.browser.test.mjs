@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 test('local Skills drafts, scanning, toggles, errors, themes and narrow layouts', {timeout:60000}, async () => {
-  const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5198','--strictPort'],{stdio:['ignore','pipe','pipe']});
+  const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port', '5250','--strictPort'],{stdio:['ignore','pipe','pipe']});
   let browser;
   try {
     await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in'))resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
@@ -28,9 +28,9 @@ test('local Skills drafts, scanning, toggles, errors, themes and narrow layouts'
       if(path==='/api/agent/mcp')return route.fulfill({json:{mcpServers:{},source:'empty'}});
       return route.fulfill({json:{sessions:[],models:[],accounts:[],providers:[],mode:'safe'}});
     });
-    await page.goto('http://127.0.0.1:5198');
+    await page.goto('http://127.0.0.1:5250');
     await page.getByRole('button',{name:'打开 Agent 设置'}).click();
-    await page.getByRole('button',{name:'Skills 技能',exact:true}).click();
+    await page.getByRole('button',{name:/^Skills 技能/}).click();
     await page.getByRole('alert').filter({hasText:'配置暂不可读'}).waitFor();
     failRead=false;
     await page.getByRole('button',{name:'重试读取技能配置'}).click();
@@ -38,8 +38,8 @@ test('local Skills drafts, scanning, toggles, errors, themes and narrow layouts'
     await page.getByText('始终启用',{exact:true}).waitFor();
     await page.getByRole('button',{name:'添加目录',exact:true}).click();
     await page.getByLabel('技能目录路径 1',{exact:true}).fill('C:\\Skills');
-    await page.getByRole('button',{name:'常用模型',exact:true}).click();
-    await page.getByRole('button',{name:'Skills 技能',exact:true}).click();
+    await page.getByRole('button',{name:/^常用模型/}).click();
+    await page.getByRole('button',{name:/^Skills 技能/}).click();
     assert.equal(await page.getByLabel('技能目录路径 1',{exact:true}).inputValue(),'C:\\Skills');
     await page.getByRole('button',{name:'扫描目录',exact:true}).click();
     await page.getByText('已发现 1 个技能',{exact:true}).waitFor();
@@ -64,13 +64,14 @@ test('local Skills drafts, scanning, toggles, errors, themes and narrow layouts'
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     }
     await page.screenshot({path:join(tmpdir(),'xiaotao-skills-settings.png')});
-    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('button',{name:'关闭弹窗',exact:true}).click();
     await page.getByRole('dialog').waitFor({state:'hidden'});
     await page.setViewportSize({width:1100,height:900});
     await page.emulateMedia({reducedMotion:'no-preference'});
-    await page.getByRole('button',{name:'切换到浅海亮色主题'}).click();
+    await page.getByRole('button',{name:'更多',exact:true}).click();
+    await page.getByRole('menuitem',{name:'切换到浅海主题'}).click();
     await page.getByRole('button',{name:'打开 Agent 设置'}).click();
-    await page.getByRole('button',{name:'Skills 技能',exact:true}).click();
+    await page.getByRole('button',{name:/^Skills 技能/}).click();
     await page.getByLabel('技能目录路径 1',{exact:true}).waitFor();
     assert.equal(await page.getByLabel('技能目录路径 1',{exact:true}).inputValue(),'C:\\Skills','reopen loads saved config');
     assert.equal(await page.getByLabel('启用 review',{exact:true}).isChecked(),false);

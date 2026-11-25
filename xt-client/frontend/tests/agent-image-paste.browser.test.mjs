@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHgQCAft6VQAAAABJRU5ErkJggg==', 'base64');
 
 test('Pasted images preview, respect model capability and render in history', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5194', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5256', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([new Promise(resolve => server.stdout.on('data', data => { if (data.toString().includes('ready in')) resolve(); })), once(server, 'exit').then(() => { throw Error('Vite exited'); })]);
@@ -38,8 +38,7 @@ test('Pasted images preview, respect model capability and render in history', {t
     await page.route('**/api/agent/access-mode', route => route.fulfill({json: {mode: 'safe'}}));
     await page.route('**/test-image.png', route => route.fulfill({body: png, contentType: 'image/png'}));
     await page.addInitScript(() => localStorage.setItem('xiaotao.agent.enabledModels', JSON.stringify(['vision/model', 'text/model'])));
-    await page.goto('http://127.0.0.1:5194');
-    await page.getByRole('button', {name: /Agent/}).first().click().catch(() => {});
+    await page.goto('http://127.0.0.1:5256');
     const editor = page.getByRole('textbox', {name: '给小涛发消息'});
     await editor.waitFor();
     await editor.evaluate((element, base64) => {

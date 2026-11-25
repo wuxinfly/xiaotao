@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('selected reply text can be quoted, removed, and sent with or without a question', {timeout:60000}, async () => {
- const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5194','--strictPort'],{stdio:['ignore','pipe','pipe']}); let browser;
+ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port', '5245','--strictPort'],{stdio:['ignore','pipe','pipe']}); let browser;
  try {
   await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in')) resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
   browser=await chromium.launch(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE,headless:true} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge',headless:true});
@@ -28,9 +28,9 @@ test('selected reply text can be quoted, removed, and sent with or without a que
    }
    if(path==='/api/agent/access-mode') return route.fulfill({json:{mode:'safe'}});
    if(path==='/api/dashboard/events') return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
-   return route.fulfill({json:{models:[],accounts:[],sessions:[]}});
+   return route.fulfill({json:{models:[{model:'test',label:'测试模型'}],accounts:[],sessions:[]}});
   });
-  await page.goto('http://127.0.0.1:5194'); await page.locator('.agent-session-select[title="引用测试"]').click();
+  await page.goto('http://127.0.0.1:5245'); await page.locator('.agent-session-select[title="引用测试"]').click();
   await page.locator('.agent-run-bubble-text.agent-message-content').waitFor();
   assert.equal(await page.locator('.agent-message.role-assistant').count(), 0, '真实路径下不应再渲染旧消息行');
   async function selectQuote(start, end) {

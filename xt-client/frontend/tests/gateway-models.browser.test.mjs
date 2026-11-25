@@ -45,13 +45,13 @@ test('public model catalog is modal, searchable and copies public IDs and exact 
   await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).waitFor();
   await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{}});document.execCommand=()=>{window.__legacyClipboard=document.querySelector('textarea')?.value;return true;};});
   await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).click();
-  assert.equal(await page.evaluate(()=>window.__legacyClipboard),models[0].id);
-  assert.equal(await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).evaluate(node=>node===document.activeElement),true);
+  await page.waitForFunction(expected=>window.__legacyClipboard===expected, models[0].id);
+  await page.waitForFunction(()=>document.activeElement?.getAttribute('aria-label')==='复制模型 ID 我的接口/中文%2F模型');
   await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:()=>Promise.reject(Error('denied'))}});document.execCommand=()=>false;});
   await page.getByRole('button',{name:'复制模型 ID 我的接口/中文%2F模型'}).click();
   await dialog.getByRole('alert').filter({hasText:'复制失败'}).waitFor();
   await page.keyboard.press('Escape');
   await dialog.waitFor({state:'hidden'});
-  assert.equal(await page.getByRole('button',{name:'模型调用清单',exact:true}).evaluate(node=>node===document.activeElement),true);
+  await page.waitForFunction(()=>document.activeElement?.textContent?.includes('模型调用清单'));
   assert.deepEqual(errors,[]);
 }));

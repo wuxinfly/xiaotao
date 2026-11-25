@@ -155,7 +155,7 @@ export function OfficeMemberConversation({parent, project, projectName, memberId
             answer={conversationMessages(session?.messages || []).find(message => message.role === 'assistant' && message.runId === entry.runId)}/>)}
       {working && <ChatWorkingIndicator avatar={avatar}/>}
     </div>
-    {item?.question && <div className="agent-office-inline-status"><strong>等你回复</strong><span>{item.question}</span></div>}
+    {replying && <div className="agent-office-inline-status"><strong>等你回复</strong><span>{item?.coordinatorQuestion || item?.question}</span></div>}
     {item?.approval && <div className="agent-office-inline-status"><CircleAlert aria-hidden="true"/><span>{item.approval.detail}</span><button type="button" onClick={approve} disabled={acting}>查看并确认</button></div>}
     {(error || item?.error) && <p className="agent-office-error" role="alert">{error || item?.error}</p>}
     {summaryStatus === 'failed' && <div className="agent-office-inline-status agent-office-memory">

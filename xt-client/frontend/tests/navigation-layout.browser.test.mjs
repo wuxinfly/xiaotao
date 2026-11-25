@@ -5,10 +5,10 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {officePane} from './office-test-navigation.mjs';
+import {officePane, workspaceToggle} from './office-test-navigation.mjs';
 
 test('workspace navigation is docked left and theme lives in the more menu', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5199', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5255', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([
@@ -57,7 +57,7 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:5199');
+    await page.goto('http://127.0.0.1:5255');
     await page.locator('.workspace-dock').waitFor();
 
     assert.equal(await page.locator('.titlebar nav').count(), 0, 'top navigation must be removed');
@@ -69,16 +69,25 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.ok(footer.x >= sidebar.x && footer.x + footer.width <= sidebar.x + sidebar.width, 'navigation stays inside the Agent sidebar');
     assert.ok(history.y + history.height <= footer.y, 'navigation must not cover scrollable session history');
     const footerButtons = page.locator('.workspace-dock .workspace-nav button');
-    assert.deepEqual(await footerButtons.allTextContents(), ['办公室', '仪表盘', '模型接口']);
+    assert.deepEqual(await footerButtons.allTextContents(), ['仪表盘', '模型接口']);
     const dockBackgrounds = () => footerButtons.evaluateAll(buttons => buttons.map(button => getComputedStyle(button).backgroundColor));
     assert.equal(new Set(await dockBackgrounds()).size, 1, 'all dock entries use the same resting background');
     assert.equal(await page.getByRole('button', {name: '小涛 Agent', exact: true}).count(), 0, 'agent is the default page and must not have a dock entry');
     await page.locator('.agent-workspace').waitFor();
-    await page.locator('.workspace-dock').getByRole('button', {name: '办公室', exact: true}).click();
+    const workspace = workspaceToggle(page);
+    const rightmostAction = page.locator('.agent-context-actions button').last();
+    assert.equal(await rightmostAction.getAttribute('aria-label'), '工作区');
+    await workspace.press('Enter');
+    assert.equal(await workspace.getAttribute('aria-expanded'), 'true');
+    const tabs = officePane(page).getByRole('group', {name: '工作区标签'});
+    assert.deepEqual(await tabs.getByRole('button').allTextContents(), ['办公室']);
+    assert.equal(await tabs.getByRole('button', {name: '办公室', exact: true}).getAttribute('aria-pressed'), 'true');
     await officePane(page).getByText('在小涛对话里选择项目后，就能查看它的办公室。').waitFor();
     assert.equal(await page.locator('.workspace-dock').count(), 1, 'the office pane must keep home navigation visible');
     await page.getByRole('textbox', {name: '给小涛发消息'}).waitFor();
-    await officePane(page).getByRole('button', {name: '收起办公室工作区'}).click();
+    await officePane(page).getByRole('button', {name: '收起工作区'}).press('Enter');
+    await officePane(page).waitFor({state: 'hidden'});
+    assert.equal(await workspace.getAttribute('aria-expanded'), 'false');
     await page.locator('.agent-workspace').waitFor();
     assert.equal(new Set(await dockBackgrounds()).size, 1, 'returning from the office restores the resting background');
     await page.locator('.workspace-dock').getByRole('button', {name: '仪表盘', exact: true}).click();
@@ -160,6 +169,11 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     await page.locator('.agent-workspace').waitFor();
     const trigger = await page.getByRole('button', {name: '更多', exact: true}).boundingBox();
     assert.ok(trigger.x + trigger.width <= 420, 'more menu remains in the narrow title bar');
+    await workspace.click();
+    await officePane(page).waitFor();
+    await workspace.click();
+    await officePane(page).waitFor({state: 'hidden'});
+    assert.equal(await workspace.getAttribute('aria-expanded'), 'false');
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

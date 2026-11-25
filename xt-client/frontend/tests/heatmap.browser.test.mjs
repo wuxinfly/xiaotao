@@ -20,6 +20,7 @@ test('edge heatmap cells and provider headers keep their full visual bounds', {t
       const path = new URL(route.request().url()).pathname;
       if (path === '/api/dashboard/events') return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
       if (path === '/api/dashboard') return route.fulfill({json:{version:'fixture',versionSeq:1,launch:{startedAt:1793678400,uptimeSeconds:60,batchId:'fixture'},currentSession:tokens,today:{...tokens,totalRequests:2},cumulative:{...tokens,totalRequests:2},recentRequests:[],activeRequests:[],activeCount:0,heatmap:{startDate:'2025-11-04',endDate:'2026-11-04',trackingStartDate:'2025-11-04',days:{'2026-11-04':{totalTokens:3000,promptTokens:2000,completionTokens:1000,cachedTokens:500,totalRequests:2,hasMissingUsage:false}}},storage:{status:'healthy'}}});
+      if (path === '/api/model-sources') return route.fulfill({json:{sources:[{id:'fixture-source',label:'测试接口',baseURL:'https://example.test/v1/chat/completions',protocol:'openai-chat',enabled:true,hasAPIKey:true,models:[{id:'fixture-model',label:'测试模型',upstreamModelId:'org/test',contextWindow:65536,maxOutputTokens:4096}]}]}});
       if (path === '/api/accounts') return route.fulfill({json:{accounts:[account],providers:[{id:'trae',displayName:'Trae 国内版'}]}});
       return route.fulfill({json:{sessions:[],accounts:[account],providers:[{id:'trae',displayName:'Trae 国内版'}],models:[],key:'fixture-key'}});
     });
@@ -47,23 +48,18 @@ test('edge heatmap cells and provider headers keep their full visual bounds', {t
     await assertInsideMatrix('focus');
 
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('xiaotao:navigate',{detail:'accounts'})));
-    const group = page.locator('.provider-group-section').first();
-    await group.waitFor();
-    if (await group.evaluate(el => el.classList.contains('is-collapsed'))) {
-      await group.locator('.group-collapse-btn').click();
-    }
-    await group.hover();
-    assert.equal(await group.locator('.group-left').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
-    assert.ok(await group.locator('.group-right').evaluate(el => parseFloat(getComputedStyle(el).borderLeftWidth) > 0));
-    const actionHeights = await group.locator('.group-right button').evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().height)));
-    assert.equal(new Set(actionHeights).size, 1, 'header actions should share one height');
-    const headerBounds = await page.evaluate(() => {
-      const section = document.querySelector('.provider-group-section').getBoundingClientRect();
-      const header = document.querySelector('.provider-group-header').getBoundingClientRect();
-      return {sectionLeft:section.left,sectionRight:section.right,headerLeft:header.left,headerRight:header.right};
+    const card = page.locator('.source-card').first();
+    await card.waitFor();
+    await card.hover();
+    const actionHeights = await card.locator('footer .source-actions button').evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().height)));
+    assert.equal(new Set(actionHeights).size, 1, 'card actions should share one height');
+    const headerBounds = await card.evaluate(section => {
+      const outer = section.getBoundingClientRect();
+      const header = section.querySelector('header').getBoundingClientRect();
+      return {sectionLeft:outer.left,sectionRight:outer.right,headerLeft:header.left,headerRight:header.right};
     });
-    assert.ok(headerBounds.headerLeft > headerBounds.sectionLeft);
-    assert.ok(headerBounds.headerRight < headerBounds.sectionRight);
+    assert.ok(headerBounds.headerLeft >= headerBounds.sectionLeft);
+    assert.ok(headerBounds.headerRight <= headerBounds.sectionRight);
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('rename dialog generates a title without saving until confirmed', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5189', '--strictPort'], {cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5241', '--strictPort'], {cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([
@@ -33,7 +33,7 @@ test('rename dialog generates a title without saving until confirmed', {timeout:
       if (url.pathname === '/api/agent/sessions/title_session/history') return route.fulfill({json: {session, before: ''}});
       return route.fulfill({json: {}});
     });
-    await page.goto('http://127.0.0.1:5189');
+    await page.goto('http://127.0.0.1:5241');
     await page.getByRole('button', {name: '会话操作 原来的标题'}).click();
     await page.getByRole('menuitem', {name: '重命名'}).click();
     const dialog = page.getByRole('dialog', {name: '重命名会话'});

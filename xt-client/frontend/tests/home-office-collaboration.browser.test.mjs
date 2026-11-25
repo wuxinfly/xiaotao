@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {test} from 'node:test';
 import {chromium} from 'playwright';
+import {openOffice} from './office-test-navigation.mjs';
 
 const now = '2026-11-21T00:00:00+08:00';
 const project = {path: 'E:/office-fixture', name: '协作项目', saved: true};
@@ -130,14 +131,17 @@ test('home keeps the coordinator active and reopens the same employee turn', {ti
     const card = page.locator('.agent-office-card').filter({hasText: employee.name});
     await card.getByText('正在处理', {exact: true}).waitFor();
     assert.equal(dispatched.memberId, employee.id);
-    assert.equal(await page.getByRole('complementary', {name: '办公室工作区'}).count(), 0);
+    assert.equal(await page.getByRole('complementary', {name: '工作区'}).count(), 0);
     await editor.focus();
     conversation = {...conversation, question: employeeSession.messages[0].content, status: 'waiting'};
     await card.getByText('等你回复', {exact: true}).waitFor();
     const notice = page.locator('.toast-container--bottom-right');
     await notice.getByText('设计师等你回复').waitFor();
     assert.equal(await editor.evaluate(element => element === document.activeElement), true);
-    await page.getByRole('button', {name: '员工动态，1 项待处理', exact: true}).waitFor();
+    assert.equal(await page.getByRole('button', {name: /员工动态/}).count(), 0);
+    const officePane = await openOffice(page);
+    await officePane.getByRole('region', {name:'待你处理'}).getByRole('button', {name:'设计师 · 等你回复'}).click();
+    await officePane.getByRole('textbox', {name:'给设计师发消息'}).waitFor();
     await card.getByRole('button', {name: '让小涛回复'}).click();
     await card.getByText('你希望设计师覆盖哪些端？').waitFor();
     assert.equal(delegated.memberId, employee.id);
@@ -146,7 +150,7 @@ test('home keeps the coordinator active and reopens the same employee turn', {ti
     await card.getByText('设计师会只处理桌面端。').waitFor();
     assert.equal(directReply.content, '只改桌面端');
     await card.getByRole('button', {name: /设计师/}).click();
-    const pane = page.getByRole('complementary', {name: '办公室工作区'});
+    const pane = page.getByRole('complementary', {name: '工作区'});
     await pane.getByText(employeeSession.messages[0].content, {exact: true}).waitFor();
     const avatar = pane.locator('.agent-message-avatar .office-member-avatar');
     assert.equal(await avatar.textContent(), '设');
@@ -182,9 +186,8 @@ test('home keeps the coordinator active and reopens the same employee turn', {ti
     await pane.getByRole('button', {name: '收起设计师对话'}).click();
     assert.equal(closes, 0);
     await page.evaluate(() => {window.testEmployeeStream = true;});
-    await page.getByRole('button', {name: '员工动态', exact: true}).click();
     const reopened = page.waitForResponse(response => new URL(response.url()).pathname === chat + '/history');
-    await page.getByRole('dialog', {name: '员工动态'}).getByRole('button', {name: /设计师/}).click();
+    await card.getByRole('button', {name: /设计师/}).click();
     assert.equal((await reopened).status(), 200);
     await pane.getByText(employeeSession.messages[0].content, {exact: true}).waitFor();
     assert.ok(historyReads >= 2);
@@ -234,9 +237,9 @@ test('home keeps the coordinator active and reopens the same employee turn', {ti
     await push({type: 'run_stats', runStats: endStats});
     await push({type: 'status', status: 'completed'});
     await liveBubble.getByText(final.content, {exact: true}).waitFor();
-    await page.getByRole('button', {name: '员工动态', exact: true}).click();
-    await page.getByRole('button', {name: '关闭主会话'}).click();
-    await page.getByRole('button', {name: '员工动态', exact: true}).waitFor({state: 'hidden'});
+    await page.getByRole('button', {name: '会话操作 ' + main.title, exact: true}).click();
+    await page.getByRole('menuitem', {name: '关闭主会话'}).click();
+    await page.locator('.agent-context-title').getByText('新会话', {exact: true}).waitFor();
     assert.equal(closes, 1);
     assert.deepEqual(errors, []);
   } finally {

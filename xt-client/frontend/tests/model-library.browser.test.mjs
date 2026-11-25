@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {mkdirSync} from 'node:fs';
-import {sourceBrowser} from './source-browser-fixture.mjs';
+import {pickSelectOption, sourceBrowser} from './source-browser-fixture.mjs';
 
 test('Agent model library supports batch selection, search, parameters and searchable utility assignment', {timeout:60000}, () => sourceBrowser(5228, async ({page,state,errors,navigate}) => {
   state.sources.push(
@@ -18,16 +18,16 @@ test('Agent model library supports batch selection, search, parameters and searc
   await page.getByRole('checkbox',{name:'轻量助手 · 日常接口'}).click();
   assert.equal(await page.locator('.model-library-card').count(),2,'selecting a model keeps the library open');
   await page.getByRole('button',{name:'清除模型搜索'}).click();
-  await page.getByLabel('筛选模型来源').selectOption('a');
+  await pickSelectOption(page, '筛选模型来源', '团队接口');
   await page.getByRole('button',{name:/添加当前结果/}).click();
   assert.equal(await page.getByRole('checkbox',{checked:true}).count(),2);
-  await page.getByLabel('筛选模型来源').selectOption('');
+  await pickSelectOption(page, '筛选模型来源', '全部来源 · 2');
   await page.getByRole('button',{name:/常用模型 3/,exact:true}).click();
   assert.equal(await page.locator('.model-library-card').count(),3);
   await page.getByRole('button',{name:'调整 Qwen 旗舰 参数'}).click();
   await page.getByLabel('Qwen 旗舰 上下文窗口').fill('65536');
   await page.getByLabel('Qwen 旗舰 最大输出').fill('4096');
-  await page.getByLabel('Qwen 旗舰 思考等级').selectOption('high');
+  await pickSelectOption(page, 'Qwen 旗舰 思考等级', 'high');
   await page.getByRole('button',{name:'调整 Qwen 旗舰 参数'}).click();
   await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(()=>!!document.activeElement?.closest('[inert]')),false);

@@ -7,7 +7,8 @@ import {ChatImagePreviews} from './messages/ChatImages';
 import {ChatEditor, editorMarkdown, hasActiveNode, useChatEditor} from './messages/ChatEditor';
 import {runPhase} from './messages/runStats';
 import {ThoughtDrawer} from './ThoughtDrawer';
-import {OfficeActivityMenu, OfficeDispatchCard, OfficeSidePane} from './OfficeCollaboration';
+import {OfficeDispatchCard, OfficeWorkspacePanel} from './OfficeCollaboration';
+import {WorkspacePanelToggle} from '../../components/WorkspacePanel';
 import {useOfficeWorkspace} from './useOfficeWorkspace';
 import {RoleMention, editorRoleMentions, insertRoleMention, roleMentionType} from './RoleMention';
 import {officeConversations} from '../../lib/office-conversations';
@@ -89,8 +90,8 @@ function referenceQueryAtCursor(state: EditorState): {from: number; query: strin
   return {from: from - match[1].length - 1, query: match[1]};
 }
 
-export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
-  visible: boolean; navigation?: React.ReactNode; officeOpen: boolean; onOfficeChange: (open: boolean) => void;
+export function AgentPage({visible, navigation, workspaceOpen, onWorkspaceChange}: {
+  visible: boolean; navigation?: React.ReactNode; workspaceOpen: boolean; onWorkspaceChange: (open: boolean) => void;
 }) {
   const confirm = useConfirm();
   const [accessMode, setAccessMode] = useState<'safe' | 'full'>('safe');
@@ -371,7 +372,7 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
   const referenceOpenRef = useRef(false);
   const closeReferencePickerRef = useRef<() => void>(() => {});
   const [referencePicker, setReferencePicker] = useState<{open: boolean; query: string; scope: 'project' | 'all'}>({open: false, query: '', scope: 'project'});
-  const office = useOfficeWorkspace({parent: active?.id || '', project: officeProject, projectName: active?.project.name || projectName, visible, pickingRole: referencePicker.open, paneOpen: officeOpen, onOpen: onOfficeChange});
+  const office = useOfficeWorkspace({parent: active?.id || '', project: officeProject, projectName: active?.project.name || projectName, visible, pickingRole: referencePicker.open, paneOpen: workspaceOpen, onOpen: onWorkspaceChange});
   const roleChoices = office.members.filter(item => `${item.name} ${item.responsibility || ''}`.toLowerCase().includes(referencePicker.query.toLowerCase()));
   const [referenceResults, setReferenceResults] = useState<AgentReferenceCandidate[]>([]);
   const [referenceIndex, setReferenceIndex] = useState(0);
@@ -595,7 +596,7 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
   }
 
   async function openOfficeMember(member: OfficeMember) {
-    if (member.role === 'coordinator') {onOfficeChange(false); editor?.commands.focus(); return;}
+    if (member.role === 'coordinator') {onWorkspaceChange(false); editor?.commands.focus(); return;}
     if (pending || !officeProject) return;
     if (active) {office.openMember(member.id, member.name); return;}
     if (!currentModel) {setError('先启用一个模型，再与员工对话。'); return;}
@@ -841,13 +842,11 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setDeleting(''); setExitingSession(''); }
   }
-
-  async function closeOfficeSession() {
-    if (!active || busy) return;
-    try {if (await office.close(active.id) && activeIdRef.current === active.id) newChat();}
+  async function closeOfficeSession(id: string) {
+    if (runningIds.has(id) || active?.id === id && busy) return;
+    try {if (await office.close(id) && activeIdRef.current === id) newChat();}
     catch (reason) {setError(reason instanceof Error ? reason.message : String(reason));}
   }
-
   const deleteProject = useCallback(async (item: {path: string; name: string}) => {
     if (busy) return;
     if (!await confirm({title: '删除项目？', description: `项目“${item.name}”会从项目列表移除，里面的会话回到“最新”，不会被删除。`, confirmLabel: '删除项目'})) return;
@@ -943,7 +942,6 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
         <div className="agent-context-title">
           <AgentDroplet running={busy}/>
           <div><strong>{active ? active.title : '新会话'}</strong><small>{busy ? '小涛正在处理' : active ? 'Agent 工作台' : '准备开始'}</small></div>
-          {active && officeProject && <OfficeActivityMenu key={active.id} office={office} onCloseSession={() => void closeOfficeSession()}/>}
         </div>
         <div className="agent-context-actions">
           {active && (
@@ -989,6 +987,7 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
           <button type="button" className="agent-settings-trigger" onClick={() => setSettingsOpen(true)} title="Agent 设置" aria-label="打开 Agent 设置">
             <Settings2 aria-hidden="true"/><span>设置</span>
           </button>
+          <WorkspacePanelToggle open={workspaceOpen} onToggle={() => onWorkspaceChange(!workspaceOpen)}/>
         </div>
       </header>
 
@@ -1076,7 +1075,7 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
         </div>
       </div>
     </div>
-    {(officeOpen || office.tabs.size > 0) && <OfficeSidePane office={office} parent={active?.id || ''} project={officeProject} projectName={activeProjectName} model={active?.model || currentModel} models={models} modelConfigs={modelConfigs} visible={visible} open={officeOpen} onClose={() => onOfficeChange(false)} onOpenMember={member => void openOfficeMember(member)}/>}
+    <OfficeWorkspacePanel office={office} parent={active?.id || ''} project={officeProject} projectName={activeProjectName} model={active?.model || currentModel} models={models} modelConfigs={modelConfigs} visible={visible} open={workspaceOpen} coordinatorRunning={!!active && runningIds.has(active.id)} onClose={() => onWorkspaceChange(false)} onOpenMember={member => void openOfficeMember(member)}/>
 
     {openThoughtRun && (() => {
       const stats = runStats.find(item => item.runId === openThoughtRun);
@@ -1089,6 +1088,7 @@ export function AgentPage({visible, navigation, officeOpen, onOfficeChange}: {
     <Popover open={!!sessionMenu} onClose={() => setSessionMenu(null)} anchorRef={sessionMenuTrigger} point={sessionMenu ? {x: sessionMenu.x, y: sessionMenu.y} : undefined} className="agent-session-menu" aria-label="会话操作">
       <button type="button" role="menuitem" onClick={() => {if (sessionMenu) { selectSession(sessionMenu.item); setReviewListOpen(true); } setSessionMenu(null);}}><History aria-hidden="true"/>复盘记录</button>
       <button type="button" role="menuitem" onClick={() => {if (sessionMenu) setRenaming(sessionMenu.item); setSessionMenu(null);}}><Pencil aria-hidden="true"/>重命名</button>
+      {sessionMenu?.item.project.path && !sessionMenu.item.project.isDefault && <button type="button" role="menuitem" disabled={runningIds.has(sessionMenu.item.id)} onClick={() => {const {id} = sessionMenu.item; setSessionMenu(null); void closeOfficeSession(id);}}><X aria-hidden="true"/>关闭主会话</button>}
       <button type="button" role="menuitem" className="is-danger" onClick={() => {if (!sessionMenu) return; const item = sessionMenu.item; setSessionMenu(null); void deleteSession(item);}}><Trash2 aria-hidden="true"/>删除</button>
     </Popover>
     <ModalPresence>{referenceDetail && <ReferenceModal reference={referenceDetail} onOpenSource={id => void openReferencedSession(id)} onClose={() => setReferenceDetail(null)}/>}</ModalPresence>

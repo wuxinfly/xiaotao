@@ -5,14 +5,16 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('Markdown wrapper pastes formatted content while ordinary code stays code', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5193', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5244', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([new Promise(resolve => server.stdout.on('data', data => { if (data.toString().includes('ready in')) resolve(); })), once(server, 'exit').then(() => { throw Error('Vite exited'); })]);
-    browser = await chromium.launch({executablePath: process.env.XIAOTAO_TEST_BROWSER_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox']});
+    browser = await chromium.launch(process.env.XIAOTAO_TEST_BROWSER_PATH
+      ? {executablePath: process.env.XIAOTAO_TEST_BROWSER_PATH, headless: true, args: ['--no-sandbox']}
+      : {channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true});
     const page = await browser.newPage();
     await page.route('**/api/**', route => route.fulfill({json: {sessions: [], models: [], accounts: [], providers: []}}));
-    await page.goto('http://127.0.0.1:5193');
+    await page.goto('http://127.0.0.1:5244');
     const editor = page.getByRole('textbox', {name: '给小涛发消息'});
     await editor.click();
     const paste = text => editor.evaluate((element, value) => { const data = new DataTransfer(); data.setData('text/plain', value); element.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true})); }, text);

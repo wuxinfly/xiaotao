@@ -9,6 +9,7 @@ import {ArtifactModal} from './ArtifactModal';
 import {ArtifactLibraryModal} from './ArtifactLibraryModal';
 import {CreateTaskModal} from './CreateTaskModal';
 import {OfficeEntryFlow, type OfficeEntryHandle} from './OfficeEntryFlow';
+import type {OfficeConversation} from '../../lib/office-conversations';
 import {OfficeWorkspace} from './OfficeWorkspace';
 import {useOfficePolling} from './useOfficePolling';
 import {TeamManager} from './TeamManager';
@@ -20,7 +21,10 @@ type Props = {
   visible: boolean;
   projectPath: string;
   projectName?: string;
+  conversations: OfficeConversation[];
+  coordinatorRunning: boolean;
   onOpenMember: (member: OfficeMember) => void;
+  onOpenConversation: (item: OfficeConversation) => void;
 };
 type Panel = 'library' | 'create' | 'team' | null;
 type WorkspaceView = 'tasks' | 'team' | 'task' | null;
@@ -37,7 +41,7 @@ export function OfficePage(props: Props) {
   return <ProjectOffice key={props.projectPath} {...props}/>;
 }
 
-function ProjectOffice({visible, projectPath: selectedPath, projectName, onOpenMember}: Props) {
+function ProjectOffice({visible, projectPath: selectedPath, projectName, conversations, coordinatorRunning, onOpenMember, onOpenConversation}: Props) {
   const confirm = useConfirm();
   const name = projectName || selectedPath.split(/[\\/]/).filter(Boolean).at(-1) || selectedPath;
   const [models, setModels] = useState<AgentModelOption[]>([]);
@@ -209,9 +213,9 @@ function ProjectOffice({visible, projectPath: selectedPath, projectName, onOpenM
       onResolveApproval={(id, approved) => void resolveApproval(id, approved)} onPostMessage={postMessage}
       onOpenArtifact={item => void openArtifact(item)}
       onOpenLibrary={() => showPanel('library')}>
-      <OfficeEntryFlow ref={entry} projectPath={selectedPath} projectName={name} visible={visible} members={snapshot?.members || []} models={models} artifactCount={snapshot?.artifacts.length || 0}
-        onTeamChanged={() => void refresh()} onShowTeam={() => {clearTask(); setWorkspaceView('team');}}
-        onSelectMember={selectMember} onOpenLibrary={() => showPanel('library')} onManage={() => showPanel('team')}/>
+      <OfficeEntryFlow ref={entry} projectPath={selectedPath} projectName={name} members={snapshot?.members || []} tasks={snapshot?.tasks || []}
+        conversations={conversations} coordinatorRunning={coordinatorRunning} loading={loading} error={error} models={models}
+        onTeamChanged={() => void refresh()} onSelectMember={selectMember} onSelectTask={selectTask} onSelectConversation={onOpenConversation}/>
     </OfficeWorkspace>
     <ModalPresence>
       {panel === 'team' ? <TeamManager projectPath={selectedPath} models={models} onChanged={async team => {

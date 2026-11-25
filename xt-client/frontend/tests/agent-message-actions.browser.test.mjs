@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('message menu copies the original query and branches a finished answer', {timeout: 60000}, async () => {
- const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5198', '--strictPort'], {stdio:['ignore','pipe','pipe']});
+ const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5251', '--strictPort'], {stdio:['ignore','pipe','pipe']});
  let browser;
  try {
   await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in'))resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
@@ -33,7 +33,7 @@ test('message menu copies the original query and branches a finished answer', {t
    if(path.endsWith('/access-mode'))return route.fulfill({json:{mode:'full'}});
    return route.fulfill({json:{}});
   });
-  await page.goto('http://127.0.0.1:5198');
+  await page.goto('http://127.0.0.1:5251');
   await page.locator('.agent-session-select').filter({hasText:'第一问'}).click();
   await page.locator('[data-message-id="u1"] .agent-message-content').waitFor();
 

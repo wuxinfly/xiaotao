@@ -1,5 +1,7 @@
 # 办公室工作台改版
 
+> 2026-11-25 起，客户端的 3D 场景、镜头和 GLB 预览由二维工位墙替代。旧场景说明保留为历史。参见[当前办公室架构](../architecture/office-team.md)。
+
 后续工位、角色动作与日夜场景见 [办公室工位、角色动作和日夜](2026-11-14-office-workstations.md)。
 抽屉、对话复用、资料预览与走路动作细化见 [办公室交互细化](2026-11-14-office-interaction-polish.md)。
 铺满画面与悬浮控件见 [办公室铺满画面](2026-11-14-office-full-canvas-design.md)。

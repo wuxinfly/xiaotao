@@ -6,11 +6,9 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {test} from 'node:test';
 import {chromium} from 'playwright';
-import {Vector3} from 'three';
-import {createCamera} from '../src/features/office/scene-geometry.ts';
 import {officePane, openOffice} from './office-test-navigation.mjs';
 
-test('real service team persistence and 3D interactions', {timeout: 120000}, async context => {
+test('real service team persistence and desk interactions', {timeout: 120000}, async context => {
   const root = await mkdtemp(join(tmpdir(), 'xiaotao-team-real-'));
   const data = join(root, 'data');
   const project = join(root, 'project');
@@ -35,7 +33,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await Promise.race([new Promise(resolve => preview.stdout.on('data', data => {if (data.toString().includes('ready in')) resolve();})), once(preview, 'exit').then(() => {throw Error('Vite exited before ready');})]);
     const response = await fetch(base + '/api/agent/projects', {method: 'POST', headers: {'Content-Type': 'application/json', Origin: base}, body: JSON.stringify({path: project, name: '真实验收项目'})});
     assert.equal(response.status, 200);
-    browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true, args: ['--enable-unsafe-swiftshader']});
+    browser = await chromium.launch({channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge', headless: true});
     page = await browser.newPage({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
     await page.addInitScript(() => localStorage.setItem('xiaotao.agent.enabledModels', JSON.stringify(['test/model'])));
     await page.route('**/api/agent/models', route => route.fulfill({json: {models: [{model: 'test/model', label: '团队测试模型', contextWindow: 128000, maxOutputTokens: 8192}]}}));
@@ -44,7 +42,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
     await page.goto('http://127.0.0.1:5239');
     await openOffice(page, '真实验收项目');
-    await page.locator('[data-entry-phase=ready]').waitFor();
+    await page.getByRole('region', {name:'办公室工位'}).waitFor();
     await page.getByRole('button', {name: '组建小队', exact: true}).click();
     await page.getByRole('button', {name: '稍后设置', exact: true}).click();
     if (!await page.getByRole('tab', {name: /团队/}).isVisible()) await page.getByRole('button', {name: '任务', exact: true}).click();
@@ -66,22 +64,14 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     assert.match(rolesYaml, /primary_color: '#[a-f0-9]{6}'/);
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({state: 'detached'});
-    await page.locator('canvas[data-office-renderer="three"]').waitFor({timeout: 10000}).catch(async reason => {
-      const entry = page.locator('.office-entry-flow');
-      const phase = await entry.getAttribute('data-entry-phase');
-      const body = (await page.locator('body').innerText()).slice(0, 1200);
-      throw new Error(`3D load failed: entry=${phase}; text=${body}; ${errors.join(' | ')}; ${reason.message}`);
-    });
-    await page.locator('.room-tool').filter({hasText: '成员4'}).waitFor();
     await page.getByRole('button', {name: '收起协作面板'}).click();
+    const desks = page.getByRole('region', {name:'办公室工位'});
+    const employeeDesk = desks.locator('[data-member-id="' + originalId + '"]');
+    await employeeDesk.waitFor();
+    assert.equal(await desks.locator('[data-member-id]').count(), 4);
     await page.screenshot({path: join(output, 'office-team-real.png')});
-    const bounds = await page.locator('canvas[data-office-renderer="three"]').boundingBox();
-    // The first employee sits behind the left desk, separate from the coordinator.
-    const point = new Vector3(.78, 2.18, 1.42).project(createCamera(bounds.width, bounds.height));
-    await page.mouse.click(bounds.x + (point.x + 1) * bounds.width / 2, bounds.y + (1 - point.y) * bounds.height / 2);
-    await officePane(page).getByRole('textbox', {name: /给.+发消息/}).waitFor({timeout: 7000}).catch(async error => {
-      throw new Error(`3D member click did not open a tab. ${await page.locator('body').innerText()}. ${error.message}`);
-    });
+    await employeeDesk.click();
+    await officePane(page).getByRole('textbox', {name: /给.+发消息/}).waitFor({timeout: 7000});
     await openOffice(page);
     await page.getByRole('button', {name: /^成员/}).click();
     await page.getByRole('button', {name: '管理团队', exact: true}).click();
@@ -98,6 +88,7 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await editor.getByRole('checkbox', {name: '使用浏览器和 MCP'}).uncheck();
     await editor.getByRole('button', {name: '人物造型'}).click();
     await page.getByRole('option', {name: '六边形'}).click();
+    assert.equal(await editor.locator('.role-preview .office-role-mark').getAttribute('data-shape'), 'hexagon');
     await editor.locator('input[type="color"]').first().fill('#123456');
     const updateResponse = page.waitForResponse(response => response.url().endsWith('/api/office/roles') && response.request().method() === 'PUT');
     await page.getByRole('button', {name: '保存角色', exact: true}).click();
@@ -113,8 +104,6 @@ test('real service team persistence and 3D interactions', {timeout: 120000}, asy
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({state: 'detached'});
     await page.getByRole('button', {name: '收起协作面板'}).click();
-    await page.getByRole('button', {name: '放大视角', exact: true}).click();
-    await page.getByRole('button', {name: '复位视角', exact: true}).click();
     await page.getByRole('button', {name: '打开项目资料馆', exact: true}).first().click();
     await page.getByRole('dialog').waitFor();
     await page.keyboard.press('Escape');

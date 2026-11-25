@@ -5,7 +5,7 @@ import {once} from 'node:events';
 import {chromium} from 'playwright';
 
 test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5191', '--strictPort'], {cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5242', '--strictPort'], {cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([
@@ -77,7 +77,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
       }
       return route.fulfill({json: {}});
     });
-    await page.goto('http://127.0.0.1:5191');
+    await page.goto('http://127.0.0.1:5242');
     await page.getByRole('button', {name: '切换会话排列方式'}).click();
     await page.getByRole('button', {name: '按会话查看'}).click();
     await page.locator('.agent-session-select').filter({hasText: '时序交互'}).waitFor();
@@ -151,7 +151,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
       if (url.pathname.endsWith('/history')) return route.fulfill({json: {session: {...terminal, thoughts: [], activity}, before: ''}});
       return route.fulfill({json: {}});
     });
-    await activityOnlyPage.goto('http://127.0.0.1:5191');
+    await activityOnlyPage.goto('http://127.0.0.1:5242');
     await activityOnlyPage.getByRole('button', {name: '切换会话排列方式'}).click();
     await activityOnlyPage.getByRole('button', {name: '按会话查看'}).click();
     await activityOnlyPage.locator('.agent-session-select').filter({hasText: '时序交互'}).click();
@@ -172,7 +172,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
       if (url.pathname.endsWith('/history')) return route.fulfill({json: {session: {...terminal, messages: terminal.messages.filter(item => item.role === 'user'), thoughts: thoughts.slice(0, 1), activity: activity.slice(0, 1)}, before: ''}});
       return route.fulfill({json: {}});
     });
-    await compactPage.goto('http://127.0.0.1:5191');
+    await compactPage.goto('http://127.0.0.1:5242');
     await compactPage.getByRole('button', {name: '切换会话排列方式'}).click();
     await compactPage.getByRole('button', {name: '按会话查看'}).click();
     await compactPage.locator('.agent-session-select').filter({hasText: '时序交互'}).click();
@@ -193,7 +193,7 @@ test('agent run bubble, bounded trace, drawer and completed summary', {timeout: 
       if (url.pathname === '/api/agent/access-mode') return route.fulfill({json: {mode: 'safe'}});
       return route.fulfill({json: {}});
     });
-    await completedPage.goto('http://127.0.0.1:5191');
+    await completedPage.goto('http://127.0.0.1:5242');
     await completedPage.getByRole('button', {name: '切换会话排列方式'}).click();
     await completedPage.getByRole('button', {name: '按会话查看'}).click();
     await completedPage.locator('.agent-session-select').filter({hasText: '时序交互'}).click();

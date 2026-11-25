@@ -163,7 +163,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     await page.screenshot({path: join(tmpdir(), 'xiaotao-office-dark.png')});
     assert.equal(await page.getByText('参与 23 次').count(), 0, 'prototype demo numbers must not appear');
 
-    await page.locator('canvas[data-office-renderer="three"]').waitFor();
+    assert.equal(await scene.locator('canvas').count(), 0);
     const closeDetail = async () => {
       const back = page.locator('.workspace-back');
       if (await back.isVisible()) await back.click();
@@ -237,7 +237,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
     artifacts.length = 0;
     await pickOfficeProject(page, '另一个项目');
     await officePane(page).getByRole('heading', {name: '另一个项目', exact: true}).waitFor();
-    await page.locator('[data-entry-phase="ready"] canvas[data-office-renderer="three"]').waitFor();
+    await page.locator('.office-desk-person[data-member-id="coordinator"]').waitFor();
     await taskTrigger.click();
     await page.getByRole('tab', {name: /团队/}).click();
     await page.locator('.workspace-member-list [data-member-id="coordinator"]').waitFor();
@@ -252,7 +252,7 @@ test('office page shows real task state, transcript, artifacts and queued messag
 
     // Board polling stops when the office pane is closed.
     const before = requests.filter(item => item.path === '/api/office/snapshot').length;
-    await officePane(page).getByRole('button', {name: '收起办公室工作区'}).click();
+    await officePane(page).getByRole('button', {name: '收起工作区'}).click();
     await page.locator('.agent-workspace').waitFor();
     await page.waitForTimeout(3200);
     assert.equal(requests.filter(item => item.path === '/api/office/snapshot').length, before, 'office polling continued after leaving the page');

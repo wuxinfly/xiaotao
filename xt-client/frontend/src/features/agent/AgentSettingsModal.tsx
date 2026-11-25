@@ -158,8 +158,8 @@ export function AgentSettingsModal({models, selected, modelConfigs, defaultModel
     <nav className="agent-settings-nav" aria-label="设置分类"><button type="button" aria-pressed={tab === 'models'} disabled={settingsBusy} onClick={() => setTab('models')}><strong>常用模型</strong><small>执行模型与参数</small></button><button type="button" aria-pressed={tab === 'defaults'} disabled={settingsBusy} onClick={() => setTab('defaults')}><strong>默认模型</strong><small>标题、复盘、压缩</small></button><button type="button" aria-pressed={tab === 'mcp'} disabled={settingsBusy} onClick={() => setTab('mcp')}><strong>MCP 工具</strong><small>外部工具连接</small></button><button type="button" aria-pressed={tab === 'skills'} disabled={settingsBusy} onClick={() => setTab('skills')}><strong>Skills 技能</strong><small>本地技能目录</small></button></nav>
     <div className="agent-settings-content">
     {formError && <p className="agent-modal-error" role="alert">{formError}</p>}
-    {tab === 'mcp' && <div className="agent-settings-page"><MCPSettings active onBusyChange={setMCPBusy}/></div>}
-    {tab === 'skills' && <div className="agent-settings-page"><SkillsSettings active onBusyChange={setSkillsBusy}/></div>}
+    <div className="agent-settings-page" hidden={tab !== 'mcp'}><MCPSettings active={tab === 'mcp'} onBusyChange={setMCPBusy}/></div>
+    <div className="agent-settings-page" hidden={tab !== 'skills'}><SkillsSettings active={tab === 'skills'} onBusyChange={setSkillsBusy}/></div>
     {tab === 'models' && <div className="agent-settings-page">
     <AgentModelLibrary models={models} chosen={chosen} loading={loading} error={error} onRetry={onRetry} onAccounts={onAccounts} onToggle={toggleModel} onAdd={ids => setChosen(current => new Set([...current, ...ids]))} configFor={id => configFor(id, models)} onSetting={updateSettings} onReasoning={updateReasoningEffort}/>
     </div>}

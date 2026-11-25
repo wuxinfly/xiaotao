@@ -62,7 +62,8 @@ test('thinking preview and completed icon summary stay compact in both themes', 
     await page.getByRole('tooltip').waitFor();
     assert.match(await page.getByRole('tooltip').textContent(), /18\.6 tok\/s/);
     await page.screenshot({path: process.env.TEMP + '/xiaotao-agent-summary-dark.png', fullPage: true});
-    await page.getByRole('button', {name: '切换到浅海亮色主题'}).click();
+    await page.getByRole('button', {name:'更多',exact:true}).click();
+    await page.getByRole('menuitem', {name: '切换到浅海主题'}).click();
     await page.waitForTimeout(100);
     await page.screenshot({path: process.env.TEMP + '/xiaotao-agent-summary-light.png', fullPage: true});
     for (const width of [1100, 540, 390]) {

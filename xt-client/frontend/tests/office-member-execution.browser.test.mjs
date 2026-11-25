@@ -48,7 +48,7 @@ test('the office task list supports manually assigning a task to an employee', {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('http://127.0.0.1:5236');
     await openOffice(page, '演示项目');
-    await page.locator('canvas[data-office-renderer="three"]').waitFor();
+    await page.getByRole('region', {name:'办公室工位'}).getByRole('button', {name:/设计师/}).waitFor();
     await page.getByRole('button', {name: '新建任务'}).click();
     await page.getByRole('button', {name: '执行成员'}).click();
     await page.getByRole('option', {name: /设计师/}).click();
@@ -66,7 +66,7 @@ test('the office task list supports manually assigning a task to an employee', {
     await page.getByText('正在理解你的需求…').waitFor();
     await page.getByRole('button', {name: '返回任务列表'}).click();
     await page.getByRole('tab', {name: /团队/}).click();
-    await page.locator('[data-member-id]').filter({hasText: '设计师'}).getByText('工作中 · 实现搜索空状态').waitFor();
+    await page.locator('.workspace-member-list [data-member-id]').filter({hasText: '设计师'}).getByText('工作中 · 实现搜索空状态').waitFor();
     assert.deepEqual(errors, []);
   } finally {
     await browser?.close();

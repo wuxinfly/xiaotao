@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 // real canvas to decode, scale and re-encode, and it must not depend on the
 // rest of the Agent page.
 test('Pasted images are scaled and re-encoded before upload', {timeout: 60000}, async () => {
-  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5197', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
+  const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5248', '--strictPort'], {stdio: ['ignore', 'pipe', 'pipe']});
   let browser;
   try {
     await Promise.race([new Promise(resolve => server.stdout.on('data', data => { if (data.toString().includes('ready in')) resolve(); })), once(server, 'exit').then(() => { throw Error('Vite exited'); })]);
@@ -16,7 +16,7 @@ test('Pasted images are scaled and re-encoded before upload', {timeout: 60000}, 
     const page = await browser.newPage({viewport: {width: 1100, height: 820}});
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto('http://127.0.0.1:5197');
+    await page.goto('http://127.0.0.1:5248');
 
     const result = await page.evaluate(async () => {
       const {normaliseImage, scaledSize} = await import('/src/features/agent/imageNormalise.ts');

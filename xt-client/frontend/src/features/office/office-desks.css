@@ -1,0 +1,62 @@
+.office-workspace .office-desks {
+  min-width: 0;
+  padding: 14px var(--office-inset) 18px;
+}
+.office-desks-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.office-desks h3 { margin: 0; font-size: 13px; font-weight: 650; color: var(--office-text); }
+.office-desk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 0; margin: 0; list-style: none; }
+@container office-workspace (max-width: 477px) { .office-desk-grid { grid-template-columns: minmax(0, 1fr); } }
+.office-desk { min-width: 0; border: 1px solid var(--office-stroke); border-radius: 12px; background: var(--office-panel); }
+.office-workspace .office-desk-person {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  width: 100%; min-height: 64px; padding: 10px; border: 0; border-radius: 11px 11px 0 0;
+  text-align: left; background: transparent; color: var(--office-text);
+}
+.office-workspace .office-desk-person:hover { background: var(--office-hover); color: var(--office-text); }
+.office-desk-person > svg { color: var(--office-muted); }
+.office-desk-portrait {
+  display: grid; place-items: center; inline-size: 42px; block-size: 42px;
+  border: 1px solid var(--office-stroke); border-radius: 9px;
+  background: linear-gradient(155deg, var(--office-hover), var(--office-raised) 75%);
+}
+.office-desk-identity { display: grid; min-width: 0; gap: 3px; }
+.office-desk-identity strong, .office-desk-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.office-desk-identity strong { font-size: 14px; }
+.office-desk-identity small { color: var(--office-muted); font-size: 11px; }
+.office-desk-work {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; min-height: 33px; padding: 5px 10px;
+  border-top: 1px solid var(--office-stroke); border-radius: 0 0 11px 11px;
+  background: var(--office-raised); color: var(--office-muted); font-size: 11px;
+}
+.office-desk-work > span { display: inline-flex; flex: none; align-items: center; gap: 6px; }
+.office-desk-work i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.office-desk:is([data-status='running'], [data-status='queued']) .office-desk-work > span { color: var(--office-accent); }
+.office-desk[data-status='running'] .office-desk-work i { box-shadow: 0 0 8px var(--office-accent); }
+.office-desk[data-status='waiting'] .office-desk-work > span { color: var(--office-warn); }
+.office-desk[data-status='failed'] .office-desk-work > span { color: var(--office-danger); }
+.office-workspace .office-desk-work button {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 2px 4px;
+  background: transparent; color: var(--office-text); text-align: left; overflow-wrap: anywhere; font-size: 11px;
+}
+.office-desk-work button svg { flex: none; }
+.office-workspace .office-desk-work button:hover { background: var(--office-hover); color: var(--office-accent); }
+.office-workspace .office-attention {
+  display: grid; gap: 5px; margin-bottom: 14px; padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--office-warn) 38%, var(--office-stroke));
+  border-radius: 11px; background: color-mix(in srgb, var(--office-warn) 8%, var(--office-panel));
+}
+.office-attention h3 { display: flex; align-items: center; gap: 7px; padding-inline: 3px; color: var(--office-warn); }
+.office-attention h3 span { font: 650 11px ui-monospace, Consolas, monospace; }
+.office-workspace .office-attention button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 7px;
+  background: transparent; color: var(--office-text); text-align: left; font-size: 12px; overflow-wrap: anywhere;
+}
+.office-attention button svg { flex: none; color: var(--office-warn); }
+.office-workspace .office-attention button:hover { background: var(--office-hover); color: var(--office-text); }
+.office-desks-empty { margin: 0; padding: 16px; border: 1px dashed var(--office-stroke); border-radius: 10px; color: var(--office-muted); font-size: 12px; }
+.office-workspace :is(.room-setup, .room-team-error button) {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 9px;
+  border: 1px solid var(--office-stroke); border-radius: 8px; background: var(--office-raised); color: var(--office-accent); font-size: 12px;
+}
+.office-workspace :is(.room-setup, .room-team-error button):hover { background: var(--office-hover); color: var(--office-text); }
+.room-team-error { display: flex; align-items: center; gap: 6px; color: var(--office-warn); font-size: 12px; }

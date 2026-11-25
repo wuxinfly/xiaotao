@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 test('MCP settings save drafts, test connections and keep errors editable', {timeout:60000}, async () => {
- const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5197','--strictPort'],{stdio:['ignore','pipe','pipe']});
+ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port', '5249','--strictPort'],{stdio:['ignore','pipe','pipe']});
  let browser;
  try {
   await Promise.race([new Promise(resolve=>server.stdout.on('data',d=>{if(d.toString().includes('ready in'))resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
@@ -26,9 +26,9 @@ test('MCP settings save drafts, test connections and keep errors editable', {tim
    }
    return route.fulfill({json:{sessions:[],models:[],accounts:[],providers:[],mode:'safe'}});
   });
-  await page.goto('http://127.0.0.1:5197');
+  await page.goto('http://127.0.0.1:5249');
   await page.getByRole('button',{name:'打开 Agent 设置'}).click();
-  await page.getByRole('button',{name:'MCP 工具',exact:true}).click();
+  await page.getByRole('button',{name:/^MCP 工具/}).click();
   await page.getByText('内置浏览器 · 始终启用',{exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'添加 Chrome 浏览器工具'}).count(),0);
   assert.equal(await page.getByRole('button',{name:'删除服务 chrome-devtools',exact:true}).count(),0);
@@ -38,8 +38,8 @@ test('MCP settings save drafts, test connections and keep errors editable', {tim
   await page.getByRole('button',{name:'测试连接',exact:true}).click();
   await page.getByText('连接成功 · 2 个工具',{exact:true}).waitFor();
   assert.deepEqual(config.mcpServers,{'chrome-devtools':builtin},'test must not save');
-  await page.getByRole('button',{name:'常用模型',exact:true}).click();
-  await page.getByRole('button',{name:'MCP 工具',exact:true}).click();
+  await page.getByRole('button',{name:/^常用模型/}).click();
+  await page.getByRole('button',{name:/^MCP 工具/}).click();
   assert.equal(await page.getByLabel('启动命令',{exact:true}).inputValue(),'npx.cmd','tab switch preserves draft');
   await page.getByRole('button',{name:'添加服务',exact:true}).click();
   const custom=page.getByRole('region',{name:'MCP 服务 新服务',exact:true});
@@ -64,11 +64,12 @@ test('MCP settings save drafts, test connections and keep errors editable', {tim
    assert.ok(b.x>=0 && b.x+b.width<=width,'card outside viewport');
   }
   await page.screenshot({path:join(tmpdir(),'xiaotao-mcp-settings.png')});
-  await page.getByRole('button',{name:'关闭',exact:true}).click();
+  await page.getByRole('button',{name:'关闭弹窗',exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
-  await page.getByRole('button',{name:'切换到浅海亮色主题'}).click();
+  await page.getByRole('button',{name:'更多',exact:true}).click();
+  await page.getByRole('menuitem',{name:'切换到浅海主题'}).click();
   await page.getByRole('button',{name:'打开 Agent 设置'}).click();
-  await page.getByRole('button',{name:'MCP 工具',exact:true}).click();
+  await page.getByRole('button',{name:/^MCP 工具/}).click();
   await page.getByLabel('启动命令',{exact:true}).first().waitFor();
   assert.equal(await page.getByLabel('启动命令',{exact:true}).first().inputValue(),'npx.cmd','reopen loads saved config');
   await page.screenshot({path:join(tmpdir(),'xiaotao-mcp-settings-light.png')});

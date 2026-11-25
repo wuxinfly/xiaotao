@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
 test('agent displays streamed chunks before completion without duplicates', {timeout: 60000}, async () => {
- const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','5199','--strictPort'],{stdio:['ignore','pipe','pipe']}); let browser;
+ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port', '5254','--strictPort'],{stdio:['ignore','pipe','pipe']}); let browser;
  try {
   await Promise.race([new Promise(resolve=>server.stdout.on('data',data=>{if(data.toString().includes('ready in')) resolve();})),once(server,'exit').then(()=>{throw Error('Vite exited');})]);
   browser=await chromium.launch(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath:process.env.XIAOTAO_TEST_EXECUTABLE,headless:true} : {channel:process.env.XIAOTAO_TEST_BROWSER || 'msedge',headless:true});
@@ -40,7 +40,7 @@ test('agent displays streamed chunks before completion without duplicates', {tim
    if(path==='/api/agent/models') return route.fulfill({json:{models:[model]}});
    return route.fulfill({json:{models:[],accounts:[],sessions:[]}});
   });
-  await page.goto('http://127.0.0.1:5199');
+  await page.goto('http://127.0.0.1:5254');
   await page.locator('.agent-session-select[title="流式会话"]').click();
   const editor=page.getByRole('textbox',{name:'给小涛发消息'}); await editor.fill('你好'); await editor.press('Enter');
   await page.locator('.agent-run-timeline').waitFor();

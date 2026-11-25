@@ -123,7 +123,7 @@ export function useOfficeWorkspace({parent, project, projectName, visible, picki
           if (!await confirm({title: '停止员工并关闭会话？', description: '该会话还有员工正在执行或等待回复。停止后将清理员工对话原文。', confirmLabel: '停止并关闭'})) return false;
           options.force = true;
         } else if (!options.discardSummary && items.some(item => item.summaryStatus === 'failed')) {
-          if (!await confirm({title: '放弃未保存的总结？', description: '可以返回状态列表重试保存。确认后将清理原文，已存的长期记忆会保留。', confirmLabel: '放弃并关闭'})) return false;
+          if (!await confirm({title: '放弃未保存的总结？', description: '可以在员工对话里重试保存。确认后将清理原文，已存的长期记忆会保留。', confirmLabel: '放弃并关闭'})) return false;
           options.discardSummary = true;
         } else throw reason;
       }
@@ -137,7 +137,6 @@ export function useOfficeWorkspace({parent, project, projectName, visible, picki
     tabs: currentTabs.members, selected: currentTabs.selected, acting,
     openMember, selectTab, closeTab, refresh, close,
     delegate: (item: OfficeConversation) => act(item, () => officeConversations.reply(parent, item.memberId, {delegate: true})),
-    retrySummary: (item: OfficeConversation) => act(item, () => officeConversations.retrySummary(parent, item.memberId)),
   };
 }
 

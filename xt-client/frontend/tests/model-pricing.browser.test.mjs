@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {fillSource, saveSource, sourceBrowser} from './source-browser-fixture.mjs';
+import {fillSource, pickSelectOption, saveSource, sourceBrowser} from './source-browser-fixture.mjs';
 
-test('manual model capabilities and limits remain usable in narrow views and keyboard dialogs', {timeout:60000}, () => sourceBrowser(5198, async ({page,state,errors,navigate}) => {
+test('manual model capabilities and limits remain usable in narrow views and keyboard dialogs', {timeout:60000}, () => sourceBrowser(5252, async ({page,state,errors,navigate}) => {
   await navigate('accounts');
   await page.getByRole('heading', {name:'添加第一个模型接口'}).waitFor();
   await fillSource(page, 'Custom endpoint');
@@ -21,7 +21,7 @@ test('manual model capabilities and limits remain usable in narrow views and key
   await page.getByRole('button',{name:'调整 Shared model 参数'}).click();
   assert.equal(await page.getByLabel('Shared model 上下文窗口').inputValue(),'65536');
   assert.equal(await page.getByLabel('Shared model 最大输出').inputValue(),'4096');
-  await page.getByLabel('Shared model 思考等级').selectOption('high');
+  await pickSelectOption(page, 'Shared model 思考等级', 'high');
   await page.getByRole('button', {name:/默认模型/}).click();
   await page.getByRole('combobox',{name:'AI 重命名模型'}).click();
   await page.getByRole('option',{name:/Shared model/}).click();

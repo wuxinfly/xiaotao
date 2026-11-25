@@ -1,0 +1,75 @@
+.agent-workspace .workspace-panel-toggle {
+  justify-content: center;
+  padding-inline: 7px;
+  min-width: 29px;
+}
+.agent-workspace .workspace-panel-toggle[aria-expanded="true"] {
+  color: var(--agent-accent);
+  border-color: var(--agent-line-strong);
+  background: var(--agent-panel-raised);
+}
+.workspace-panel {
+  position: relative;
+  display: flex;
+  flex: 0 1 clamp(340px, 48vw, 720px);
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--agent-panel, #0b2030);
+  border-left: 1px solid var(--agent-line-strong);
+}
+.workspace-panel[hidden], .workspace-panel-content[hidden] {display: none;}
+.workspace-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--agent-line);
+}
+.workspace-panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 51px;
+  padding: 4px 3px;
+  overflow: auto hidden;
+}
+.workspace-panel-tab-group {display: flex; align-items: center; flex: none; gap: 2px;}
+.workspace-panel-tab, .workspace-panel-tab-close, .workspace-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--agent-muted);
+  white-space: nowrap;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+.workspace-panel-tab, .workspace-panel-close {min-height: 30px;}
+.workspace-panel-tab[aria-pressed="true"], .workspace-panel-tab:hover,
+.workspace-panel-tab-close:hover, .workspace-panel-close:hover {
+  color: var(--agent-accent);
+  border-color: var(--agent-line-strong);
+  background: var(--agent-panel-raised);
+}
+.workspace-panel-tab:focus-visible, .workspace-panel-tab-close:focus-visible, .workspace-panel-close:focus-visible {
+  outline: 2px solid var(--agent-accent);
+  outline-offset: 1px;
+}
+.workspace-panel-tab-close svg {width: 13px; height: 13px;}
+.workspace-panel-content {flex: 1; min-height: 0; overflow: hidden;}
+
+@media (max-width: 900px) {
+  .agent-workspace {position: relative;}
+  .workspace-panel {position: absolute; z-index: 5; inset: var(--agent-context-height) 0 0 auto; width: min(100%, 680px); box-shadow: -14px 0 40px #00101875;}
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-workspace .workspace-panel-toggle, .workspace-panel-tab, .workspace-panel-tab-close, .workspace-panel-close {transition: none;}
+}
