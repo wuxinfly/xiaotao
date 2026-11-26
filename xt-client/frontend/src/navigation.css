@@ -25,8 +25,7 @@
 
 /* Panels keep their dark reading surface while the ocean remains visible behind them. */
 .workspace-shell main{background:transparent}
-.workspace-shell :is(.overview-card,.request-card,.empty-requests-card,.heatmap-section,.flow-card,.proxy-bar,.endpoint-card,.account-list li){background:linear-gradient(135deg,#0b2940df,#061a2bdc);border-color:#65b6e036;box-shadow:0 8px 28px #00101b30;backdrop-filter:blur(10px)}
-.workspace-shell .request-card:hover{background:linear-gradient(135deg,#103650e8,#092239e6);border-color:#65c8ee65}
+.workspace-shell :is(.overview-card,.empty-requests-card,.heatmap-section,.flow-card,.proxy-bar,.endpoint-card,.account-list li){background:linear-gradient(135deg,#0b2940df,#061a2bdc);border-color:#65b6e036;box-shadow:0 8px 28px #00101b30;backdrop-filter:blur(10px)}
 .titlebar :is(.dropdown,.window-menu-panel){background:linear-gradient(135deg,#0a2948ed,#092238f5);border-color:#5dbce346;backdrop-filter:blur(18px);box-shadow:0 16px 40px #000b1d80;opacity:0;visibility:hidden;pointer-events:none;translate:0 -8px;scale:.97;transform-origin:top center;transition:opacity 160ms ease,translate 220ms cubic-bezier(.2,.8,.2,1),scale 220ms cubic-bezier(.2,.8,.2,1),visibility 0s linear 220ms}
 .titlebar .dropdown{transform:translateX(-50%)}
 .titlebar .window-menu-panel{transform:none;transform-origin:top right}

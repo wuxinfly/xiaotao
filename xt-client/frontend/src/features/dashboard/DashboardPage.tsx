@@ -5,7 +5,7 @@ import { UsageHeatmap } from './UsageHeatmap';
 import './dashboard.css';
 
 export function DashboardPage() {
-  const { snap, connected, loading, error, nowMs, reload } = useDashboardData();
+  const { snap, connected, loading, error, reload } = useDashboardData();
 
   if (loading) {
     return (
@@ -87,7 +87,7 @@ export function DashboardPage() {
       {/* 1. Usage Overview Card */}
       <UsageOverview snap={snap} uptimeSeconds={snap.launch.uptimeSeconds} />
 
-      <ConversationContext snapshot={snap} nowMs={nowMs} />
+      <ConversationContext snapshot={snap} />
 
       {/* 3. Usage Heatmap */}
       <UsageHeatmap heatmap={snap.heatmap} />

@@ -53,10 +53,10 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] .titlebar .window-buttons button:last-child:hover { background: #b44453; color: white; }
 
 /* Reading surfaces and body portals. */
-[data-theme='light'] :is(.workspace-shell .overview-card, .workspace-shell .request-card, .workspace-shell .empty-requests-card, .workspace-shell .heatmap-section, .workspace-shell .flow-card, .workspace-shell .proxy-bar, .workspace-shell .endpoint-card, .workspace-shell .account-list li, .endpoint-banner-card, .provider-group-section, .modern-account-card) {
+[data-theme='light'] :is(.workspace-shell .overview-card, .workspace-shell .empty-requests-card, .workspace-shell .heatmap-section, .workspace-shell .flow-card, .workspace-shell .proxy-bar, .workspace-shell .endpoint-card, .workspace-shell .account-list li, .endpoint-banner-card, .provider-group-section, .modern-account-card) {
   background: #ffffffd9; border-color: var(--line); box-shadow: 0 6px 24px #294f6008;
 }
-[data-theme='light'] :is(.workspace-shell .request-card:hover, .provider-group-section:hover, .modern-account-card:hover) { background: #fff; border-color: #94c8d3; box-shadow: 0 8px 28px #294f6010; }
+[data-theme='light'] :is(.provider-group-section:hover, .modern-account-card:hover) { background: #fff; border-color: #94c8d3; box-shadow: 0 8px 28px #294f6010; }
 [data-theme='light'] :is(.app-modal, .confirm-dialog, .account-detail-dialog, .add-account-dialog, .model-catalog-dialog, .app-popover, .agent-process-popover, .agent-stat-tooltip, .heatmap-popover, .info-tooltip-content) {
   background: #fbfeff; border-color: #c6dce4; color: var(--text); box-shadow: 0 20px 60px #244d6326;
 }
@@ -65,9 +65,9 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.app-modal-header, .dialog-header, .sub-item-row, .agent-message-content th, .agent-message-content td) { border-color: var(--line); }
 
 /* Main and secondary copy: explicit groups also cover content outside React's app root. */
-[data-theme='light'] :is(.accounts-page-container, .dashboard-page, .accounts-main-title, .dashboard-title-row h1, .overview-header strong, .hero-tokens, .submetric-val, .right-today-val, .requests-header h2, .heatmap-title-wrap h2, .req-model-name, .action-title, .popover-date, .popover-row .popover-val, .endpoint-title, .provider-group-name, .account-name, .profile-name, .big-rem-num, .sub-val-cur, .sub-items-title, .provider-item-name, .dialog-header h2, .app-modal-header h2, .model-catalog-row strong, .field-value, .quota-value, .remaining-num, .account-title, .group-title) { color: var(--ocean-text); }
-[data-theme='light'] :is(.accounts-main-subtitle, .endpoint-subtitle, .provider-group-desc, .profile-source, .provider-item-desc, .limit-num, .sub-val-limit, .total-quota-header, .sub-item-label, .detail-meta-footer, .pill-text, .app-modal-header p, .app-modal-count, .app-modal-close, .confirm-description, .confirm-eyebrow, .model-catalog-dialog-subtitle, .model-catalog-dialog-footer, .model-catalog-row code, .model-catalog-toolbar label, .model-catalog-state, .account-alias-form, .account-alias-form > span, .req-account-name, .req-token-line span, .req-token-cache, .req-time-line, .info-icon, .popover-row, .submetric-hint) { color: var(--muted); }
-[data-theme='light'] :is(.hero-label, .requests-toggle-btn, .channel-badge, .total-ratio, .model-catalog-source, .popover-row.highlight .popover-val, .field-icon-btn, .field-action-btn, .card-action-btn.detail-btn, .group-collapse-btn) { color: var(--accent); }
+[data-theme='light'] :is(.accounts-page-container, .dashboard-page, .accounts-main-title, .dashboard-title-row h1, .overview-header strong, .hero-tokens, .submetric-val, .right-today-val, .requests-header h2, .heatmap-title-wrap h2, .popover-date, .popover-row .popover-val, .endpoint-title, .provider-group-name, .account-name, .profile-name, .big-rem-num, .sub-val-cur, .sub-items-title, .provider-item-name, .dialog-header h2, .app-modal-header h2, .model-catalog-row strong, .field-value, .quota-value, .remaining-num, .account-title, .group-title) { color: var(--ocean-text); }
+[data-theme='light'] :is(.accounts-main-subtitle, .endpoint-subtitle, .provider-group-desc, .profile-source, .provider-item-desc, .limit-num, .sub-val-limit, .total-quota-header, .sub-item-label, .detail-meta-footer, .pill-text, .app-modal-header p, .app-modal-count, .app-modal-close, .confirm-description, .confirm-eyebrow, .model-catalog-dialog-subtitle, .model-catalog-dialog-footer, .model-catalog-row code, .model-catalog-toolbar label, .model-catalog-state, .account-alias-form, .account-alias-form > span, .info-icon, .popover-row, .submetric-hint) { color: var(--muted); }
+[data-theme='light'] :is(.hero-label, .total-ratio, .model-catalog-source, .popover-row.highlight .popover-val, .field-icon-btn, .field-action-btn, .card-action-btn.detail-btn, .group-collapse-btn) { color: var(--accent); }
 [data-theme='light'] :is(input, .field-box, .copy-value, .detail-total-quota-card, .sub-items-list, .account-alias-controls input, .capsule-switch-pill) { background: #f1f7f9; color: var(--text); border-color: var(--line); }
 [data-theme='light'] :is(input, textarea)::placeholder { color: #6a8590; }
 [data-theme='light'] :is(.app-modal-button.secondary, .dialog-btn.secondary, .rotate-key-btn, .group-add-btn, .model-catalog-copy-btn, .confirm-cancel, .group-collapse-btn) { background: #edf5f7; border-color: #c8dfe5; color: var(--ocean-text-soft); }
@@ -76,10 +76,10 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.app-modal-button.primary, .dialog-btn.primary-finish, .btn-add-account-primary, .workspace-shell .btn.primary) { background: linear-gradient(120deg, #087e87, #187fae); color: white; border-color: #087e87; box-shadow: 0 4px 12px #137d9420; }
 [data-theme='light'] :is(.add-provider-item, .model-catalog-row) { background: #f3f8fa; border-color: var(--line); }
 [data-theme='light'] :is(.add-provider-item:hover, .model-catalog-row:hover) { background: #e9f4f7; border-color: #94c8d3; }
-[data-theme='light'] :is(.dashboard-badge, .dashboard-badge.connected, .channel-badge, .group-count-badge, .badge-pill.badge-default, .status-capsule.default-badge) { background: #e3f2f3; color: #087480; border-color: #bddde1; }
+[data-theme='light'] :is(.dashboard-badge, .dashboard-badge.connected, .group-count-badge, .badge-pill.badge-default, .status-capsule.default-badge) { background: #e3f2f3; color: #087480; border-color: #bddde1; }
 [data-theme='light'] :is(.status-capsule.auth-ok, .badge-pill.badge-active, .notice.ok) { background: #e7f5ee; color: #167653; border-color: #c1e1d0; }
-[data-theme='light'] :is(.status-capsule.auth-warn, .dashboard-badge.error, .dashboard-badge.disconnected, .notice.err, .model-catalog-error, .agent-error, .agent-modal-error, .storage-alert-bar, .req-error-drawer) { background: #fff0ed; color: #a9383e; border-color: #efcbc8; }
-[data-theme='light'] :is(.dialog-btn.text-danger, .agent-session-menu button.is-danger, .confirm-icon, .error, .req-error-drawer p, .account-alias-form > span[role='alert']) { color: #b33e42; }
+[data-theme='light'] :is(.status-capsule.auth-warn, .dashboard-badge.error, .dashboard-badge.disconnected, .notice.err, .model-catalog-error, .agent-error, .agent-modal-error, .storage-alert-bar) { background: #fff0ed; color: #a9383e; border-color: #efcbc8; }
+[data-theme='light'] :is(.dialog-btn.text-danger, .agent-session-menu button.is-danger, .confirm-icon, .error, .account-alias-form > span[role='alert']) { color: #b33e42; }
 [data-theme='light'] :is(.quota-progress-track, .total-progress-track, .switch-slider) { background: #dae8ed; border-color: #ccdde4; }
 [data-theme='light'] :is(.quota-progress-fill, .total-progress-fill) { background: linear-gradient(90deg, #188e9b, #36b3ae); box-shadow: none; }
 [data-theme='light'] :is(.quota-progress-fill.is-warn, .total-progress-fill.is-warn) { background: #b88123; }
@@ -191,9 +191,6 @@ html[data-theme='light'] :is(body, #root) { color: var(--ocean-text); background
 [data-theme='light'] :is(.day-cell.level-2, .legend-cell.level-2) { background: #79c5c6; }
 [data-theme='light'] :is(.day-cell.level-3, .legend-cell.level-3) { background: #329da6; }
 [data-theme='light'] :is(.day-cell.level-4, .legend-cell.level-4) { background: #087480; }
-[data-theme='light'] .action-tag { background: #eaf1f6; color: #456779; }
-[data-theme='light'] .action-tag.tag-user { background: #fff2d9; color: #8a5b12; }
-[data-theme='light'] .action-tag.tag-exec { background: #eee9f8; color: #77509c; }
 
 [data-theme='light'] .toast-item { --toast-text: #203f4c; --toast-text-muted: #5b7885; background: #fbfeff; border-color: #c6dce4; box-shadow: 0 8px 32px #244d6320; }
 [data-theme='light'] .toast-action { color: var(--text); border-color: var(--line); }

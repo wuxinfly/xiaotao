@@ -18,21 +18,23 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     browser = await chromium.launch({...(process.env.XIAOTAO_TEST_EXECUTABLE ? {executablePath: process.env.XIAOTAO_TEST_EXECUTABLE} : {channel: process.env.XIAOTAO_TEST_BROWSER || 'msedge'}), headless: true});
     const context = await browser.newContext({viewport: {width: 1280, height: 850}, reducedMotion: 'reduce'});
     const tokens = {totalTokens: 3000, promptTokens: 2000, completionTokens: 1000, cachedTokens: 500};
-    function conversation(id, title, source, estimated) {
+    function conversation(id, title, source) {
       return {id, title, source, active: 1, latestRequestId: id,
-        context: {estimated, window: 10000, parts: {messages: estimated - 500, tools: 500}, items: {tools: [{label: 'read_file', tokens: 500}]}},
-        totals: {prompt: estimated, completion: 0},
-        requests: [{id, model: 'same-model', startedAt: Date.now(), status: 'streaming', tokens: {}}]};
+        requests: [{id, model: 'same-model', startedAt: Date.now(), status: 'streaming', statusText: '正在输出', firstTokenDurationMs: 1750, tokens: {}}]};
     }
-    const internal = conversation('internal', '小涛任务', '小涛', 3000);
-    const external = conversation('external', '外部会话', 'Responses', 6000);
-    external.requests[0].tokens.prompt = 7000;
-    external.requests[0].speedTokPerSec = 38.2;
-    const otherActive = [1, 2].map(i => conversation(`active-${i}`, `并行会话 ${i}`, '小涛', 3000));
+    const internal = conversation('internal', '小涛任务', '小涛');
+    const external = conversation('external', '外部会话', 'Responses');
+    external.active = 2;
+    external.requests = [
+      {...external.requests[0], model: 'previous-model', status: 'completed', statusText: '已完成'},
+      {...external.requests[0], id: 'stream', model: 'streaming-model', firstTokenDurationMs: 820, speedTokPerSec: 38.2},
+      {...external.requests[0], id: 'wait', model: 'waiting-model', status: 'pending', statusText: '等待响应', firstTokenDurationMs: null},
+    ];
+    const otherActive = [1, 2].map(i => conversation(`active-${i}`, `并行会话 ${i}`, '小涛'));
     function finish(session, speed) {
-      return {...session, active: 0, requests: session.requests.map(request => ({...request, status: 'completed', speedTokPerSec: speed}))};
+      return {...session, active: 0, requests: session.requests.map(request => ({...request, status: 'completed', statusText: '已完成', speedTokPerSec: speed}))};
     }
-    const recent = [1, 2, 3, 4].map(i => finish(conversation(`idle-${i}`, `已结束的会话 ${i}`, 'Responses', 4000), 21.5));
+    const recent = [1, 2, 3, 4].map(i => finish(conversation(`idle-${i}`, `已结束的会话 ${i}`, 'Responses'), 21.5));
     const snapshot = {version: 'fixture', versionSeq: 1, launch: {startedAt: 1793678400, uptimeSeconds: 60, batchId: 'fixture'}, currentSession: tokens, today: {...tokens, totalRequests: 2}, cumulative: {...tokens, totalRequests: 2}, conversations: [internal, external, ...otherActive, ...recent], recentRequests: [], activeRequests: [], activeCount: 0, heatmap: {startDate: '2026-01-01', endDate: '2026-11-03', trackingStartDate: '2026-01-01', days: {}}, storage: {status: 'healthy'}};
     await context.addInitScript(() => {
       window.EventSource = class extends EventTarget {
@@ -96,38 +98,38 @@ test('workspace navigation is docked left and theme lives in the more menu', {ti
     assert.equal(await page.locator('.workspace-sidebar').count(), 0, 'secondary pages must not reserve the left sidebar');
     assert.equal(await page.locator('.workspace-dock').count(), 0, 'secondary pages must hide workspace navigation');
     const sessions = page.getByRole('list', {name: '会话列表'});
-    const internalRow = sessions.getByRole('button', {name: /小涛任务/});
-    const externalRow = sessions.getByRole('button', {name: /外部会话/});
+    const internalRow = sessions.locator('.context-entry').filter({hasText: '小涛任务'});
+    const externalRow = sessions.locator('.context-entry').filter({hasText: '外部会话'});
+    const externalRequests = externalRow.getByRole('list', {name: '外部会话的模型请求'});
+    const streaming = externalRequests.getByRole('listitem').filter({hasText: 'streaming-model'});
+    const waiting = externalRequests.getByRole('listitem').filter({hasText: 'waiting-model'});
     await internalRow.waitFor();
     assert.equal(await sessions.locator('[data-active="true"]').count(), 4);
     assert.equal(await sessions.locator('[data-active="false"]').count(), 3);
     assert.equal(await page.getByText('已结束的会话 4', {exact: true}).count(), 0);
-    assert.match(await externalRow.locator('.context-speed').innerText(), /38\.2\s+tok\/s/);
-    assert.equal(await internalRow.locator('.context-percent').innerText(), '30%');
-    assert.equal(await externalRow.locator('.context-percent').innerText(), '70%');
-    assert.equal(await internalRow.getAttribute('aria-expanded'), 'false');
-    await internalRow.press('Enter');
-    await externalRow.press('Enter');
-    assert.equal(await internalRow.getAttribute('aria-expanded'), 'false');
-    assert.equal(await externalRow.getAttribute('aria-expanded'), 'true');
-    await page.locator('.context-legend').getByRole('button', {name: /工具定义/}).click();
-    await page.getByRole('region', {name: '分块明细'}).getByText('read_file').waitFor();
-    await page.locator('.context-legend').getByRole('button', {name: /对话消息/}).press('Enter');
-    await page.getByRole('region', {name: '分块明细'}).getByText('对话消息', {exact: true}).waitFor();
+    assert.equal(await externalRequests.getByRole('listitem').count(), 2);
+    assert.equal(await externalRequests.getByText('previous-model').count(), 0);
+    await streaming.getByText('820 ms', {exact: true}).waitFor();
+    await streaming.getByText('38.2 tok/s', {exact: true}).waitFor();
+    await waiting.getByText('等待首 Token', {exact: true}).waitFor();
+    await waiting.getByText('—', {exact: true}).waitFor();
+    assert.equal(await sessions.locator('button, details').count(), 0);
     await page.setViewportSize({width: 420, height: 800});
     assert.ok(await externalRow.evaluate(row => row.getBoundingClientRect().right <= innerWidth && row.scrollWidth <= row.clientWidth));
     await page.setViewportSize({width: 1280, height: 850});
     await page.screenshot({path: join(tmpdir(), 'xiaotao-dashboard-secondary.png')});
     await page.evaluate(next => window.dashboardEvents.dispatchEvent(new MessageEvent('update', {data: JSON.stringify(next)})),
-      {...snapshot, versionSeq: 2, conversations: [{...external, context: {...external.context, window: 0}}, finish(internal, 33.7), ...recent]});
-    await internalRow.getByText('已结束', {exact: true}).waitFor();
-    assert.match(await internalRow.locator('.context-speed').innerText(), /33\.7\s+tok\/s/);
-    assert.equal(await externalRow.locator('.context-percent').innerText(), '—');
+      {...snapshot, versionSeq: 2, conversations: [{...external, requests: external.requests.map(request => request.id === 'wait'
+        ? {...request, status: 'streaming', statusText: '正在输出', firstTokenDurationMs: 1230, speedTokPerSec: 25.6} : request)}, finish(internal, 33.7), ...recent]});
+    await internalRow.getByText('已完成', {exact: true}).waitFor();
+    await internalRow.getByText('33.7 tok/s', {exact: true}).waitFor();
+    await waiting.getByText('1.23 s', {exact: true}).waitFor();
+    await waiting.getByText('25.6 tok/s', {exact: true}).waitFor();
     await page.evaluate(next => window.dashboardEvents.dispatchEvent(new MessageEvent('update', {data: JSON.stringify(next)})),
-      {...snapshot, versionSeq: 3, conversations: [finish(external, 40.4), finish(internal, 33.7), ...recent]});
-    await page.getByText('0 个进行中').waitFor();
+      {...snapshot, versionSeq: 3, conversations: [finish({...external, latestRequestId: 'stream'}, 40.4), finish(internal, 33.7), ...recent]});
+    await streaming.getByText('40.4 tok/s', {exact: true}).waitFor();
     assert.equal(await sessions.locator('[data-active="false"]').count(), 3);
-    assert.equal(await externalRow.getAttribute('aria-expanded'), 'true');
+    assert.equal(await externalRequests.getByRole('listitem').count(), 1);
     await page.evaluate(next => window.dashboardEvents.dispatchEvent(new MessageEvent('update', {data: JSON.stringify(next)})),
       {...snapshot, versionSeq: 4, conversations: []});
     await page.getByText('暂无会话请求').waitFor();
