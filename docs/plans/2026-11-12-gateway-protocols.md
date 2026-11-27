@@ -5,11 +5,33 @@
 | 方向 | Chat Completions | Responses | Anthropic Messages |
 | --- | --- | --- | --- |
 | 本地入口 | `POST /v1/chat/completions` | `POST /v1/responses` | `POST /v1/messages` |
+| 本地 count_tokens | 不适用 | 不适用 | `POST /v1/messages/count_tokens` |
 | 手动来源 protocol | `openai-chat` | `openai-responses` | `anthropic-messages` |
 | 上游端点 | `/chat/completions` | `/responses` | `/messages` |
 | 上游认证 | Bearer API Key | Bearer API Key | `x-api-key` + `anthropic-version: 2023-06-01` |
 
 `internal/wireprotocol` 负责请求、响应及 SSE 事件转换；`internal/gateway` 保留鉴权、显式模型身份、用量、取消、空闲/总超时及拒绝重定向。三种外部入口都可调用手动来源和插件；协议互转经过共同 Chat 表达，未经客户端指定不会切换模型或来源。
+
+## 协议能力矩阵
+
+三种对话入口以 Chat Completions 为共同表示，均可调用三种手动上游格式。能力受所选模型及上游支持范围约束。
+
+| 能力 | Chat Completions | Responses | Anthropic Messages |
+| --- | --- | --- | --- |
+| 本地对话入口 | 原生 | 转换 | 转换 |
+| 可调用的手动上游格式 | 三种均可 | 三种均可 | 三种均可 |
+| 多轮文本对话 | 支持 | 支持 | 支持 |
+| 图片 | 支持 | 支持 | 支持 |
+| 函数工具 | 支持 | 支持 | 支持 |
+| 流式与非流式 | 支持 | 支持 | 支持 |
+| 真实 usage | 支持 | 支持 | 支持 |
+| `count_tokens` | 不适用 | 不适用 | 支持，仅 Anthropic Messages 手动上游 |
+| Responses 有状态续接 | 不支持 | 不支持 | 不支持 |
+| 内置工具 | 不支持 | 不支持 | 不支持 |
+| 文件与音频 | 不支持 | 不支持 | 不支持 |
+| Anthropic 扩展 thinking | 不支持 | 不支持 | 不支持 |
+
+`/v1/messages/count_tokens` 只转发到 Anthropic Messages 手动上游。其它上游或插件直接返回 400，本地不估算 token 数。请求使用本地网关密钥，`stream: true` 返回 400。转发时重写模型 ID、移除 `stream`，其余 JSON 字段保留。成功响应只包含上游返回的 `input_tokens`，上游失败统一返回 502。
 
 ## 配置和调用
 
@@ -35,13 +57,13 @@
 - 同时支持流式与非流式。保留工具调用 ID、参数增量、原始模型路由与调用方使用的 model ID；Responses 输出事件带连续 sequence_number，Anthropic 输出 message/content block 事件。
 - Chat/Responses 保留推理文本或摘要；不伪造 Anthropic 签名 thinking block，也不启用扩展 thinking。Anthropic 上游不接受网关的 `reasoning_effort` 或 `response_format`，请求会明确报错。
 - Responses 为无状态对话接口：调用方发送完整历史，使用 `store:false`（省略也按 false 处理）。不支持 `previous_response_id`、conversation、后台任务、检索/删除已存响应、内置搜索/计算机工具、文件/音频及 encrypted reasoning。签名 thinking 历史和 provider 扩展选项不在共同协议范围，明确拒绝已识别的不支持字段。
-- 不模拟服务端会话，也不提供 `/v1/messages/count_tokens`。这不是完整的 Responses/Anthropic 产品 API，不能据此宣称所有第三方 Agent 客户端全部兼容。
 - 仅报告真实 usage，区分输入、输出与缓存 token；未知用量保留缺失/null，不估算为零。跨协议流式的起始事件可能尚无输入 token 数，结束时补充上游提供的真实数据。
 - SSE 必须收到原生终止事件；错误、截断、取消或无终止事件不发送成功结束。HTTP 错误与 SSE 错误按外部协议返回，不回显上游响应中的密钥或其他敏感原文。
 - 沿用 32 MiB 请求/单事件限制、300 秒空闲与30分钟总超时。Responses 最终响应需要保留输出，额外限制累计内容为32 MiB及最多1024个工具项；不能无限缓存整条流。Anthropic 若请求与模型均未给输出上限，适配器使用1024作为必要的协议默认输出上限，并限制为小于已声明的模型窗口。
 
 ## 验证
 
+- `count_tokens` 回归覆盖 Anthropic Messages 手动上游的转发、鉴权、模型路由和非 Anthropic 上游拒绝。
 - `go test ./internal/wireprotocol ./internal/modelsource ./internal/sourceplugin ./internal/gateway`：三种入口 × 三种上游 × 流式/非流式的18组交叉回归；另覆盖插件复用、图片、工具历史、并行工具参数、JSON schema、拒答、真实/未知用量、格式持久化、无效请求、认证、重定向、上游错误、截断和取消。
 - `go vet` 对上述包及 Windows 目标全量运行；前端 lint、大小检查与构建。
 - `XIAOTAO_TEST_EXECUTABLE=/usr/bin/chromium node --test tests/source-protocols.browser.test.mjs tests/model-sources-layout.browser.test.mjs tests/model-catalog.browser.test.mjs`：隔离 mock API 验证格式选择、保存/回显/修改、密钥省略保留、目录及窄屏布局。布局断言按现有插件区块核查相邻间距，不把插件区块误当空白。

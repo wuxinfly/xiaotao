@@ -95,6 +95,7 @@ func registerRuntimeRoutes(mux *http.ServeMux, rt runtimeRoutes) {
 	mux.HandleFunc("POST /v1/chat/completions", rt.gateway.HandleChat)
 	mux.HandleFunc("POST /v1/responses", rt.gateway.HandleResponses)
 	mux.HandleFunc("POST /v1/messages", rt.gateway.HandleMessages)
+	mux.HandleFunc("POST /v1/messages/count_tokens", rt.gateway.HandleCountTokens)
 	registerHUDRoutes(mux, rt)
 }
 

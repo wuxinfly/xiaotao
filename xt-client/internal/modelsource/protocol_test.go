@@ -42,3 +42,17 @@ func TestProtocolPersistenceAndURLs(t *testing.T) {
 		t.Fatal("unsupported protocol accepted")
 	}
 }
+
+func TestAnthropicCountTokensURL(t *testing.T) {
+	const want = "https://example.com/v1/messages/count_tokens"
+	for _, base := range []string{
+		"https://example.com/v1",
+		"https://example.com/v1/",
+		"https://example.com/v1/messages",
+		want,
+	} {
+		if got := AnthropicCountTokensURL(base); got != want {
+			t.Errorf("AnthropicCountTokensURL(%q) = %q, want %q", base, got, want)
+		}
+	}
+}

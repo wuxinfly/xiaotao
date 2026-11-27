@@ -12,7 +12,7 @@
 
 手动目录只读取本地配置，“刷新模型列表”重新加载配置，不会自动访问远端或猜测可用模型。接口保存/启停/删除会通知 Agent 刷新目录。旧平台模型和已删除来源的会话仍可查看，但不会按同名模型自动转向新接口，需要手动切换模型。
 
-Agent 继续使用本地 `/v1/chat/completions`；外部工具可使用 `/v1/chat/completions`、`/v1/responses` 或 `/v1/messages`，共用 `/v1/models` 目录，与所选上游格式独立。三种入口也可调用已有来源插件。“本地调用入口”的地址/访问密钥与上游 API URL/Key 是两套配置，不能混用；外部请求使用目录返回的稳定模型 ID。本地访问密钥可以轮换，Agent 后续请求自动使用新值。真实 token 用量、仪表盘与浮窗保留；上游余额、登录、签到和自动平台目录不在核心运行范围。
+Agent 继续使用本地 `/v1/chat/completions`；外部工具可使用 `/v1/chat/completions`、`/v1/responses` 或 `/v1/messages`，共用 `/v1/models` 目录，与所选上游格式独立。三种入口也可调用已有来源插件。“本地调用入口”的地址/访问密钥与上游 API URL/Key 是两套配置，不能混用；外部请求使用目录返回的稳定模型 ID。本地访问密钥可以轮换，Agent 后续请求自动使用新值。真实 token 用量、仪表盘与浮窗保留；上游余额、登录、签到和自动平台目录不在核心运行范围。另有 `/v1/messages/count_tokens`，仅转发给 Anthropic Messages 手动上游，不在本地估算。
 
 当前覆盖无状态对话、图片、函数工具和流式转换；Responses 的存储/续接、内置工具和 Anthropic 扩展 thinking 等高级能力不在兼容范围。完整路径、鉴权示例、用量及验证边界见 [三协议接入说明](../docs/plans/2026-11-12-gateway-protocols.md)。OpenAI 工具通常填本地 `/v1` 为 base URL；自动添加 `/v1/messages` 的 Anthropic 工具应填本地根地址，避免重复 `/v1`。
 

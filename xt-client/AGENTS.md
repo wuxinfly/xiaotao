@@ -17,6 +17,7 @@
 ## 模型来源与通用网关
 
 - `internal/modelsource` 保存手动来源、稳定模型 ID 和加密 API Key，`internal/gateway` 提供 Chat Completions、Responses、Anthropic Messages 对话入口，`internal/wireprotocol` 负责协议转换；手动上游可独立选择这三种格式。API URL 是实际 API 前缀或所选协议完整端点，不猜测添加 `/v1`。Responses/Anthropic 当前实现为无状态对话兼容子集，范围和验证见 `../docs/plans/2026-11-12-gateway-protocols.md`。
+- `/v1/messages/count_tokens` 只支持 Anthropic Messages 手动上游，其它上游或插件按 400 拒绝，不在本地估算 token 数。
 - 接口页的模型调用清单通过 `GET /api/gateway/models` 读取网关同一公开目录，供复制实际调用别名与来源参数；Agent 模型库继续保存内部模型 ID 和独立执行参数。交互与验证见 `../docs/plans/2026-11-12-model-library-and-export.md`。
 - 路由必须使用模型内部 ID 明确绑定来源与上游模型 ID，不拆上游 ID 的 `/` 猜测平台，不把不同接口同名模型合并。旧平台模型引用保留但不可自动重绑。
 - 核心不导入或注册 `internal/authsessions`、`internal/proxy` 和 `internal/providers/*` 平台实现，不执行平台登录、续期、配额、签到或目录发现。旧源码与账号数据仅作为后续插件迁移材料保留，不自动删除。

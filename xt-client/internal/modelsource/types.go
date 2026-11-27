@@ -79,6 +79,14 @@ func ProtocolURL(base, protocol string) string {
 	return strings.TrimRight(base, "/") + protocolPath(protocol)
 }
 
+// AnthropicCountTokensURL derives the token-counting endpoint from an API prefix or Messages endpoint.
+func AnthropicCountTokensURL(base string) string {
+	base = strings.TrimRight(base, "/")
+	base = strings.TrimSuffix(base, "/messages/count_tokens")
+	base = strings.TrimSuffix(base, "/messages")
+	return base + "/messages/count_tokens"
+}
+
 // ModelsURL derives the catalog endpoint from the same API prefix used for inference.
 func ModelsURL(raw, protocol string) (string, error) {
 	if !ValidProtocol(protocol) {

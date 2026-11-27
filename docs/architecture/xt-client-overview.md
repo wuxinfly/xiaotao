@@ -135,7 +135,7 @@
 | `/api/...` | 页面使用的管理接口 |
 | `/v1/...` | 供小涛 Agent 和外部工具调用的统一模型 API |
 
-模型 API 以 OpenAI Chat Completions、Responses 和 Anthropic Messages 为兼容目标，按阶段实现并验证，不代表首版一次性完成所有协议。
+模型 API 以 OpenAI Chat Completions、Responses 和 Anthropic Messages 为兼容目标，按阶段实现并验证。Anthropic Messages 另提供 `/v1/messages/count_tokens`，仅对 Anthropic Messages 手动上游转发。
 
 关闭桌面窗口后应支持服务继续提供 API。建议使用托盘提供“打开小涛”“在浏览器打开”“退出小涛”等操作；默认关闭行为、退出时如何处理正在运行的请求及 Agent 任务尚待确定。
 
